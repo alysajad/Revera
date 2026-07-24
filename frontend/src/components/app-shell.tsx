@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
+import { AuthTransition } from "@/components/auth-transition";
 import { getCurrentUser, logout, type CurrentUser } from "@/lib/crm";
 
 type AppShellProps = { children: ReactNode; role: "Admin" | "Sales officer" };
@@ -25,6 +26,7 @@ export function AppShell({ children, role }: AppShellProps) {
   const links = role === "Admin" ? adminLinks : officerLinks;
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [checkingAccess, setCheckingAccess] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
   useEffect(() => {
     void getCurrentUser().then(result => {
       setUser(result.user);
@@ -34,11 +36,14 @@ export function AppShell({ children, role }: AppShellProps) {
   const displayName = user ? `${user.first_name} ${user.last_name}`.trim() || user.email : "Sign in";
   const initials = user ? `${user.first_name[0] || ""}${user.last_name[0] || ""}` || user.email.slice(0, 2).toUpperCase() : "?";
   const signOut = async () => {
+    setSigningOut(true);
     try { await logout(); }
     finally { router.replace("/"); }
   };
 
-  if (checkingAccess || (user && ((role === "Admin") !== (user.role === "ADMIN")))) return null;
+  if (signingOut) return <AuthTransition stage="signout" />;
+  if (checkingAccess) return <AuthTransition stage="workspace" />;
+  if (user && ((role === "Admin") !== (user.role === "ADMIN"))) return null;
 
   return <div className="app-shell">
     <aside className="sidebar">
