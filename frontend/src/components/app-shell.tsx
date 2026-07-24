@@ -58,7 +58,7 @@ export function AppShell({ children, role }: AppShellProps) {
       </div>
     </aside>
     <main className="main-content">
-      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : "My queue"}</b><small>{new Intl.DateTimeFormat("en", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</small></div><div className="top-actions">{role === "Admin" && <Link className="button primary" href="/leads">＋ Upload leads</Link>}</div></header>
+      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : "My queue"}</b><small>{new Intl.DateTimeFormat("en", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</small></div><div className="top-actions">{role === "Admin" && <button className="button primary" onClick={() => pathname === "/leads" ? window.dispatchEvent(new Event("revera:add-lead")) : router.push("/leads?addLead=1")}>＋ Add lead</button>}</div></header>
       {children}
     </main>
   </div>;

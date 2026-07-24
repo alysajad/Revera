@@ -11,6 +11,7 @@ export type Lead = {
   id: number; name: string; phone: string; source: string; model: string; city: string; enquiredAt: string;
   status: string; assignedSoId: number | null; assignedSoName: string;
 };
+export type LeadInput = { name: string; phone: string; email?: string; source: string; source_label?: string; campaign?: string; model_interest?: string; city?: string; enquiry_date?: string };
 export type Officer = { id: number; name: string; initials: string; color: "blue" | "green" | "violet" | "orange"; assigned: number; calls: number; qualified: number; won: number };
 export type Metrics = { total_assigned: number; total_called: number; qualified: number; walkins: number; won: number; lost: number; conversion_rate: number };
 export type Analytics = { summary: Metrics; source: { source: string; total: number; qualified: number; won: number }[]; officers: (Metrics & { id: number; name: string })[] };
@@ -50,6 +51,7 @@ export const toLead = (lead: ApiLead): Lead => ({ ...lead, source: sourceName(le
 export const toOfficer = (officer: ApiOfficer, metrics?: Metrics): Officer => ({ id: officer.id, name: `${officer.first_name} ${officer.last_name}`.trim() || officer.email, initials: `${officer.first_name[0] || ""}${officer.last_name[0] || ""}` || officer.email.slice(0, 2).toUpperCase(), color: colors[officer.id % colors.length], assigned: metrics?.total_assigned || 0, calls: metrics?.total_called || 0, qualified: metrics?.qualified || 0, won: metrics?.won || 0 });
 
 export async function getLeads(query = "") { const data = await api<Paginated<ApiLead>>(`/api/leads/${query}`); return data.results.map(toLead); }
+export const createLead = (payload: LeadInput) => api<ApiLead>("/api/leads/", { method: "POST", body: JSON.stringify(payload) });
 export async function getOfficers() { const data = await api<Paginated<ApiOfficer>>("/api/auth/sales-officers/"); return data.results; }
 export const getAdminAnalytics = () => api<Analytics>("/api/analytics/admin/");
 export const getMyAnalytics = () => api<Metrics>("/api/analytics/me/");

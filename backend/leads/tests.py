@@ -32,6 +32,14 @@ class LeadAccessTests(TestCase):
         unowned.refresh_from_db()
         self.assertIn(unowned.assigned_so, [self.first_so, self.second_so])
 
+    def test_admin_can_add_an_unassigned_lead(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post("/api/leads/", {"name": "Manual lead", "phone": "7006682392", "source": Lead.Source.WEBSITE, "model_interest": "R8 Lite", "city": "Srinagar"}, format="json")
+        self.assertEqual(response.status_code, 201)
+        lead = Lead.objects.get(pk=response.data["id"])
+        self.assertIsNone(lead.assigned_so)
+        self.assertEqual(lead.status, Lead.Status.FRESH)
+
     def test_admin_cannot_assign_a_lead_twice(self):
         self.client.force_authenticate(self.admin)
         response = self.client.post(f"/api/leads/{self.first_lead.id}/assign/", {"sales_officer_id": self.second_so.id}, format="json")
