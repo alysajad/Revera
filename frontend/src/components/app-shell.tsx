@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { getCurrentUser, type CurrentUser } from "@/lib/crm";
+import { getCurrentUser, logout, type CurrentUser } from "@/lib/crm";
 
 type AppShellProps = { children: ReactNode; role: "Admin" | "Sales officer" };
 
@@ -33,6 +33,10 @@ export function AppShell({ children, role }: AppShellProps) {
   }, [role, router]);
   const displayName = user ? `${user.first_name} ${user.last_name}`.trim() || user.email : "Sign in";
   const initials = user ? `${user.first_name[0] || ""}${user.last_name[0] || ""}` || user.email.slice(0, 2).toUpperCase() : "?";
+  const signOut = async () => {
+    try { await logout(); }
+    finally { router.replace("/"); }
+  };
 
   if (checkingAccess || (user && ((role === "Admin") !== (user.role === "ADMIN")))) return null;
 
@@ -45,7 +49,7 @@ export function AppShell({ children, role }: AppShellProps) {
       </nav>
       <div className="sidebar-footer">
         <Link className="support" href="#support"><span>?</span><p>Need a hand?<small>Open the operator guide</small></p></Link>
-        <Link className="user-card" href="/"><div className={`avatar ${role === "Admin" ? "orange" : "blue"}`}>{initials}</div><p><b>{displayName}</b><small>{user ? role : "Authenticate to continue"}</small></p></Link>
+        <div className="user-card"><div className={`avatar ${role === "Admin" ? "orange" : "blue"}`}>{initials}</div><p><b>{displayName}</b><small>{user ? role : "Authenticate to continue"}</small></p><button onClick={() => void signOut()}>Sign out</button></div>
       </div>
     </aside>
     <main className="main-content">

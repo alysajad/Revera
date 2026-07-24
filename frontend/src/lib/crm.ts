@@ -57,6 +57,7 @@ export const assignLead = (leadId: number, officerId: number) => api<Lead>(`/api
 export const autoAssignLeads = () => api<{ assigned: number }>("/api/leads/auto-assign/", { method: "POST", body: JSON.stringify({}) });
 export const logCall = (leadId: number, payload: { status: string; remarks?: string; follow_up_at?: string }) => api<Lead>(`/api/leads/${leadId}/log-call/`, { method: "POST", body: JSON.stringify(payload) });
 export const login = (email: string, password: string) => api<{ user: CurrentUser }>("/api/auth/login/", { method: "POST", body: JSON.stringify({ email, password }) });
+export const logout = () => api<void>("/api/auth/logout/", { method: "POST" });
 export const getCurrentUser = () => api<{ user: CurrentUser }>("/api/auth/me/");
 export const uploadLeads = (file: File) => { const body = new FormData(); body.append("file", file); return api<UploadBatch>("/api/uploads/", { method: "POST", body }); };
 export const getUpload = (id: number) => api<UploadBatch>(`/api/uploads/${id}/`);
