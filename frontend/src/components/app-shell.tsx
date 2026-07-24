@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { getCurrentUser, type CurrentUser } from "@/lib/crm";
 
@@ -21,11 +21,20 @@ const officerLinks = [
 
 export function AppShell({ children, role }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const links = role === "Admin" ? adminLinks : officerLinks;
   const [user, setUser] = useState<CurrentUser | null>(null);
-  useEffect(() => { void getCurrentUser().then(result => setUser(result.user)).catch(() => setUser(null)); }, []);
+  const [checkingAccess, setCheckingAccess] = useState(true);
+  useEffect(() => {
+    void getCurrentUser().then(result => {
+      setUser(result.user);
+      if ((role === "Admin") !== (result.user.role === "ADMIN")) router.replace(result.user.role === "ADMIN" ? "/dashboard" : "/my-leads");
+    }).catch(() => router.replace("/")).finally(() => setCheckingAccess(false));
+  }, [role, router]);
   const displayName = user ? `${user.first_name} ${user.last_name}`.trim() || user.email : "Sign in";
   const initials = user ? `${user.first_name[0] || ""}${user.last_name[0] || ""}` || user.email.slice(0, 2).toUpperCase() : "?";
+
+  if (checkingAccess || (user && ((role === "Admin") !== (user.role === "ADMIN")))) return null;
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -40,7 +49,7 @@ export function AppShell({ children, role }: AppShellProps) {
       </div>
     </aside>
     <main className="main-content">
-      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : "My queue"}</b><small>{new Intl.DateTimeFormat("en", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</small></div><div className="top-actions"><Link className="role-link" href={role === "Admin" ? "/my-leads" : "/dashboard"}>{role === "Admin" ? "Sales officer view" : "Manager view"}</Link>{role === "Admin" && <Link className="button primary" href="/leads">＋ Upload leads</Link>}</div></header>
+      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : "My queue"}</b><small>{new Intl.DateTimeFormat("en", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</small></div><div className="top-actions">{role === "Admin" && <><Link className="role-link" href="/my-leads">Sales officer view</Link><Link className="button primary" href="/leads">＋ Upload leads</Link></>}</div></header>
       {children}
     </main>
   </div>;
