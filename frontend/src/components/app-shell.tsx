@@ -49,7 +49,7 @@ export function AppShell({ children, role }: AppShellProps) {
       </div>
     </aside>
     <main className="main-content">
-      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : "My queue"}</b><small>{new Intl.DateTimeFormat("en", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</small></div><div className="top-actions">{role === "Admin" && <><Link className="role-link" href="/my-leads">Sales officer view</Link><Link className="button primary" href="/leads">＋ Upload leads</Link></>}</div></header>
+      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : "My queue"}</b><small>{new Intl.DateTimeFormat("en", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</small></div><div className="top-actions">{role === "Admin" && <Link className="button primary" href="/leads">＋ Upload leads</Link>}</div></header>
       {children}
     </main>
   </div>;
