@@ -44,6 +44,8 @@ class UploadBatchViewSet(viewsets.GenericViewSet):
     @action(detail=True, methods=["post"], url_path="resolve-duplicates")
     def resolve_duplicates(self, request, pk=None):
         batch = self.get_object()
+        if batch.status != UploadBatch.Status.READY:
+            return Response({"detail": "This upload is not ready for review."}, status=status.HTTP_400_BAD_REQUEST)
         serializer = ResolveRowsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         rows = {row.id: row for row in batch.rows.all()}
@@ -51,7 +53,9 @@ class UploadBatchViewSet(viewsets.GenericViewSet):
             if row := rows.get(item["id"]):
                 row.resolution = item["resolution"]
                 row.save(update_fields=["resolution"])
-        return Response({"detail": "Duplicate choices saved."})
+        batch.duplicates_found = batch.rows.filter(duplicate_of__isnull=False, resolution=UploadRow.Resolution.PENDING).count()
+        batch.save(update_fields=["duplicates_found"])
+        return Response({"detail": "Duplicate choices saved.", "duplicates_found": batch.duplicates_found})
 
     @action(detail=True, methods=["post"])
     def commit(self, request, pk=None):

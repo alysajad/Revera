@@ -60,5 +60,7 @@ export const login = (email: string, password: string) => api<{ user: CurrentUse
 export const getCurrentUser = () => api<{ user: CurrentUser }>("/api/auth/me/");
 export const uploadLeads = (file: File) => { const body = new FormData(); body.append("file", file); return api<UploadBatch>("/api/uploads/", { method: "POST", body }); };
 export const getUpload = (id: number) => api<UploadBatch>(`/api/uploads/${id}/`);
+export const resolveUploadDuplicates = (id: number, rows: { id: number; resolution: "SKIP" }[]) => api<{ detail: string; duplicates_found: number }>(`/api/uploads/${id}/resolve-duplicates/`, { method: "POST", body: JSON.stringify({ rows }) });
 export const commitUpload = (id: number) => api<{ created: number; overwritten: number; skipped: number }>(`/api/uploads/${id}/commit/`, { method: "POST", body: JSON.stringify({}) });
-export type UploadBatch = { id: number; status: "PARSING" | "READY" | "COMMITTED" | "FAILED"; total_rows: number; parsed_ok: number; duplicates_found: number; skipped: number; error_message: string };
+export type UploadRow = { id: number; row_number: number; data: { name?: string }; normalized_phone: string; validation_error: string; duplicate_of: number | null; existing_name: string; existing_status: string; resolution: "PENDING" | "SKIP" | "OVERWRITE" | "IMPORT" };
+export type UploadBatch = { id: number; status: "PARSING" | "READY" | "COMMITTED" | "FAILED"; total_rows: number; parsed_ok: number; duplicates_found: number; skipped: number; error_message: string; rows?: UploadRow[] };
