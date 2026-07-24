@@ -5,7 +5,7 @@ from rest_framework.test import APIClient
 from datetime import timedelta
 
 from accounts.models import User
-from .models import FollowUp, Lead
+from .models import CallLog, FollowUp, Lead
 
 
 class LeadAccessTests(TestCase):
@@ -64,3 +64,13 @@ class LeadAccessTests(TestCase):
         response = self.client.post(f"/api/leads/{self.first_lead.id}/log-call/", {"status": Lead.Status.LOST, "follow_up_at": future.isoformat()}, format="json")
         self.assertEqual(response.status_code, 400)
         self.assertFalse(FollowUp.objects.filter(lead=self.first_lead, resolved_at__isnull=True).exists())
+
+    def test_repeated_call_log_creates_one_log_and_follow_up(self):
+        self.client.force_authenticate(self.first_so)
+        future = timezone.now() + timedelta(days=1)
+        payload = {"status": Lead.Status.CALLBACK, "follow_up_at": future.isoformat()}
+
+        self.assertEqual(self.client.post(f"/api/leads/{self.first_lead.id}/log-call/", payload, format="json").status_code, 200)
+        self.assertEqual(self.client.post(f"/api/leads/{self.first_lead.id}/log-call/", payload, format="json").status_code, 400)
+        self.assertEqual(CallLog.objects.filter(lead=self.first_lead).count(), 1)
+        self.assertEqual(FollowUp.objects.filter(lead=self.first_lead, resolved_at__isnull=True).count(), 1)

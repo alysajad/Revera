@@ -2,6 +2,7 @@ from collections import defaultdict
 
 from django.db import transaction
 from django.db.models import Count, Q
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -84,15 +85,15 @@ class LeadViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="log-call")
     def log_call(self, request, pk=None):
-        lead = self.get_object()
-        if not request.user.is_admin and lead.assigned_so_id != request.user.id:
-            return Response({"detail": "This lead is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
-        serializer = LeadUpdateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        next_status = serializer.validated_data["status"]
-        if next_status not in FORWARD_TRANSITIONS.get(lead.status, set()):
-            return Response({"detail": "This status transition is not allowed."}, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
+            lead = get_object_or_404(self.get_queryset().select_for_update(), pk=pk)
+            if not request.user.is_admin and lead.assigned_so_id != request.user.id:
+                return Response({"detail": "This lead is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
+            serializer = LeadUpdateSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            next_status = serializer.validated_data["status"]
+            if next_status not in FORWARD_TRANSITIONS.get(lead.status, set()):
+                return Response({"detail": "This status transition is not allowed."}, status=status.HTTP_400_BAD_REQUEST)
             previous = lead.status
             lead.status = next_status
             lead.save(update_fields=["status", "updated_at"])

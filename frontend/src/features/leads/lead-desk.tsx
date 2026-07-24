@@ -28,6 +28,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const [outcome, setOutcome] = useState("");
   const [remarks, setRemarks] = useState("");
   const [followUpAt, setFollowUpAt] = useState("");
+  const [savingCall, setSavingCall] = useState(false);
   const [draggedOfficerId, setDraggedOfficerId] = useState<number | null>(null);
   const [dropTargetId, setDropTargetId] = useState<number | null>(null);
   const [upload, setUpload] = useState<UploadBatch | null>(null);
@@ -63,14 +64,16 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Auto-assignment failed."); }
   };
   const saveCall = async () => {
-    if (!activeLead || !outcome) return;
+    if (!activeLead || !outcome || savingCall) return;
+    setSavingCall(true);
     try {
       await logCall(activeLead.id, { status: outcome, remarks, ...(followUpAt ? { follow_up_at: new Date(followUpAt).toISOString() } : {}) });
       setNotice(`Call log saved for ${activeLead.name}.`); setActiveLead(null); setRemarks(""); setFollowUpAt(""); await refresh();
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Call log could not be saved."); }
+    finally { setSavingCall(false); }
   };
   const openLead = (lead: Lead) => {
-    setActiveLead(lead); setOutcome(nextOutcomes[lead.status]?.[0]?.value || ""); setRemarks(""); setFollowUpAt(""); setError("");
+    setActiveLead(lead); setOutcome(nextOutcomes[lead.status]?.[0]?.value || ""); setRemarks(""); setFollowUpAt(""); setSavingCall(false); setError("");
   };
   const selectFile = async (file?: File) => {
     if (!file) return;
@@ -101,6 +104,6 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
       {!officerMode && <aside className="officer-rail"><header><p className="eyebrow">ACTIVE SALES OFFICERS</p><span>Drag a card to a lead row</span></header>{officers.map(officer => <div className={`officer-card ${draggedOfficerId === officer.id ? "dragging" : ""}`} key={officer.id} draggable onDragStart={event => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/revera-officer", String(officer.id)); setDraggedOfficerId(officer.id); }} onDragEnd={() => { setDraggedOfficerId(null); setDropTargetId(null); }}><span className={`avatar ${officer.color}`}>{officer.initials}</span><span><b>{officer.name}</b><small>Sales officer</small></span><span className="officer-load"><small>LEAD LOAD</small><b>{officer.assigned}</b><small>CALLS TODAY</small><b>{officer.calls}</b></span></div>)}</aside>}
     </section>
     {notice && <div className="toast" role="status">{notice}<button aria-label="Dismiss" onClick={() => setNotice("")}>×</button></div>}
-    {activeLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="call-title"><button className="modal-close" onClick={() => setActiveLead(null)} aria-label="Close">×</button><p className="eyebrow">CALL LOG</p><h2 id="call-title">Update {activeLead.name}</h2><div className="lead-summary"><b>#{activeLead.id} · {activeLead.model}</b><span>{activeLead.source} lead</span><small>{activeLead.phone} · {activeLead.city || "—"}</small></div>{nextOutcomes[activeLead.status]?.length ? <><div className="form-grid"><label>Next outcome<select value={outcome} onChange={event => { setOutcome(event.target.value); if (!["CALLBACK", "WALKIN"].includes(event.target.value)) setFollowUpAt(""); }}>{nextOutcomes[activeLead.status].map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{["CALLBACK", "WALKIN"].includes(outcome) && <label>{outcome === "WALKIN" ? "Walk-in appointment" : "Follow-up time"}<input type="datetime-local" required min={localDateTime()} value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>}</div><label>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Add a clear note from the conversation" /></label><footer><button className="filter" onClick={() => setActiveLead(null)}>Cancel</button><button className="button primary" disabled={(["CALLBACK", "WALKIN"].includes(outcome) && !followUpAt) || !outcome} onClick={() => void saveCall()}>Save call log</button></footer></> : <p className="subtext">This lead is closed. Reopen it before recording another outcome.</p>}</section></div>}
+    {activeLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="call-title"><button className="modal-close" onClick={() => setActiveLead(null)} aria-label="Close">×</button><p className="eyebrow">CALL LOG</p><h2 id="call-title">Update {activeLead.name}</h2><div className="lead-summary"><b>#{activeLead.id} · {activeLead.model}</b><span>{activeLead.source} lead</span><small>{activeLead.phone} · {activeLead.city || "—"}</small></div>{nextOutcomes[activeLead.status]?.length ? <><div className="form-grid"><label>Next outcome<select value={outcome} onChange={event => { setOutcome(event.target.value); if (!["CALLBACK", "WALKIN"].includes(event.target.value)) setFollowUpAt(""); }}>{nextOutcomes[activeLead.status].map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{["CALLBACK", "WALKIN"].includes(outcome) && <label>{outcome === "WALKIN" ? "Walk-in appointment" : "Follow-up time"}<input type="datetime-local" required min={localDateTime()} value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>}</div><label>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Add a clear note from the conversation" /></label><footer><button className="filter" onClick={() => setActiveLead(null)}>Cancel</button><button className="button primary" disabled={savingCall || (["CALLBACK", "WALKIN"].includes(outcome) && !followUpAt) || !outcome} onClick={() => void saveCall()}>{savingCall ? "Saving…" : "Save call log"}</button></footer></> : <p className="subtext">This lead is closed. Reopen it before recording another outcome.</p>}</section></div>}
   </section>;
 }
