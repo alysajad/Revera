@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { assignLead, autoAssignLeads, commitUpload, createLead, getAdminAnalytics, getLeads, getOfficers, getUpload, logCall, resolveUploadDuplicates, sourceClass, toLead, toOfficer, type Lead, type LeadInput, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
+import { formatDate, parseDate, parseDateTime } from "@/lib/dates";
 
 const nextOutcomes: Record<string, { label: string; value: string }[]> = {
   Fresh: [{ label: "No response", value: "RNR" }, { label: "Schedule callback", value: "CALLBACK" }, { label: "Interested / Qualified", value: "QUALIFIED" }, { label: "Not interested", value: "UNQUALIFIED" }],
@@ -11,13 +12,9 @@ const nextOutcomes: Record<string, { label: string; value: string }[]> = {
   "Walk-in": [{ label: "Won (Sold)", value: "WON" }, { label: "Lost", value: "LOST" }],
 };
 
-const localDateTime = () => {
-  const now = new Date();
-  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-  return now.toISOString().slice(0, 16);
-};
-
-const emptyLead = (): LeadInput => ({ name: "", phone: "", email: "", source: "OTHER", source_label: "", campaign: "", model_interest: "", city: "", enquiry_date: new Date().toISOString().slice(0, 10) });
+const sources = [["META", "Meta Ads"], ["WEBSITE", "Website"], ["CARWALE", "CarWale"], ["WALKIN", "Walk-in"], ["CAMPAIGN", "Campaign"], ["OTHER", "Other"], ["UNKNOWN", "Unknown"]];
+const models = ["R6 GT", "R7 City", "R8 Lite", "R8 Pro", "R9 Plus"];
+const emptyLead = (): LeadInput => ({ name: "", phone: "", email: "", source: "OTHER", source_label: "", campaign: "", model_interest: "", city: "", enquiry_date: formatDate(new Date()) });
 
 export function LeadDesk({ officerMode = false, followUpsOnly = false }: { officerMode?: boolean; followUpsOnly?: boolean }) {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -59,7 +56,9 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     if (!officerMode && new URLSearchParams(window.location.search).get("addLead") === "1") { open(); window.history.replaceState({}, "", "/leads"); }
     return () => window.removeEventListener("revera:add-lead", open);
   }, [officerMode]);
+
   const visible = useMemo(() => leads.filter(lead => `${lead.name} ${lead.phone}`.toLowerCase().includes(query.toLowerCase())), [leads, query]);
+  const needsAppointment = ["CALLBACK", "WALKIN"].includes(outcome);
 
   const assign = async (lead: Lead, officerId: number) => {
     const previousLeads = leads;
@@ -70,32 +69,44 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     catch (requestError) { setLeads(previousLeads); setOfficers(previousOfficers); setError(requestError instanceof Error ? requestError.message : "Assignment failed."); }
     finally { setDropTargetId(null); }
   };
+
   const autoAssign = async () => {
     try { const result = await autoAssignLeads(); setNotice(`${result.assigned} leads assigned.`); await refresh(); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Auto-assignment failed."); }
   };
+
   const saveCall = async () => {
     if (!activeLead || !outcome || savingCall) return;
+    const scheduledFor = followUpAt ? parseDateTime(followUpAt) : null;
+    if (needsAppointment && !scheduledFor) { setError("Enter the appointment as DD/MM/YYYY HH:MM."); return; }
+    if (scheduledFor && new Date(scheduledFor) <= new Date()) { setError("Choose a future appointment time."); return; }
     setSavingCall(true);
     try {
-      await logCall(activeLead.id, { status: outcome, remarks, ...(followUpAt ? { follow_up_at: new Date(followUpAt).toISOString() } : {}) });
+      await logCall(activeLead.id, { status: outcome, remarks, ...(scheduledFor ? { follow_up_at: scheduledFor } : {}) });
       setNotice(`Call log saved for ${activeLead.name}.`); setActiveLead(null); setRemarks(""); setFollowUpAt(""); await refresh();
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Call log could not be saved."); }
     finally { setSavingCall(false); }
   };
+
   const openLead = (lead: Lead) => {
     setActiveLead(lead); setOutcome(nextOutcomes[lead.status]?.[0]?.value || ""); setRemarks(""); setFollowUpAt(""); setSavingCall(false); setError("");
   };
+
   const saveLead = async () => {
     if (officerMode || creatingLead) return;
+    const enquiryDate = parseDate(newLead.enquiry_date || "");
+    if (!enquiryDate) { setError("Enter the enquiry date as DD/MM/YYYY."); return; }
+    const today = parseDate(formatDate(new Date()));
+    if (today && enquiryDate > today) { setError("Enquiry date cannot be in the future."); return; }
     setCreatingLead(true);
     try {
-      const lead = await createLead(newLead);
+      const lead = await createLead({ ...newLead, enquiry_date: enquiryDate });
       setLeads(current => [toLead(lead), ...current]);
       setNotice(`${lead.name} added to the unassigned pool.`); setAddingLead(false); setNewLead(emptyLead());
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Lead could not be added."); }
     finally { setCreatingLead(false); }
   };
+
   const selectFile = async (file?: File) => {
     if (!file) return;
     try { const batch = await uploadLeads(file); setUpload(batch); setNotice("File received. Check import when parsing finishes."); }
@@ -113,11 +124,11 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const importUpload = async () => { if (upload) try { const result = await commitUpload(upload.id); setNotice(`${result.created} leads imported. Assign them from the pool.`); setUpload(null); await refresh(); } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Import failed."); } };
   const duplicateRows = upload?.rows?.filter(row => row.duplicate_of && row.resolution === "PENDING") || [];
   const importableRows = upload?.rows ? upload.rows.filter(row => !row.validation_error && row.resolution !== "SKIP").length : upload?.parsed_ok;
-
   const heading = followUpsOnly ? "Follow-ups" : officerMode ? "My queue" : "Assignment desk";
+
   return <section className="page">
     <div className="page-heading compact"><div><p className="eyebrow">{heading.toUpperCase()}</p><h1>{officerMode ? <>Keep the <span>promise.</span></> : <>Move leads to the <span>right rider.</span></>}</h1><p className="subtext">{officerMode ? "Your assigned conversations and follow-ups." : "Upload leads, then hand them to an active sales officer."}</p></div>{!officerMode && <button className="button primary" onClick={autoAssign} disabled={!leads.length}>↻ Auto assign {leads.length} leads</button>}</div>
-    <section className="lead-toolbar"><label className="search"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search name or phone" /></label>{!officerMode && <><button className="button primary" onClick={() => setAddingLead(true)}>＋ Add lead</button><label className="button filter">Upload Excel<input hidden type="file" accept=".xlsx,.csv" onChange={event => void selectFile(event.target.files?.[0])} /></label></>}<button className="filter" onClick={() => void refresh()}>Refresh</button></section>
+    <section className="lead-toolbar"><label className="search"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search name or phone" /></label>{!officerMode && <><button className="button primary" onClick={() => { setError(""); setAddingLead(true); }}>＋ Add lead</button><label className="button filter">Upload Excel<input hidden type="file" accept=".xlsx,.csv" onChange={event => void selectFile(event.target.files?.[0])} /></label></>}<button className="filter" onClick={() => void refresh()}>Refresh</button></section>
     {upload && <section className="panel" style={{ padding: "1rem", marginBottom: "1rem" }}><b>Import: {upload.status}</b><span> · {importableRows}/{upload.total_rows} rows ready to import</span>{upload.duplicates_found > 0 && <span> · {upload.duplicates_found} duplicates need review</span>}<div style={{ display: "inline-flex", gap: ".5rem", marginLeft: "1rem" }}><button className="filter" onClick={() => void checkUpload()}>Check import</button>{upload.status === "READY" && !duplicateRows.length && upload.duplicates_found === 0 && <button className="button primary" onClick={() => void importUpload()}>Import leads</button>}</div>{duplicateRows.length > 0 && <div style={{ marginTop: "1rem" }}><p className="subtext">Duplicates already exist in the CRM. Remove them from this import to keep the existing lead.</p><button className="filter" onClick={() => void removeDuplicates(duplicateRows.map(row => row.id))}>Remove all duplicates</button><div style={{ display: "grid", gap: ".5rem", marginTop: ".75rem" }}>{duplicateRows.map(row => <div key={row.id} className="lead-summary"><b>Row {row.row_number} · {row.data.name || "Unnamed lead"}</b><span>Matches {row.existing_name || "existing lead"}</span><small>{row.normalized_phone} · Current status: {row.existing_status}</small><button className="row-action" onClick={() => void removeDuplicates([row.id])}>Remove duplicate</button></div>)}</div></div>}{upload.error_message && <p className="subtext">{upload.error_message}</p>}</section>}
     {error && <div className="empty-state">{error}</div>}
     <section className={officerMode ? "lead-layout one-column" : "lead-layout"}>
@@ -125,7 +136,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
       {!officerMode && <aside className="officer-rail"><header><p className="eyebrow">ACTIVE SALES OFFICERS</p><span>Drag a card to a lead row</span></header>{officers.map(officer => <div className={`officer-card ${draggedOfficerId === officer.id ? "dragging" : ""}`} key={officer.id} draggable onDragStart={event => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/revera-officer", String(officer.id)); setDraggedOfficerId(officer.id); }} onDragEnd={() => { setDraggedOfficerId(null); setDropTargetId(null); }}><span className={`avatar ${officer.color}`}>{officer.initials}</span><span><b>{officer.name}</b><small>Sales officer</small></span><span className="officer-load"><small>LEAD LOAD</small><b>{officer.assigned}</b><small>CALLS TODAY</small><b>{officer.calls}</b></span></div>)}</aside>}
     </section>
     {notice && <div className="toast" role="status">{notice}<button aria-label="Dismiss" onClick={() => setNotice("")}>×</button></div>}
-    {addingLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-lead-title"><button className="modal-close" onClick={() => setAddingLead(false)} aria-label="Close">×</button><p className="eyebrow">LEAD INTAKE</p><h2 id="add-lead-title">Add a lead</h2><form className="lead-form" onSubmit={event => { event.preventDefault(); void saveLead(); }}><div className="form-grid"><label>Full name<input required maxLength={160} value={newLead.name} onChange={event => setNewLead(current => ({ ...current, name: event.target.value }))} placeholder="Customer name" /></label><label>Phone number<input required inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={newLead.phone} onChange={event => setNewLead(current => ({ ...current, phone: event.target.value.replace(/\D/g, "") }))} placeholder="10-digit mobile number" /></label></div><div className="form-grid"><label>Email<input type="email" value={newLead.email} onChange={event => setNewLead(current => ({ ...current, email: event.target.value }))} placeholder="name@example.com" /></label><label>City<input maxLength={100} value={newLead.city} onChange={event => setNewLead(current => ({ ...current, city: event.target.value }))} placeholder="City" /></label></div><div className="form-grid"><label>Lead source<select value={newLead.source} onChange={event => setNewLead(current => ({ ...current, source: event.target.value }))}>{[["META", "Meta Ads"], ["WEBSITE", "Website"], ["CARWALE", "CarWale"], ["WALKIN", "Walk-in"], ["CAMPAIGN", "Campaign"], ["OTHER", "Other"], ["UNKNOWN", "Unknown"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Enquiry date<input type="date" value={newLead.enquiry_date} onChange={event => setNewLead(current => ({ ...current, enquiry_date: event.target.value }))} /></label></div><div className="form-grid"><label>Vehicle interest<input list="vehicle-options" maxLength={100} value={newLead.model_interest} onChange={event => setNewLead(current => ({ ...current, model_interest: event.target.value }))} placeholder="Choose or type a model" /><datalist id="vehicle-options"><option value="R6 GT" /><option value="R7 City" /><option value="R8 Lite" /><option value="R8 Pro" /><option value="R9 Plus" /></datalist></label><label>Campaign<input maxLength={160} value={newLead.campaign} onChange={event => setNewLead(current => ({ ...current, campaign: event.target.value }))} placeholder="Campaign name" /></label></div><label>Source detail<input maxLength={100} value={newLead.source_label} onChange={event => setNewLead(current => ({ ...current, source_label: event.target.value }))} placeholder="Ad set, partner, referral, or other detail" /></label><p className="subtext">New leads start as Fresh and appear unassigned, ready to hand to a sales officer.</p><footer><button type="button" className="filter" onClick={() => setAddingLead(false)}>Cancel</button><button className="button primary" disabled={creatingLead}>{creatingLead ? "Adding…" : "Add lead"}</button></footer></form></section></div>}
-    {activeLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="call-title"><button className="modal-close" onClick={() => setActiveLead(null)} aria-label="Close">×</button><p className="eyebrow">CALL LOG</p><h2 id="call-title">Update {activeLead.name}</h2><div className="lead-summary"><b>#{activeLead.id} · {activeLead.model}</b><span>{activeLead.source} lead</span><small>{activeLead.phone} · {activeLead.city || "—"}</small></div>{nextOutcomes[activeLead.status]?.length ? <><div className="form-grid"><label>Next outcome<select value={outcome} onChange={event => { setOutcome(event.target.value); if (!["CALLBACK", "WALKIN"].includes(event.target.value)) setFollowUpAt(""); }}>{nextOutcomes[activeLead.status].map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{["CALLBACK", "WALKIN"].includes(outcome) && <label>{outcome === "WALKIN" ? "Walk-in appointment" : "Follow-up time"}<input type="datetime-local" required min={localDateTime()} value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>}</div><label>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Add a clear note from the conversation" /></label><footer><button className="filter" onClick={() => setActiveLead(null)}>Cancel</button><button className="button primary" disabled={savingCall || (["CALLBACK", "WALKIN"].includes(outcome) && !followUpAt) || !outcome} onClick={() => void saveCall()}>{savingCall ? "Saving…" : "Save call log"}</button></footer></> : <p className="subtext">This lead is closed. Reopen it before recording another outcome.</p>}</section></div>}
+    {addingLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-lead-title"><button className="modal-close" onClick={() => setAddingLead(false)} aria-label="Close">×</button><p className="eyebrow">LEAD INTAKE</p><h2 id="add-lead-title">Add a lead</h2><form className="lead-form" onSubmit={event => { event.preventDefault(); void saveLead(); }}><div className="form-grid"><label>Full name<input required maxLength={160} value={newLead.name} onChange={event => setNewLead(current => ({ ...current, name: event.target.value }))} placeholder="Customer name" /></label><label>Phone number<input required inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={newLead.phone} onChange={event => setNewLead(current => ({ ...current, phone: event.target.value.replace(/\D/g, "") }))} placeholder="10-digit mobile number" /></label></div><div className="form-grid"><label>Email<input type="email" value={newLead.email} onChange={event => setNewLead(current => ({ ...current, email: event.target.value }))} placeholder="name@example.com" /></label><label>City<input maxLength={100} value={newLead.city} onChange={event => setNewLead(current => ({ ...current, city: event.target.value }))} placeholder="City" /></label></div><div className="form-grid"><label>Lead source<select value={newLead.source} onChange={event => setNewLead(current => ({ ...current, source: event.target.value }))}>{sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Enquiry date<input required type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={newLead.enquiry_date} onChange={event => setNewLead(current => ({ ...current, enquiry_date: event.target.value }))} placeholder="DD/MM/YYYY" /></label></div><div className="form-grid"><label>Vehicle interest<input list="vehicle-options" maxLength={100} value={newLead.model_interest} onChange={event => setNewLead(current => ({ ...current, model_interest: event.target.value }))} placeholder="Choose or type a model" /><datalist id="vehicle-options">{models.map(model => <option key={model} value={model} />)}</datalist></label><label>Campaign<input maxLength={160} value={newLead.campaign} onChange={event => setNewLead(current => ({ ...current, campaign: event.target.value }))} placeholder="Campaign name" /></label></div><label>Source detail<input maxLength={100} value={newLead.source_label} onChange={event => setNewLead(current => ({ ...current, source_label: event.target.value }))} placeholder="Ad set, partner, referral, or other detail" /></label><p className="subtext">New leads start as Fresh and appear unassigned, ready to hand to a sales officer.</p><footer><button type="button" className="filter" onClick={() => setAddingLead(false)}>Cancel</button><button className="button primary" disabled={creatingLead}>{creatingLead ? "Adding…" : "Add lead"}</button></footer></form></section></div>}
+    {activeLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="call-title"><button className="modal-close" onClick={() => setActiveLead(null)} aria-label="Close">×</button><p className="eyebrow">CALL LOG</p><h2 id="call-title">Update {activeLead.name}</h2><div className="lead-summary"><b>#{activeLead.id} · {activeLead.model}</b><span>{activeLead.source} lead</span><small>{activeLead.phone} · {activeLead.city || "—"}</small></div>{nextOutcomes[activeLead.status]?.length ? <><div className="form-grid"><label>Next outcome<select value={outcome} onChange={event => { setOutcome(event.target.value); if (!["CALLBACK", "WALKIN"].includes(event.target.value)) setFollowUpAt(""); }}>{nextOutcomes[activeLead.status].map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{needsAppointment && <label>{outcome === "WALKIN" ? "Walk-in appointment" : "Follow-up time"}<input required type="text" inputMode="numeric" value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} placeholder="DD/MM/YYYY HH:MM" /></label>}</div><label>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Add a clear note from the conversation" /></label><footer><button className="filter" onClick={() => setActiveLead(null)}>Cancel</button><button className="button primary" disabled={savingCall || (needsAppointment && !followUpAt) || !outcome} onClick={() => void saveCall()}>{savingCall ? "Saving…" : "Save call log"}</button></footer></> : <p className="subtext">This lead is closed. Reopen it before recording another outcome.</p>}</section></div>}
   </section>;
 }

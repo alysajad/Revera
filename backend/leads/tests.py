@@ -40,6 +40,11 @@ class LeadAccessTests(TestCase):
         self.assertIsNone(lead.assigned_so)
         self.assertEqual(lead.status, Lead.Status.FRESH)
 
+    def test_admin_cannot_add_a_lead_with_future_enquiry_date(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post("/api/leads/", {"name": "Future lead", "phone": "7006682393", "source": Lead.Source.WEBSITE, "enquiry_date": (timezone.localdate() + timedelta(days=1)).isoformat()}, format="json")
+        self.assertEqual(response.status_code, 400)
+
     def test_admin_cannot_assign_a_lead_twice(self):
         self.client.force_authenticate(self.admin)
         response = self.client.post(f"/api/leads/{self.first_lead.id}/assign/", {"sales_officer_id": self.second_so.id}, format="json")

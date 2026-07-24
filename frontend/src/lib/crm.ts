@@ -1,4 +1,5 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+import { formatDate } from "@/lib/dates";
 
 type Paginated<T> = { results: T[] };
 type ApiLead = {
@@ -47,7 +48,7 @@ const colors: Officer["color"][] = ["blue", "green", "violet", "orange"];
 export const sourceName = (source: string) => sourceNames[source] || source;
 export const statusName = (status: string) => statusNames[status] || status;
 export const sourceClass = (source: string) => sourceName(source).toLowerCase().replaceAll(" ", "-");
-export const toLead = (lead: ApiLead): Lead => ({ ...lead, source: sourceName(lead.source), model: lead.model_interest || "—", enquiredAt: lead.enquiry_date || new Intl.DateTimeFormat("en", { day: "numeric", month: "short" }).format(new Date(lead.created_at)), status: statusName(lead.status), assignedSoId: lead.assigned_so, assignedSoName: lead.assigned_so_name });
+export const toLead = (lead: ApiLead): Lead => ({ ...lead, source: sourceName(lead.source), model: lead.model_interest || "—", enquiredAt: formatDate(lead.enquiry_date || lead.created_at), status: statusName(lead.status), assignedSoId: lead.assigned_so, assignedSoName: lead.assigned_so_name });
 export const toOfficer = (officer: ApiOfficer, metrics?: Metrics): Officer => ({ id: officer.id, name: `${officer.first_name} ${officer.last_name}`.trim() || officer.email, initials: `${officer.first_name[0] || ""}${officer.last_name[0] || ""}` || officer.email.slice(0, 2).toUpperCase(), color: colors[officer.id % colors.length], assigned: metrics?.total_assigned || 0, calls: metrics?.total_called || 0, qualified: metrics?.qualified || 0, won: metrics?.won || 0 });
 
 export async function getLeads(query = "") { const data = await api<Paginated<ApiLead>>(`/api/leads/${query}`); return data.results.map(toLead); }

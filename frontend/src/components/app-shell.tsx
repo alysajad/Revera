@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { AuthTransition } from "@/components/auth-transition";
 import { getCurrentUser, logout, type CurrentUser } from "@/lib/crm";
+import { formatDate } from "@/lib/dates";
 
 type AppShellProps = { children: ReactNode; role: "Admin" | "Sales officer" };
 
@@ -58,7 +59,7 @@ export function AppShell({ children, role }: AppShellProps) {
       </div>
     </aside>
     <main className="main-content">
-      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : "My queue"}</b><small>{new Intl.DateTimeFormat("en", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</small></div><div className="top-actions">{role === "Admin" && <button className="button primary" onClick={() => pathname === "/leads" ? window.dispatchEvent(new Event("revera:add-lead")) : router.push("/leads?addLead=1")}>＋ Add lead</button>}</div></header>
+      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : "My queue"}</b><small>{new Intl.DateTimeFormat("en", { weekday: "long" }).format(new Date())}, {formatDate(new Date())}</small></div><div className="top-actions">{role === "Admin" && <button className="button primary" onClick={() => pathname === "/leads" ? window.dispatchEvent(new Event("revera:add-lead")) : router.push("/leads?addLead=1")}>＋ Add lead</button>}</div></header>
       {children}
     </main>
   </div>;

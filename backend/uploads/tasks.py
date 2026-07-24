@@ -72,10 +72,13 @@ def parse_upload_batch(batch_id):
             if not name and not phone:
                 continue
             error = "" if name and phone else "Name and phone are required."
+            enquiry_date = parse_date(value(row, "date", "enquiry date"))
+            if enquiry_date > date.today():
+                error = "Enquiry date cannot be in the future."
             if error:
                 skipped += 1
             source, source_label = classify_source(value(row, "source"))
-            parsed_rows.append({"row_number": row_number, "phone": phone, "validation_error": error, "data": {"name": name, "email": value(row, "email"), "source": source, "source_label": source_label, "campaign": value(row, "campaign"), "model_interest": value(row, "model", "vehicle interest", "model / vehicle interest"), "city": value(row, "city", "location"), "enquiry_date": parse_date(value(row, "date", "enquiry date")).isoformat()}})
+            parsed_rows.append({"row_number": row_number, "phone": phone, "validation_error": error, "data": {"name": name, "email": value(row, "email"), "source": source, "source_label": source_label, "campaign": value(row, "campaign"), "model_interest": value(row, "model", "vehicle interest", "model / vehicle interest"), "city": value(row, "city", "location"), "enquiry_date": enquiry_date.isoformat()}})
         existing_leads = {}
         for lead in Lead.objects.filter(phone__in={row["phone"] for row in parsed_rows if row["phone"]}, deleted_at__isnull=True).only("id", "phone").order_by("id"):
             existing_leads.setdefault(lead.phone, lead)

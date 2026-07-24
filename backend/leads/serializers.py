@@ -8,6 +8,11 @@ from .models import CallLog, FollowUp, Lead
 class LeadSerializer(serializers.ModelSerializer):
     assigned_so_name = serializers.CharField(source="assigned_so.get_full_name", read_only=True)
 
+    def validate_enquiry_date(self, value):
+        if value and value > timezone.localdate():
+            raise serializers.ValidationError("Enquiry date cannot be in the future.")
+        return value
+
     class Meta:
         model = Lead
         fields = ["id", "uid", "name", "phone", "email", "source", "source_label", "campaign", "model_interest", "city", "enquiry_date", "status", "assigned_so", "assigned_so_name", "created_at", "updated_at"]
