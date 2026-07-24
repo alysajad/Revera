@@ -49,27 +49,30 @@ class LeadViewSet(viewsets.ModelViewSet):
         serializer = AssignmentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         officer = serializer.validated_data["sales_officer"]
-        previous = lead.assigned_so
-        lead.assigned_so = officer
-        lead.save(update_fields=["assigned_so", "updated_at"])
-        LeadAudit.objects.create(lead=lead, actor=request.user, event="reassigned" if previous else "assigned", before={"assigned_so": previous_id if (previous_id := getattr(previous, "id", None)) else None}, after={"assigned_so": officer.id})
-        Notification.objects.create(user=officer, lead=lead, kind=Notification.Kind.ASSIGNMENT, message=f"You have a new lead: {lead.name}.")
+        with transaction.atomic():
+            lead = Lead.objects.select_for_update().get(pk=lead.pk)
+            if lead.assigned_so_id:
+                return Response({"detail": "This lead is already assigned."}, status=status.HTTP_409_CONFLICT)
+            lead.assigned_so = officer
+            lead.save(update_fields=["assigned_so", "updated_at"])
+            LeadAudit.objects.create(lead=lead, actor=request.user, event="assigned", after={"assigned_so": officer.id})
+            Notification.objects.create(user=officer, lead=lead, kind=Notification.Kind.ASSIGNMENT, message=f"You have a new lead: {lead.name}.")
         return Response(self.get_serializer(lead).data)
 
     @action(detail=False, methods=["post"], url_path="auto-assign")
     def auto_assign(self, request):
         lead_ids = request.data.get("lead_ids", [])
-        leads = Lead.objects.filter(deleted_at__isnull=True, assigned_so__isnull=True)
-        if lead_ids:
-            leads = leads.filter(id__in=lead_ids)
-        leads = list(leads.order_by("created_at"))
-        officers = list(User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True).annotate(load=Count("assigned_leads", filter=Q(assigned_leads__deleted_at__isnull=True))).order_by("load", "id"))
-        if not officers:
-            return Response({"detail": "No active sales officers."}, status=status.HTTP_400_BAD_REQUEST)
-        if not leads:
-            return Response({"assigned": 0, "distribution": {}})
-        distribution = defaultdict(int)
         with transaction.atomic():
+            leads = Lead.objects.select_for_update().filter(deleted_at__isnull=True, assigned_so__isnull=True)
+            if lead_ids:
+                leads = leads.filter(id__in=lead_ids)
+            leads = list(leads.order_by("created_at"))
+            officers = list(User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True).annotate(load=Count("assigned_leads", filter=Q(assigned_leads__deleted_at__isnull=True))).order_by("load", "id"))
+            if not officers:
+                return Response({"detail": "No active sales officers."}, status=status.HTTP_400_BAD_REQUEST)
+            if not leads:
+                return Response({"assigned": 0, "distribution": {}})
+            distribution = defaultdict(int)
             for index, lead in enumerate(leads):
                 officer = officers[index % len(officers)]
                 lead.assigned_so = officer

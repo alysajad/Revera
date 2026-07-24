@@ -32,6 +32,13 @@ class LeadAccessTests(TestCase):
         unowned.refresh_from_db()
         self.assertIn(unowned.assigned_so, [self.first_so, self.second_so])
 
+    def test_admin_cannot_assign_a_lead_twice(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(f"/api/leads/{self.first_lead.id}/assign/", {"sales_officer_id": self.second_so.id}, format="json")
+        self.assertEqual(response.status_code, 409)
+        self.first_lead.refresh_from_db()
+        self.assertEqual(self.first_lead.assigned_so, self.first_so)
+
     def test_sales_officer_cannot_move_a_lead_backward(self):
         self.first_lead.status = Lead.Status.QUALIFIED
         self.first_lead.save()

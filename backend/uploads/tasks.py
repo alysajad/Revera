@@ -64,8 +64,7 @@ def parse_upload_batch(batch_id):
     batch = UploadBatch.objects.get(id=batch_id)
     try:
         content = download_bytes(batch.storage_path)
-        staged = []
-        duplicates = 0
+        parsed_rows = []
         skipped = 0
         for row_number, row in enumerate(read_rows(batch.filename, content), start=2):
             name = value(row, "name", "customer name")
@@ -73,13 +72,15 @@ def parse_upload_batch(batch_id):
             if not name and not phone:
                 continue
             error = "" if name and phone else "Name and phone are required."
-            duplicate = Lead.objects.filter(phone=phone, deleted_at__isnull=True).first() if phone else None
-            if duplicate:
-                duplicates += 1
             if error:
                 skipped += 1
             source, source_label = classify_source(value(row, "source"))
-            staged.append(UploadRow(batch=batch, row_number=row_number, normalized_phone=phone, validation_error=error, duplicate_of=duplicate, resolution=UploadRow.Resolution.PENDING if duplicate else UploadRow.Resolution.IMPORT, data={"name": name, "email": value(row, "email"), "source": source, "source_label": source_label, "campaign": value(row, "campaign"), "model_interest": value(row, "model", "vehicle interest", "model / vehicle interest"), "city": value(row, "city", "location"), "enquiry_date": parse_date(value(row, "date", "enquiry date")).isoformat()}))
+            parsed_rows.append({"row_number": row_number, "phone": phone, "validation_error": error, "data": {"name": name, "email": value(row, "email"), "source": source, "source_label": source_label, "campaign": value(row, "campaign"), "model_interest": value(row, "model", "vehicle interest", "model / vehicle interest"), "city": value(row, "city", "location"), "enquiry_date": parse_date(value(row, "date", "enquiry date")).isoformat()}})
+        existing_leads = {}
+        for lead in Lead.objects.filter(phone__in={row["phone"] for row in parsed_rows if row["phone"]}, deleted_at__isnull=True).only("id", "phone").order_by("id"):
+            existing_leads.setdefault(lead.phone, lead)
+        staged = [UploadRow(batch=batch, row_number=row["row_number"], normalized_phone=row["phone"], validation_error=row["validation_error"], duplicate_of=(duplicate := existing_leads.get(row["phone"])), resolution=UploadRow.Resolution.PENDING if duplicate else UploadRow.Resolution.IMPORT, data=row["data"]) for row in parsed_rows]
+        duplicates = sum(row.duplicate_of_id is not None for row in staged)
         with transaction.atomic():
             UploadRow.objects.filter(batch=batch).delete()
             UploadRow.objects.bulk_create(staged)

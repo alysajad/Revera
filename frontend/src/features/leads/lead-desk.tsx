@@ -50,8 +50,12 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const visible = useMemo(() => leads.filter(lead => `${lead.name} ${lead.phone}`.toLowerCase().includes(query.toLowerCase())), [leads, query]);
 
   const assign = async (lead: Lead, officerId: number) => {
-    try { await assignLead(lead.id, officerId); setNotice(`${lead.name} assigned.`); await refresh(); }
-    catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Assignment failed."); }
+    const previousLeads = leads;
+    const previousOfficers = officers;
+    setLeads(current => current.filter(item => item.id !== lead.id));
+    setOfficers(current => current.map(officer => officer.id === officerId ? { ...officer, assigned: officer.assigned + 1 } : officer));
+    try { await assignLead(lead.id, officerId); setNotice(`${lead.name} assigned.`); }
+    catch (requestError) { setLeads(previousLeads); setOfficers(previousOfficers); setError(requestError instanceof Error ? requestError.message : "Assignment failed."); }
     finally { setDropTargetId(null); }
   };
   const autoAssign = async () => {
