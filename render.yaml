@@ -2,6 +2,7 @@ services:
   - type: web
     name: revera-api
     runtime: python
+    plan: free
     rootDir: backend
     buildCommand: bash build.sh
     startCommand: gunicorn config.asgi:application -k uvicorn.workers.UvicornWorker
@@ -9,15 +10,12 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: revera-queue
-          property: connectionString
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: DJANGO_DEBUG
         value: "false"
+      - key: CELERY_TASK_ALWAYS_EAGER
+        value: "true"
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SECRET_KEY
@@ -30,50 +28,3 @@ services:
         sync: false
       - key: CSRF_TRUSTED_ORIGINS
         sync: false
-  - type: worker
-    name: revera-worker
-    runtime: python
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: celery -A config worker --loglevel=INFO
-    envVars:
-      - key: DATABASE_URL
-        sync: false
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: revera-queue
-          property: connectionString
-      - key: DJANGO_SECRET_KEY
-        fromService:
-          type: web
-          name: revera-api
-          envVarKey: DJANGO_SECRET_KEY
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SECRET_KEY
-        sync: false
-  - type: worker
-    name: revera-scheduler
-    runtime: python
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: celery -A config beat --loglevel=INFO
-    envVars:
-      - key: DATABASE_URL
-        sync: false
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: revera-queue
-          property: connectionString
-      - key: DJANGO_SECRET_KEY
-        fromService:
-          type: web
-          name: revera-api
-          envVarKey: DJANGO_SECRET_KEY
-  - type: keyvalue
-    name: revera-queue
-    plan: starter
-    ipAllowList: []
-    maxmemoryPolicy: noeviction
