@@ -87,7 +87,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         serializer = LeadUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         next_status = serializer.validated_data["status"]
-        if not request.user.is_admin and next_status not in FORWARD_TRANSITIONS.get(lead.status, set()):
+        if next_status not in FORWARD_TRANSITIONS.get(lead.status, set()):
             return Response({"detail": "This status transition is not allowed."}, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             previous = lead.status

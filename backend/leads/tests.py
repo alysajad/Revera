@@ -1,8 +1,11 @@
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
+from datetime import timedelta
+
 from accounts.models import User
-from .models import Lead
+from .models import FollowUp, Lead
 
 
 class LeadAccessTests(TestCase):
@@ -35,3 +38,22 @@ class LeadAccessTests(TestCase):
         self.client.force_authenticate(self.first_so)
         response = self.client.post(f"/api/leads/{self.first_lead.id}/log-call/", {"status": Lead.Status.RNR}, format="json")
         self.assertEqual(response.status_code, 400)
+
+    def test_sales_officer_cannot_skip_ahead_to_won(self):
+        self.client.force_authenticate(self.first_so)
+        response = self.client.post(f"/api/leads/{self.first_lead.id}/log-call/", {"status": Lead.Status.WON}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_follow_up_requires_a_future_callback_or_walkin(self):
+        self.client.force_authenticate(self.first_so)
+        future = timezone.now() + timedelta(days=1)
+        response = self.client.post(f"/api/leads/{self.first_lead.id}/log-call/", {"status": Lead.Status.CALLBACK, "follow_up_at": future.isoformat()}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(FollowUp.objects.filter(lead=self.first_lead, scheduled_for=future).exists())
+
+        self.first_lead.refresh_from_db()
+        response = self.client.post(f"/api/leads/{self.first_lead.id}/log-call/", {"status": Lead.Status.QUALIFIED}, format="json")
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(f"/api/leads/{self.first_lead.id}/log-call/", {"status": Lead.Status.LOST, "follow_up_at": future.isoformat()}, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(FollowUp.objects.filter(lead=self.first_lead, resolved_at__isnull=True).exists())

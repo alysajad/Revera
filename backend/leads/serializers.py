@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils import timezone
 
 from accounts.models import User
 from .models import CallLog, FollowUp, Lead
@@ -26,8 +27,13 @@ class LeadUpdateSerializer(serializers.Serializer):
     follow_up_at = serializers.DateTimeField(required=False)
 
     def validate(self, attrs):
-        if attrs["status"] in [Lead.Status.CALLBACK, Lead.Status.WALKIN] and not attrs.get("follow_up_at"):
+        follow_up_at = attrs.get("follow_up_at")
+        if attrs["status"] in [Lead.Status.CALLBACK, Lead.Status.WALKIN] and not follow_up_at:
             raise serializers.ValidationError({"follow_up_at": "This status requires a follow-up time."})
+        if attrs["status"] not in [Lead.Status.CALLBACK, Lead.Status.WALKIN] and follow_up_at:
+            raise serializers.ValidationError({"follow_up_at": "Only callbacks and walk-ins can have an appointment."})
+        if follow_up_at and follow_up_at <= timezone.now():
+            raise serializers.ValidationError({"follow_up_at": "Choose a future appointment time."})
         return attrs
 
 

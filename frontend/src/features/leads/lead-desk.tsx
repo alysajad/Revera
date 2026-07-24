@@ -3,7 +3,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { assignLead, autoAssignLeads, commitUpload, getAdminAnalytics, getLeads, getOfficers, getUpload, logCall, sourceClass, toOfficer, type Lead, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
 
-const outcomes: Record<string, string> = { "Callback": "CALLBACK", "RNR": "RNR", "Interested / Qualified": "QUALIFIED", "Walk-in Booked": "WALKIN", "Won (Sold)": "WON", "Lost": "LOST" };
+const nextOutcomes: Record<string, { label: string; value: string }[]> = {
+  Fresh: [{ label: "No response", value: "RNR" }, { label: "Schedule callback", value: "CALLBACK" }, { label: "Interested / Qualified", value: "QUALIFIED" }, { label: "Not interested", value: "UNQUALIFIED" }],
+  RNR: [{ label: "Schedule callback", value: "CALLBACK" }, { label: "Interested / Qualified", value: "QUALIFIED" }, { label: "Not interested", value: "UNQUALIFIED" }],
+  Callback: [{ label: "No response", value: "RNR" }, { label: "Interested / Qualified", value: "QUALIFIED" }, { label: "Book walk-in", value: "WALKIN" }, { label: "Not interested", value: "UNQUALIFIED" }],
+  Qualified: [{ label: "Book walk-in", value: "WALKIN" }, { label: "Won (Sold)", value: "WON" }, { label: "Lost", value: "LOST" }],
+  "Walk-in": [{ label: "Won (Sold)", value: "WON" }, { label: "Lost", value: "LOST" }],
+};
+
+const localDateTime = () => {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 16);
+};
 
 export function LeadDesk({ officerMode = false, followUpsOnly = false }: { officerMode?: boolean; followUpsOnly?: boolean }) {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -13,7 +25,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
-  const [outcome, setOutcome] = useState("Callback");
+  const [outcome, setOutcome] = useState("");
   const [remarks, setRemarks] = useState("");
   const [followUpAt, setFollowUpAt] = useState("");
   const [draggedOfficerId, setDraggedOfficerId] = useState<number | null>(null);
@@ -47,11 +59,14 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Auto-assignment failed."); }
   };
   const saveCall = async () => {
-    if (!activeLead) return;
+    if (!activeLead || !outcome) return;
     try {
-      await logCall(activeLead.id, { status: outcomes[outcome], remarks, ...(followUpAt ? { follow_up_at: new Date(followUpAt).toISOString() } : {}) });
+      await logCall(activeLead.id, { status: outcome, remarks, ...(followUpAt ? { follow_up_at: new Date(followUpAt).toISOString() } : {}) });
       setNotice(`Call log saved for ${activeLead.name}.`); setActiveLead(null); setRemarks(""); setFollowUpAt(""); await refresh();
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Call log could not be saved."); }
+  };
+  const openLead = (lead: Lead) => {
+    setActiveLead(lead); setOutcome(nextOutcomes[lead.status]?.[0]?.value || ""); setRemarks(""); setFollowUpAt(""); setError("");
   };
   const selectFile = async (file?: File) => {
     if (!file) return;
@@ -68,10 +83,10 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     {upload && <section className="panel" style={{ padding: "1rem", marginBottom: "1rem" }}><b>Import: {upload.status}</b><span> · {upload.parsed_ok}/{upload.total_rows} valid rows</span>{upload.duplicates_found > 0 && <span> · {upload.duplicates_found} duplicates need review</span>}<div style={{ display: "inline-flex", gap: ".5rem", marginLeft: "1rem" }}><button className="filter" onClick={() => void checkUpload()}>Check import</button>{upload.status === "READY" && upload.duplicates_found === 0 && <button className="button primary" onClick={() => void importUpload()}>Import leads</button>}</div>{upload.error_message && <p className="subtext">{upload.error_message}</p>}</section>}
     {error && <div className="empty-state">{error}</div>}
     <section className={officerMode ? "lead-layout one-column" : "lead-layout"}>
-      <article className="panel lead-pool"><header className="panel-heading"><div><p className="eyebrow">{officerMode ? "ACTIVE LEADS" : "UNASSIGNED"}</p><h2>{loading ? "Loading leads…" : `${leads.length} leads in pool`}</h2></div></header><div className="lead-list">{!loading && visible.length ? visible.map(lead => <div className={`lead-row ${dropTargetId === lead.id ? "drop-target" : ""}`} key={lead.id} onDragOver={event => { if (!officerMode) { event.preventDefault(); setDropTargetId(lead.id); } }} onDragLeave={() => setDropTargetId(null)} onDrop={event => { event.preventDefault(); const officerId = Number(event.dataTransfer.getData("application/revera-officer")) || draggedOfficerId; if (officerId) void assign(lead, officerId); setDraggedOfficerId(null); }}>{!officerMode && <span className="drag-slot">↓</span>}<div><b>{lead.name}</b><small>{lead.phone} · #{lead.id}</small></div><span className={`badge ${sourceClass(lead.source)}`}>{lead.source}</span><span className="model">{lead.model}</span><span className={`status ${lead.status.toLowerCase().replaceAll(" ", "-")}`}>{lead.status}</span><button className="row-action" onClick={() => setActiveLead(lead)}>{officerMode ? "Log call →" : "Open →"}</button></div>) : !loading && <div className="empty-state">No leads match this view.</div>}</div></article>
+      <article className="panel lead-pool"><header className="panel-heading"><div><p className="eyebrow">{officerMode ? "ACTIVE LEADS" : "UNASSIGNED"}</p><h2>{loading ? "Loading leads…" : `${leads.length} leads in pool`}</h2></div></header><div className="lead-list">{!loading && visible.length ? visible.map(lead => <div className={`lead-row ${dropTargetId === lead.id ? "drop-target" : ""}`} key={lead.id} onDragOver={event => { if (!officerMode) { event.preventDefault(); setDropTargetId(lead.id); } }} onDragLeave={() => setDropTargetId(null)} onDrop={event => { event.preventDefault(); const officerId = Number(event.dataTransfer.getData("application/revera-officer")) || draggedOfficerId; if (officerId) void assign(lead, officerId); setDraggedOfficerId(null); }}>{!officerMode && <span className="drag-slot">↓</span>}<div><b>{lead.name}</b><small>{lead.phone} · #{lead.id}</small></div><span className={`badge ${sourceClass(lead.source)}`}>{lead.source}</span><span className="model">{lead.model}</span><span className={`status ${lead.status.toLowerCase().replaceAll(" ", "-")}`}>{lead.status}</span><button className="row-action" onClick={() => openLead(lead)}>{officerMode ? "Log call →" : "Open →"}</button></div>) : !loading && <div className="empty-state">No leads match this view.</div>}</div></article>
       {!officerMode && <aside className="officer-rail"><header><p className="eyebrow">ACTIVE SALES OFFICERS</p><span>Drag a card to a lead row</span></header>{officers.map(officer => <div className={`officer-card ${draggedOfficerId === officer.id ? "dragging" : ""}`} key={officer.id} draggable onDragStart={event => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/revera-officer", String(officer.id)); setDraggedOfficerId(officer.id); }} onDragEnd={() => { setDraggedOfficerId(null); setDropTargetId(null); }}><span className={`avatar ${officer.color}`}>{officer.initials}</span><span><b>{officer.name}</b><small>Sales officer</small></span><span className="officer-load"><small>LEAD LOAD</small><b>{officer.assigned}</b><small>CALLS TODAY</small><b>{officer.calls}</b></span></div>)}</aside>}
     </section>
     {notice && <div className="toast" role="status">{notice}<button aria-label="Dismiss" onClick={() => setNotice("")}>×</button></div>}
-    {activeLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="call-title"><button className="modal-close" onClick={() => setActiveLead(null)} aria-label="Close">×</button><p className="eyebrow">CALL LOG</p><h2 id="call-title">Update {activeLead.name}</h2><div className="lead-summary"><b>#{activeLead.id} · {activeLead.model}</b><span>{activeLead.source} lead</span><small>{activeLead.phone} · {activeLead.city || "—"}</small></div><div className="form-grid"><label>Call outcome<select value={outcome} onChange={event => setOutcome(event.target.value)}>{Object.keys(outcomes).map(item => <option key={item}>{item}</option>)}</select></label><label>Follow-up date<input type="datetime-local" value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label></div><label>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Add a clear note from the conversation" /></label><footer><button className="filter" onClick={() => setActiveLead(null)}>Cancel</button><button className="button primary" onClick={() => void saveCall()}>Save call log</button></footer></section></div>}
+    {activeLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="call-title"><button className="modal-close" onClick={() => setActiveLead(null)} aria-label="Close">×</button><p className="eyebrow">CALL LOG</p><h2 id="call-title">Update {activeLead.name}</h2><div className="lead-summary"><b>#{activeLead.id} · {activeLead.model}</b><span>{activeLead.source} lead</span><small>{activeLead.phone} · {activeLead.city || "—"}</small></div>{nextOutcomes[activeLead.status]?.length ? <><div className="form-grid"><label>Next outcome<select value={outcome} onChange={event => { setOutcome(event.target.value); if (!["CALLBACK", "WALKIN"].includes(event.target.value)) setFollowUpAt(""); }}>{nextOutcomes[activeLead.status].map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{["CALLBACK", "WALKIN"].includes(outcome) && <label>{outcome === "WALKIN" ? "Walk-in appointment" : "Follow-up time"}<input type="datetime-local" required min={localDateTime()} value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>}</div><label>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Add a clear note from the conversation" /></label><footer><button className="filter" onClick={() => setActiveLead(null)}>Cancel</button><button className="button primary" disabled={(["CALLBACK", "WALKIN"].includes(outcome) && !followUpAt) || !outcome} onClick={() => void saveCall()}>Save call log</button></footer></> : <p className="subtext">This lead is closed. Reopen it before recording another outcome.</p>}</section></div>}
   </section>;
 }
