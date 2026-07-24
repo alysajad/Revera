@@ -4,7 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from accounts.permissions import IsAdmin
@@ -18,7 +18,7 @@ from .tasks import parse_upload_batch
 class UploadBatchViewSet(viewsets.GenericViewSet):
     permission_classes = [IsAdmin]
     serializer_class = UploadBatchSerializer
-    parser_classes = [MultiPartParser]
+    parser_classes = [MultiPartParser, JSONParser]
 
     def get_queryset(self):
         return UploadBatch.objects.order_by("-created_at")
