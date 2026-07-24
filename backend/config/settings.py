@@ -58,6 +58,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+CELERY_TASK_ALWAYS_EAGER = DEBUG
+CELERY_TASK_EAGER_PROPAGATES = DEBUG
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_TIME_LIMIT = 300
 CELERY_BEAT_SCHEDULE = {"follow-up-reminders": {"task": "notifications.tasks.create_due_follow_up_notifications", "schedule": 900}}

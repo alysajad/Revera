@@ -11,8 +11,9 @@ from .serializers import LoginSerializer, SalesOfficerSerializer, UserSerializer
 
 
 def set_auth_cookies(response, refresh):
-    response.set_cookie("revera_access", str(refresh.access_token), httponly=True, secure=not settings.DEBUG, samesite="Lax", max_age=900)
-    response.set_cookie("revera_refresh", str(refresh), httponly=True, secure=not settings.DEBUG, samesite="Lax", max_age=604800)
+    cookie_settings = {"httponly": True, "secure": not settings.DEBUG, "samesite": "Lax" if settings.DEBUG else "None"}
+    response.set_cookie("revera_access", str(refresh.access_token), max_age=900, **cookie_settings)
+    response.set_cookie("revera_refresh", str(refresh), max_age=604800, **cookie_settings)
 
 
 class LoginView(APIView):

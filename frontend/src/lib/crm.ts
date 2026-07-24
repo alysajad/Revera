@@ -1,45 +1,64 @@
-export type LeadStatus = "Fresh" | "Callback" | "Qualified" | "Walk-in" | "Won" | "Lost";
-export type Source = "Meta Ads" | "Website" | "CarWale" | "Walk-in";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+type Paginated<T> = { results: T[] };
+type ApiLead = {
+  id: number; name: string; phone: string; source: string; model_interest: string; city: string;
+  enquiry_date: string | null; status: string; assigned_so: number | null; assigned_so_name: string; created_at: string;
+};
+type ApiOfficer = { id: number; first_name: string; last_name: string; email: string; phone: string; is_active: boolean };
 
 export type Lead = {
-  id: string;
-  name: string;
-  phone: string;
-  source: Source;
-  model: string;
-  city: string;
-  enquiredAt: string;
-  status: LeadStatus;
-  nextFollowUp?: string;
+  id: number; name: string; phone: string; source: string; model: string; city: string; enquiredAt: string;
+  status: string; assignedSoId: number | null; assignedSoName: string;
 };
+export type Officer = { id: number; name: string; initials: string; color: "blue" | "green" | "violet" | "orange"; assigned: number; calls: number; qualified: number; won: number };
+export type Metrics = { total_assigned: number; total_called: number; qualified: number; walkins: number; won: number; lost: number; conversion_rate: number };
+export type Analytics = { summary: Metrics; source: { source: string; total: number; qualified: number; won: number }[]; officers: (Metrics & { id: number; name: string })[] };
+export type CurrentUser = { id: number; first_name: string; last_name: string; email: string; role: "ADMIN" | "SO" };
 
-export type Officer = {
-  id: string;
-  name: string;
-  initials: string;
-  color: "blue" | "green" | "violet" | "orange";
-  assigned: number;
-  calls: number;
-  qualified: number;
-  won: number;
-};
+let csrfToken = "";
 
-export const leads: Lead[] = [
-  { id: "RV-24071", name: "Aarav Bhat", phone: "73051 98421", source: "Meta Ads", model: "R8 Pro", city: "Srinagar", enquiredAt: "Today, 09:42", status: "Fresh" },
-  { id: "RV-24072", name: "Mehak Kaul", phone: "97972 10468", source: "Website", model: "R7 City", city: "Srinagar", enquiredAt: "Today, 09:17", status: "Fresh" },
-  { id: "RV-24073", name: "Danish Mir", phone: "70066 82391", source: "CarWale", model: "R8 Pro", city: "Anantnag", enquiredAt: "Today, 08:54", status: "Fresh" },
-  { id: "RV-24074", name: "Zoya Ahmad", phone: "60051 44980", source: "Meta Ads", model: "R7 City", city: "Srinagar", enquiredAt: "Yesterday", status: "Callback", nextFollowUp: "11:30 AM" },
-  { id: "RV-24075", name: "Kabir Wani", phone: "94191 23411", source: "Walk-in", model: "R8 Pro", city: "Srinagar", enquiredAt: "Yesterday", status: "Qualified" },
-  { id: "RV-24076", name: "Ruhan Shah", phone: "80822 69341", source: "Website", model: "R7 City", city: "Baramulla", enquiredAt: "Yesterday", status: "Fresh" },
-  { id: "RV-24077", name: "Iram Khan", phone: "78897 04192", source: "Meta Ads", model: "R8 Lite", city: "Srinagar", enquiredAt: "23 Jul", status: "Fresh" },
-  { id: "RV-24078", name: "Faisal Lone", phone: "60065 70420", source: "CarWale", model: "R8 Pro", city: "Srinagar", enquiredAt: "23 Jul", status: "Fresh" },
-];
+async function csrf() {
+  if (csrfToken) return csrfToken;
+  const response = await fetch(`${API_URL}/api/auth/csrf/`, { credentials: "include" });
+  const body = await response.json() as { csrfToken: string };
+  csrfToken = body.csrfToken;
+  return csrfToken;
+}
 
-export const officers: Officer[] = [
-  { id: "arjun", name: "Arjun Raina", initials: "AR", color: "blue", assigned: 31, calls: 24, qualified: 10, won: 4 },
-  { id: "sana", name: "Sana Bhat", initials: "SB", color: "green", assigned: 28, calls: 21, qualified: 8, won: 3 },
-  { id: "yusuf", name: "Yusuf Dar", initials: "YD", color: "violet", assigned: 30, calls: 18, qualified: 7, won: 2 },
-  { id: "aisha", name: "Aisha Khan", initials: "AK", color: "orange", assigned: 25, calls: 13, qualified: 5, won: 2 },
-];
+export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const method = options.method?.toUpperCase() || "GET";
+  const headers = new Headers(options.headers);
+  if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
+  if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers.set("X-CSRFToken", await csrf());
+  const response = await fetch(`${API_URL}${path}`, { ...options, headers, credentials: "include" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { detail?: string };
+    throw new Error(body.detail || "The request could not be completed.");
+  }
+  return response.status === 204 ? undefined as T : response.json() as Promise<T>;
+}
 
-export const sourceClass = (source: Source) => source.toLowerCase().replaceAll(" ", "-");
+const sourceNames: Record<string, string> = { META: "Meta Ads", WEBSITE: "Website", CARWALE: "CarWale", WALKIN: "Walk-in", CAMPAIGN: "Campaign", OTHER: "Other", UNKNOWN: "Unknown" };
+const statusNames: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", CALLBACK: "Callback", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
+const colors: Officer["color"][] = ["blue", "green", "violet", "orange"];
+
+export const sourceName = (source: string) => sourceNames[source] || source;
+export const statusName = (status: string) => statusNames[status] || status;
+export const sourceClass = (source: string) => sourceName(source).toLowerCase().replaceAll(" ", "-");
+export const toLead = (lead: ApiLead): Lead => ({ ...lead, source: sourceName(lead.source), model: lead.model_interest || "—", enquiredAt: lead.enquiry_date || new Intl.DateTimeFormat("en", { day: "numeric", month: "short" }).format(new Date(lead.created_at)), status: statusName(lead.status), assignedSoId: lead.assigned_so, assignedSoName: lead.assigned_so_name });
+export const toOfficer = (officer: ApiOfficer, metrics?: Metrics): Officer => ({ id: officer.id, name: `${officer.first_name} ${officer.last_name}`.trim() || officer.email, initials: `${officer.first_name[0] || ""}${officer.last_name[0] || ""}` || officer.email.slice(0, 2).toUpperCase(), color: colors[officer.id % colors.length], assigned: metrics?.total_assigned || 0, calls: metrics?.total_called || 0, qualified: metrics?.qualified || 0, won: metrics?.won || 0 });
+
+export async function getLeads(query = "") { const data = await api<Paginated<ApiLead>>(`/api/leads/${query}`); return data.results.map(toLead); }
+export async function getOfficers() { const data = await api<Paginated<ApiOfficer>>("/api/auth/sales-officers/"); return data.results; }
+export const getAdminAnalytics = () => api<Analytics>("/api/analytics/admin/");
+export const getMyAnalytics = () => api<Metrics>("/api/analytics/me/");
+export const assignLead = (leadId: number, officerId: number) => api<Lead>(`/api/leads/${leadId}/assign/`, { method: "POST", body: JSON.stringify({ sales_officer_id: officerId }) });
+export const autoAssignLeads = () => api<{ assigned: number }>("/api/leads/auto-assign/", { method: "POST", body: JSON.stringify({}) });
+export const logCall = (leadId: number, payload: { status: string; remarks?: string; follow_up_at?: string }) => api<Lead>(`/api/leads/${leadId}/log-call/`, { method: "POST", body: JSON.stringify(payload) });
+export const login = (email: string, password: string) => api<{ user: CurrentUser }>("/api/auth/login/", { method: "POST", body: JSON.stringify({ email, password }) });
+export const getCurrentUser = () => api<{ user: CurrentUser }>("/api/auth/me/");
+export const uploadLeads = (file: File) => { const body = new FormData(); body.append("file", file); return api<UploadBatch>("/api/uploads/", { method: "POST", body }); };
+export const getUpload = (id: number) => api<UploadBatch>(`/api/uploads/${id}/`);
+export const commitUpload = (id: number) => api<{ created: number; overwritten: number; skipped: number }>(`/api/uploads/${id}/commit/`, { method: "POST", body: JSON.stringify({}) });
+export type UploadBatch = { id: number; status: "PARSING" | "READY" | "COMMITTED" | "FAILED"; total_rows: number; parsed_ok: number; duplicates_found: number; skipped: number; error_message: string };

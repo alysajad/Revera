@@ -28,6 +28,8 @@ class LeadViewSet(viewsets.ModelViewSet):
         queryset = Lead.objects.filter(deleted_at__isnull=True).select_related("assigned_so")
         if not self.request.user.is_admin:
             queryset = queryset.filter(assigned_so=self.request.user)
+        elif self.request.query_params.get("unassigned") == "true":
+            queryset = queryset.filter(assigned_so__isnull=True)
         for field in ("source", "status", "city", "assigned_so"):
             if value := self.request.query_params.get(field):
                 queryset = queryset.filter(**{field: value})
