@@ -125,7 +125,7 @@ class LeadViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["patch"], url_path="so-update")
     def so_update(self, request, pk=None):
         lead = self.get_object()
-        if lead.assigned_so_id != request.user.id:
+        if not request.user.is_admin and lead.assigned_so_id != request.user.id:
             return Response({"detail": "This lead is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
         serializer = SOLeadUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

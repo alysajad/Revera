@@ -1,8 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { assignFilteredLeads, assignLead, autoAssignLeads, commitUpload, createLead, getAdminAnalytics, getLeadsPage, getOfficers, getUpload, logCall, resolveUploadDuplicates, sourceClass, toLead, toOfficer, type Lead, type LeadFilters, type LeadInput, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
+import { assignFilteredLeads, assignLead, autoAssignLeads, commitUpload, createLead, getAdminAnalytics, getLeadDetail, getLeadsPage, getOfficers, getUpload, logCall, resolveUploadDuplicates, sourceClass, statusName, toLead, toOfficer, updateMyLead, type CallHistory, type Lead, type LeadDetail, type LeadFilters, type LeadInput, type LeadQualification, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
 import { formatDate, parseDate } from "@/lib/dates";
+
+const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", CALLBACK: "Callback", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
+const outcomeLabels: Record<string, string> = { CONNECTED: "Connected", NO_RESPONSE: "No response", CALLBACK: "Callback", QUALIFIED: "Qualified", WRONG_NUMBER: "Wrong number" };
+
+function formatCallDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+}
 
 function followUpOptions() {
   const now = new Date();
@@ -64,9 +72,12 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
+  const [leadDetail, setLeadDetail] = useState<LeadDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [outcome, setOutcome] = useState("");
   const [remarks, setRemarks] = useState("");
   const [followUpAt, setFollowUpAt] = useState("");
+  const [testDrive, setTestDrive] = useState("");
   const [savingCall, setSavingCall] = useState(false);
   const [addingLead, setAddingLead] = useState(false);
   const [creatingLead, setCreatingLead] = useState(false);
@@ -150,14 +161,30 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     if (needsAppointment && !followUpAt) { setError("Select a follow-up time."); return; }
     setSavingCall(true);
     try {
-      await logCall(activeLead.id, { status: outcome, remarks, ...(followUpAt ? { follow_up_at: followUpAt } : {}) });
-      setNotice(`Call log saved for ${activeLead.name}.`); setActiveLead(null); setRemarks(""); setFollowUpAt(""); await refresh();
+      if (!officerMode && leadDetail) {
+        await updateMyLead(activeLead.id, {
+          status: outcome,
+          remarks,
+          call_outcome: outcome,
+          ...(followUpAt ? { follow_up_at: followUpAt } : {}),
+          ...(testDrive ? { qualification: { variant: leadDetail.qualification?.variant || "", buying_timeline: leadDetail.qualification?.buying_timeline || "", finance_type: leadDetail.qualification?.finance_type || "", trade_in: leadDetail.qualification?.trade_in ?? null, test_drive: testDrive, notes: leadDetail.qualification?.notes || "" } } : {}),
+        });
+      } else {
+        await logCall(activeLead.id, { status: outcome, remarks, ...(followUpAt ? { follow_up_at: followUpAt } : {}) });
+      }
+      setNotice(`Call log saved for ${activeLead.name}.`); setActiveLead(null); setLeadDetail(null); setRemarks(""); setFollowUpAt(""); setTestDrive(""); await refresh();
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Call log could not be saved."); }
     finally { setSavingCall(false); }
   };
 
-  const openLead = (lead: Lead) => {
-    setActiveLead(lead); setOutcome(nextOutcomes[lead.status]?.[0]?.value || ""); setRemarks(""); setFollowUpAt(""); setSavingCall(false); setError("");
+  const openLead = async (lead: Lead) => {
+    setActiveLead(lead); setOutcome(nextOutcomes[lead.status]?.[0]?.value || ""); setRemarks(""); setFollowUpAt(""); setTestDrive(""); setSavingCall(false); setError("");
+    if (!officerMode) {
+      setDetailLoading(true);
+      try { const detail = await getLeadDetail(lead.id); setLeadDetail(detail); setTestDrive(detail.qualification?.test_drive || ""); }
+      catch { /* detail fetch failed, modal still works with basic data */ }
+      finally { setDetailLoading(false); }
+    }
   };
 
   const saveLead = async () => {
@@ -231,6 +258,49 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     {notice && <div className="toast" role="status">{notice}<button aria-label="Dismiss" onClick={() => setNotice("")}>×</button></div>}
     {addingLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-lead-title"><button className="modal-close" onClick={() => setAddingLead(false)} aria-label="Close">×</button><p className="eyebrow">LEAD INTAKE</p><h2 id="add-lead-title">Add a lead</h2><form className="lead-form" onSubmit={event => { event.preventDefault(); void saveLead(); }}><div className="form-grid"><label>Full name<input required maxLength={160} value={newLead.name} onChange={event => setNewLead(current => ({ ...current, name: event.target.value }))} placeholder="Customer name" /></label><label>Phone number<input required inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={newLead.phone} onChange={event => setNewLead(current => ({ ...current, phone: event.target.value.replace(/\D/g, "") }))} placeholder="10-digit mobile number" /></label></div><div className="form-grid"><label>Email<input type="email" inputMode="email" pattern={emailPattern.source} title="Use a complete email such as name@example.com" value={newLead.email} onChange={event => setNewLead(current => ({ ...current, email: event.target.value }))} placeholder="name@example.com" /></label><label>City<input maxLength={100} value={newLead.city} onChange={event => setNewLead(current => ({ ...current, city: event.target.value }))} placeholder="City" /></label></div><div className="form-grid"><label>Lead source<select value={newLead.source} onChange={event => setNewLead(current => ({ ...current, source: event.target.value }))}>{sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Enquiry date<input required type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={newLead.enquiry_date} onChange={event => setNewLead(current => ({ ...current, enquiry_date: event.target.value }))} placeholder="DD/MM/YYYY" /></label></div><div className="form-grid"><label>Vehicle interest<input list="vehicle-options" maxLength={100} value={newLead.model_interest} onChange={event => setNewLead(current => ({ ...current, model_interest: event.target.value }))} placeholder="Choose or type a model" /><datalist id="vehicle-options">{models.map(model => <option key={model} value={model} />)}</datalist></label><label>Campaign<input maxLength={160} value={newLead.campaign} onChange={event => setNewLead(current => ({ ...current, campaign: event.target.value }))} placeholder="Campaign name" /></label></div><label>Source detail<input maxLength={100} value={newLead.source_label} onChange={event => setNewLead(current => ({ ...current, source_label: event.target.value }))} placeholder="Ad set, partner, referral, or other detail" /></label>{error && <p className="form-error" role="alert">{error}</p>}<p className="subtext">New leads start as Fresh and appear unassigned, ready to hand to a sales officer.</p><footer><button type="button" className="filter" onClick={() => setAddingLead(false)}>Cancel</button><button className="button primary" disabled={creatingLead}>{creatingLead ? "Adding…" : "Add lead"}</button></footer></form></section></div>}
     {submittedLead && <div className="modal-layer" role="presentation"><section className="modal success-modal" role="dialog" aria-modal="true" aria-labelledby="submitted-title"><button className="modal-close" onClick={() => setSubmittedLead(null)} aria-label="Close">×</button><div className="success-mark" aria-hidden="true">✓</div><p className="eyebrow">LEAD SUBMITTED</p><h2 id="submitted-title">Thank you, lead submitted.</h2><p className="subtext">{submittedLead} is now in the unassigned pool, ready for a sales officer.</p><button className="button primary" onClick={() => setSubmittedLead(null)}>Done</button></section></div>}
-    {activeLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="call-title"><button className="modal-close" onClick={() => setActiveLead(null)} aria-label="Close">×</button><p className="eyebrow">CALL LOG</p><h2 id="call-title">Update {activeLead.name}</h2><div className="lead-summary"><b>#{activeLead.id} · {activeLead.model}</b><span>{activeLead.source} lead</span><small>{activeLead.phone} · {activeLead.city || "—"}</small></div>{nextOutcomes[activeLead.status]?.length ? <><div className="form-grid"><label>Next outcome<select value={outcome} onChange={event => { setOutcome(event.target.value); if (!["CALLBACK", "WALKIN"].includes(event.target.value)) setFollowUpAt(""); }}>{nextOutcomes[activeLead.status].map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{needsAppointment && <label>{outcome === "WALKIN" ? "Walk-in appointment" : "Follow-up time"}<select required value={followUpAt} onChange={event => setFollowUpAt(event.target.value)}><option value="">Select time</option>{followUpOptions().map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></label>}</div><label>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Add a clear note from the conversation" /></label><footer><button className="filter" onClick={() => setActiveLead(null)}>Cancel</button><button className="button primary" disabled={savingCall || (needsAppointment && !followUpAt) || !outcome} onClick={() => void saveCall()}>{savingCall ? "Saving…" : "Save call log"}</button></footer></> : <p className="subtext">This lead is closed. Reopen it before recording another outcome.</p>}</section></div>}
+    {activeLead && !officerMode && <div className="modal-layer" role="presentation"><section className="modal sales-detail-modal" role="dialog" aria-modal="true" aria-labelledby="call-title" style={{ maxWidth: "44rem" }}>
+      <header className="sales-detail-header"><div><p className="eyebrow">UPDATE FOLLOW-UP</p><h2 id="call-title">Update {activeLead.name}</h2><p className="subtext">Update the follow-up status and details for this lead.</p></div><button className="modal-close" onClick={() => { setActiveLead(null); setLeadDetail(null); }} aria-label="Close">×</button></header>
+      <div className="sales-detail-scroll">
+        <section className="sales-info-card">
+          <h3>Customer information</h3>
+          <div className="sales-info-grid">
+            <span><small>Customer name</small><b>{activeLead.name}</b></span>
+            <span><small>Mobile</small><b>{activeLead.phone}</b></span>
+            <span><small>Model</small><b>{activeLead.model}</b></span>
+            <span><small>Variant</small><b>{leadDetail?.qualification?.variant || "—"}</b></span>
+            <span><small>Buying plan</small><b>{leadDetail?.qualification?.buying_timeline || "—"}</b></span>
+            <span><small>Finance</small><b>{leadDetail?.qualification?.finance_type || "—"}</b></span>
+          </div>
+          <div className="sales-detail-meta">
+            <span>Trade-in <b>{leadDetail?.qualification?.trade_in === true ? "Yes" : leadDetail?.qualification?.trade_in === false ? "No" : "—"}</b></span>
+            <span>Category <b className={`category-pill ${activeLead.category?.toLowerCase() || "warm"}`}>{activeLead.category || "WARM"}</b></span>
+          </div>
+        </section>
+        {detailLoading && <p className="subtext" style={{ padding: "1rem", textAlign: "center" }}>Loading lead history…</p>}
+        {leadDetail && <section className="sales-form-card">
+          <h3>Call History</h3>
+          <div style={{ maxHeight: "14rem", overflow: "auto" }}>
+            {leadDetail.callHistory.length ? leadDetail.callHistory.map((call, index) => <div className="sales-history-row" key={`call-${call.id}`} style={{ borderLeft: "3px solid var(--accent)", paddingLeft: "0.75rem", marginBottom: "0.75rem" }}>
+              <div><b>Call #{leadDetail.callHistory.length - index} · {call.so_name || "Admin"}</b><small>{call.remarks || "No remarks"}</small>{call.outcome && <span className={`badge ${call.outcome.toLowerCase()}`} style={{ fontSize: "0.7rem", marginTop: "0.25rem", display: "inline-block" }}>{call.outcome}</span>}</div>
+              <time style={{ fontSize: "0.75rem", color: "var(--muted)", whiteSpace: "nowrap" }}>{formatCallDate(call.created_at)}</time>
+            </div>) : <p className="subtext">No calls recorded yet.</p>}
+          </div>
+        </section>}
+        <section className="sales-form-card">
+          <h3>Call Remark {leadDetail ? `(Call #${leadDetail.callHistory.length + 1})` : ""}</h3>
+          <label className="sales-full-label"><textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Enter your call remarks…" /></label>
+          {nextOutcomes[activeLead.status]?.length ? <>
+            <h4>Call Outcome</h4>
+            <div className="sales-choice-row">{nextOutcomes[activeLead.status].map(item => <button type="button" className={outcome === item.value ? "chosen" : ""} onClick={() => { setOutcome(item.value); if (!["CALLBACK", "WALKIN"].includes(item.value)) setFollowUpAt(""); }} key={item.value}>{item.label}</button>)}</div>
+            <div className="sales-form-grid" style={{ marginTop: "1rem" }}>
+              <label>Test Drive Status<select value={testDrive} onChange={event => setTestDrive(event.target.value)}><option value="">Not discussed</option><option>Requested</option><option>Completed</option><option>Not interested</option></select></label>
+              {needsAppointment && <label>{outcome === "WALKIN" ? "Walk-in appointment" : "Follow-up time"}<select required value={followUpAt} onChange={event => setFollowUpAt(event.target.value)}><option value="">Select time</option>{followUpOptions().map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></label>}
+            </div>
+          </> : <p className="subtext">This lead is closed. Reopen it before recording another outcome.</p>}
+        </section>
+      </div>
+      <footer className="sales-detail-footer"><button className="filter" onClick={() => { setActiveLead(null); setLeadDetail(null); }}>Cancel</button><button className="button primary" disabled={savingCall || (needsAppointment && !followUpAt) || !outcome} onClick={() => void saveCall()}>{savingCall ? "Saving…" : "Update Follow-up"}</button></footer>
+    </section></div>}
+    {activeLead && officerMode && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="call-title-so"><button className="modal-close" onClick={() => setActiveLead(null)} aria-label="Close">×</button><p className="eyebrow">CALL LOG</p><h2 id="call-title-so">Update {activeLead.name}</h2><div className="lead-summary"><b>#{activeLead.id} · {activeLead.model}</b><span>{activeLead.source} lead</span><small>{activeLead.phone} · {activeLead.city || "—"}</small></div>{nextOutcomes[activeLead.status]?.length ? <><div className="form-grid"><label>Next outcome<select value={outcome} onChange={event => { setOutcome(event.target.value); if (!["CALLBACK", "WALKIN"].includes(event.target.value)) setFollowUpAt(""); }}>{nextOutcomes[activeLead.status].map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{needsAppointment && <label>{outcome === "WALKIN" ? "Walk-in appointment" : "Follow-up time"}<select required value={followUpAt} onChange={event => setFollowUpAt(event.target.value)}><option value="">Select time</option>{followUpOptions().map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></label>}</div><label>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Add a clear note from the conversation" /></label><footer><button className="filter" onClick={() => setActiveLead(null)}>Cancel</button><button className="button primary" disabled={savingCall || (needsAppointment && !followUpAt) || !outcome} onClick={() => void saveCall()}>{savingCall ? "Saving…" : "Save call log"}</button></footer></> : <p className="subtext">This lead is closed. Reopen it before recording another outcome.</p>}</section></div>}
   </section>;
 }
