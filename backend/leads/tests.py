@@ -141,6 +141,18 @@ class LeadAccessTests(TestCase):
         response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"enquiry_date": (timezone.localdate() + timedelta(days=1)).isoformat()}, format="json")
         self.assertEqual(response.status_code, 400)
 
+    def test_follow_up_submission_moves_fresh_lead_to_follow_ups(self):
+        self.client.force_authenticate(self.first_so)
+        future = timezone.now() + timedelta(days=2)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"follow_up_at": future.isoformat()}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.first_lead.refresh_from_db()
+        self.assertEqual(self.first_lead.status, Lead.Status.CALLBACK)
+        fresh = self.client.get("/api/leads/my-dashboard/?section=fresh")
+        follow_ups = self.client.get("/api/leads/my-dashboard/?section=followups")
+        self.assertNotIn(self.first_lead.id, [lead["id"] for lead in fresh.data["results"]])
+        self.assertIn(self.first_lead.id, [lead["id"] for lead in follow_ups.data["results"]])
+
     def test_sales_officer_cannot_update_another_officers_lead(self):
         self.client.force_authenticate(self.first_so)
         response = self.client.patch(f"/api/leads/{self.second_lead.id}/so-update/", {"category": Lead.Category.COLD}, format="json")

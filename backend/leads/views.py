@@ -91,7 +91,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         summary = {
             "total": queryset.count(),
             "fresh": queryset.filter(status=Lead.Status.FRESH).count(),
-            "followups": queryset.filter(follow_ups__resolved_at__isnull=True, follow_ups__scheduled_for__date=today).distinct().count(),
+            "followups": queryset.filter(follow_ups__resolved_at__isnull=True).distinct().count(),
             "pending": queryset.filter(status__in=[Lead.Status.RNR, Lead.Status.CALLBACK]).count(),
             "qualified": queryset.filter(status=Lead.Status.QUALIFIED).count(),
             "walkin": queryset.filter(status=Lead.Status.WALKIN).count(),
@@ -105,7 +105,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         section = request.query_params.get("section", "fresh")
         section_filters = {
             "fresh": Q(status=Lead.Status.FRESH),
-            "followups": Q(follow_ups__resolved_at__isnull=True, follow_ups__scheduled_for__date=today),
+            "followups": Q(follow_ups__resolved_at__isnull=True),
             "pending": Q(status__in=[Lead.Status.RNR, Lead.Status.CALLBACK]),
             "qualified": Q(status=Lead.Status.QUALIFIED),
             "walkin": Q(status=Lead.Status.WALKIN),
@@ -132,6 +132,8 @@ class LeadViewSet(viewsets.ModelViewSet):
         data = serializer.validated_data
         sales_status = {Lead.SalesOutcome.BOOKED: Lead.Status.WALKIN, Lead.SalesOutcome.RETAILED: Lead.Status.WON, Lead.SalesOutcome.LOST: Lead.Status.LOST}
         next_status = data.get("status") or sales_status.get(data.get("sales_outcome"), lead.status)
+        if data.get("follow_up_at") and next_status in {Lead.Status.FRESH, Lead.Status.RNR}:
+            next_status = Lead.Status.CALLBACK
         if next_status != lead.status and next_status not in FORWARD_TRANSITIONS.get(lead.status, set()):
             return Response({"detail": "This status transition is not allowed."}, status=status.HTTP_400_BAD_REQUEST)
         editable_fields = ("name", "phone", "email", "source", "source_label", "campaign", "model_interest", "city", "branch", "enquiry_date")
