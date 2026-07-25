@@ -46,6 +46,10 @@ def apply_lead_filters(queryset, filters):
     return queryset
 
 
+def audit_value(value):
+    return value.isoformat() if hasattr(value, "isoformat") else value
+
+
 class LeadViewSet(viewsets.ModelViewSet):
     serializer_class = LeadSerializer
 
@@ -130,13 +134,14 @@ class LeadViewSet(viewsets.ModelViewSet):
         next_status = data.get("status") or sales_status.get(data.get("sales_outcome"), lead.status)
         if next_status != lead.status and next_status not in FORWARD_TRANSITIONS.get(lead.status, set()):
             return Response({"detail": "This status transition is not allowed."}, status=status.HTTP_400_BAD_REQUEST)
-        before = {"status": lead.status, "category": lead.category, "sales_outcome": lead.sales_outcome}
+        editable_fields = ("name", "phone", "email", "source", "source_label", "campaign", "model_interest", "city", "branch", "enquiry_date")
+        before = {field: audit_value(getattr(lead, field)) for field in ("status", "category", "sales_outcome", *editable_fields)}
         with transaction.atomic():
             lead.status = next_status
-            for field in ("category", "sales_outcome", "branch"):
+            for field in ("category", "sales_outcome", *editable_fields):
                 if field in data:
                     setattr(lead, field, data[field])
-            lead.save(update_fields=["status", "category", "sales_outcome", "branch", "updated_at"])
+            lead.save(update_fields=["status", "category", "sales_outcome", *[field for field in editable_fields if field in data], "updated_at"])
             if qualification := data.get("qualification"):
                 record, _ = LeadQualification.objects.get_or_create(lead=lead)
                 for field, value in qualification.items():
@@ -148,7 +153,8 @@ class LeadViewSet(viewsets.ModelViewSet):
                 CallLog.objects.create(lead=lead, so=request.user, status=next_status, outcome=data.get("call_outcome", ""), remarks=data.get("remarks", ""))
                 if follow_up_at := data.get("follow_up_at"):
                     FollowUp.objects.create(lead=lead, so=request.user, scheduled_for=follow_up_at)
-            LeadAudit.objects.create(lead=lead, actor=request.user, event="so_updated", before=before, after={"status": lead.status, "category": lead.category, "sales_outcome": lead.sales_outcome})
+            after = {field: audit_value(getattr(lead, field)) for field in ("status", "category", "sales_outcome", *editable_fields)}
+            LeadAudit.objects.create(lead=lead, actor=request.user, event="so_updated", before=before, after=after)
         return Response(LeadDetailSerializer(self.get_object()).data)
 
     @action(detail=True, methods=["post"])

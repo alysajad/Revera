@@ -129,6 +129,18 @@ class LeadAccessTests(TestCase):
         self.assertTrue(FollowUp.objects.filter(lead=self.first_lead, resolved_at__isnull=True).exists())
         self.assertEqual(LeadQualification.objects.get(lead=self.first_lead).variant, "R8 Pro")
 
+    def test_sales_officer_can_edit_customer_details(self):
+        self.client.force_authenticate(self.first_so)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"name": "Aarav Updated", "phone": "7305198422", "email": "aarav@example.com", "source": Lead.Source.WEBSITE, "campaign": "Summer Drive", "model_interest": "R8 Pro", "city": "Kochi", "branch": "Central", "enquiry_date": timezone.localdate().isoformat()}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.first_lead.refresh_from_db()
+        self.assertEqual(self.first_lead.name, "Aarav Updated")
+        self.assertEqual(self.first_lead.phone, "7305198422")
+        self.assertEqual(self.first_lead.source, Lead.Source.WEBSITE)
+        self.assertEqual(self.first_lead.branch, "Central")
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"enquiry_date": (timezone.localdate() + timedelta(days=1)).isoformat()}, format="json")
+        self.assertEqual(response.status_code, 400)
+
     def test_sales_officer_cannot_update_another_officers_lead(self):
         self.client.force_authenticate(self.first_so)
         response = self.client.patch(f"/api/leads/{self.second_lead.id}/so-update/", {"category": Lead.Category.COLD}, format="json")

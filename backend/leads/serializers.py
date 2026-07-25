@@ -87,16 +87,28 @@ class LeadUpdateSerializer(serializers.Serializer):
 
 
 class SOLeadUpdateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=160, required=False)
+    phone = serializers.RegexField(regex=r"^\d{10}$", required=False)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    source = serializers.ChoiceField(choices=Lead.Source.choices, required=False)
+    source_label = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    campaign = serializers.CharField(max_length=160, required=False, allow_blank=True)
+    model_interest = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    city = serializers.CharField(max_length=100, required=False, allow_blank=True)
     status = serializers.ChoiceField(choices=Lead.Status.choices, required=False)
     category = serializers.ChoiceField(choices=Lead.Category.choices, required=False)
     sales_outcome = serializers.ChoiceField(choices=Lead.SalesOutcome.choices, required=False)
     branch = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    enquiry_date = serializers.DateField(required=False, allow_null=True)
     remarks = serializers.CharField(max_length=500, required=False, allow_blank=True)
     call_outcome = serializers.CharField(max_length=30, required=False, allow_blank=True)
     follow_up_at = serializers.DateTimeField(required=False, allow_null=True)
     qualification = QualificationSerializer(required=False)
 
     def validate(self, attrs):
+        enquiry_date = attrs.get("enquiry_date")
+        if enquiry_date and enquiry_date > timezone.localdate():
+            raise serializers.ValidationError({"enquiry_date": "Enquiry date cannot be in the future."})
         follow_up_at = attrs.get("follow_up_at")
         if follow_up_at and follow_up_at <= timezone.now():
             raise serializers.ValidationError({"follow_up_at": "Choose a future appointment time."})
