@@ -88,7 +88,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
     if (!detail || !draft || saving) return;
     const followUp = draft.follow_up_at ? new Date(draft.follow_up_at) : null;
     if (followUp && (Number.isNaN(followUp.getTime()) || followUp.getTime() <= Date.now())) {
-      setError("Choose a future follow-up date and time.");
+      setNotice("Choose a future follow-up date and time.");
       return;
     }
     setSaving(true); setError("");
@@ -101,6 +101,12 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
 
   const summary = dashboard?.summary;
   const currentStatusOptions = useMemo(() => draft ? statusOptions[draft.status] || [] : [], [draft]);
+
+  useEffect(() => {
+    if (!detail) return;
+    const input = document.querySelector<HTMLInputElement>(".sales-detail-modal input[type='datetime-local']");
+    if (input) { input.min = minimumFollowUpDate(); input.step = "60"; }
+  }, [detail]);
 
   return <section className="page sales-workspace">
     <div className="sales-hero"><div><p className="eyebrow">MY WORKSPACE</p><h1>My queue</h1><p className="subtext">Today, {new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(new Date())}</p></div><div className="sales-hero-actions"><button className="filter" onClick={() => void loadDashboard()}>↻ Refresh</button><a className="button primary" href="/my-analytics">View analytics →</a></div></div>
