@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 import { formatDate } from "@/lib/dates";
 
 type Paginated<T> = { results: T[] };
@@ -21,10 +21,21 @@ export type CurrentUser = { id: number; first_name: string; last_name: string; e
 
 let csrfToken = "";
 
+function responseError(body: unknown, fallback: string) {
+  if (!body || typeof body !== "object") return fallback;
+  if (typeof (body as { detail?: unknown }).detail === "string") return (body as { detail: string }).detail;
+  const messages = Object.entries(body as Record<string, unknown>).flatMap(([field, value]) => {
+    const label = field === "non_field_errors" ? "" : `${field}: `;
+    return (Array.isArray(value) ? value : [value]).map(message => `${label}${String(message)}`);
+  });
+  return messages.join(" ") || fallback;
+}
+
 async function csrf() {
   if (csrfToken) return csrfToken;
   const response = await fetch(`${API_URL}/api/auth/csrf/`, { credentials: "include" });
-  const body = await response.json() as { csrfToken: string };
+  const body = await response.json().catch(() => ({})) as { csrfToken?: string };
+  if (!response.ok || !body.csrfToken) throw new Error(responseError(body, `Unable to initialize security (${response.status}).`));
   csrfToken = body.csrfToken;
   return csrfToken;
 }
@@ -36,8 +47,8 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers.set("X-CSRFToken", await csrf());
   const response = await fetch(`${API_URL}${path}`, { ...options, headers, credentials: "include" });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { detail?: string };
-    throw new Error(body.detail || "The request could not be completed.");
+    const body = await response.json().catch(() => ({}));
+    throw new Error(responseError(body, `The request could not be completed (${response.status}).`));
   }
   return response.status === 204 ? undefined as T : response.json() as Promise<T>;
 }
@@ -65,7 +76,7 @@ export const login = (email: string, password: string) => api<{ user: CurrentUse
 export const logout = () => api<void>("/api/auth/logout/", { method: "POST" });
 export const getCurrentUser = () => api<{ user: CurrentUser }>("/api/auth/me/");
 export const uploadLeads = (file: File) => { const body = new FormData(); body.append("file", file); return api<UploadBatch>("/api/uploads/", { method: "POST", body }); };
-export const getUpload = (id: number) => api<UploadBatch>(`/api/uploads/${id}/`);
+export const getUpload = (id: number, includeRows = false) => api<UploadBatch>(`/api/uploads/${id}/${includeRows ? "?include_rows=true" : ""}`);
 export const resolveUploadDuplicates = (id: number, rows: { id: number; resolution: "SKIP" }[]) => api<{ detail: string; duplicates_found: number }>(`/api/uploads/${id}/resolve-duplicates/`, { method: "POST", body: JSON.stringify({ rows }) });
 export const commitUpload = (id: number) => api<{ created: number; overwritten: number; skipped: number }>(`/api/uploads/${id}/commit/`, { method: "POST", body: JSON.stringify({}) });
 export type UploadRow = { id: number; row_number: number; data: { name?: string }; normalized_phone: string; validation_error: string; duplicate_of: number | null; existing_name: string; existing_status: string; resolution: "PENDING" | "SKIP" | "OVERWRITE" | "IMPORT" };

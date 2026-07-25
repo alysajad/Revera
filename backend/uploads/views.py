@@ -38,7 +38,8 @@ class UploadBatchViewSet(viewsets.GenericViewSet):
     def retrieve(self, request, pk=None):
         batch = self.get_object()
         payload = self.get_serializer(batch).data
-        payload["rows"] = UploadRowSerializer(batch.rows.all().order_by("row_number"), many=True).data
+        if request.query_params.get("include_rows") == "true":
+            payload["rows"] = UploadRowSerializer(batch.rows.all().order_by("row_number"), many=True).data
         return Response(payload)
 
     @action(detail=True, methods=["post"], url_path="resolve-duplicates")
@@ -62,28 +63,28 @@ class UploadBatchViewSet(viewsets.GenericViewSet):
         batch = self.get_object()
         if batch.status != UploadBatch.Status.READY:
             return Response({"detail": "This upload is not ready to commit."}, status=status.HTTP_400_BAD_REQUEST)
-        rows = batch.rows.select_related("duplicate_of").all()
-        if rows.filter(resolution=UploadRow.Resolution.PENDING).exists():
+        rows = list(batch.rows.select_related("duplicate_of").all())
+        if any(row.resolution == UploadRow.Resolution.PENDING for row in rows):
             return Response({"detail": "Resolve every duplicate before committing."}, status=status.HTTP_400_BAD_REQUEST)
-        created = 0
-        overwritten = 0
+        rows = [row for row in rows if not row.validation_error and row.resolution != UploadRow.Resolution.SKIP]
+        overwrite_leads = []
+        new_leads = []
+        for row in rows:
+            data = row.data.copy()
+            data["enquiry_date"] = data.get("enquiry_date") or None
+            if row.duplicate_of and row.resolution == UploadRow.Resolution.OVERWRITE:
+                for field in ("name", "email", "source", "source_label", "campaign", "model_interest", "city", "enquiry_date"):
+                    setattr(row.duplicate_of, field, data.get(field, ""))
+                overwrite_leads.append(row.duplicate_of)
+            else:
+                new_leads.append(Lead(phone=row.normalized_phone, duplicate_flag=bool(row.duplicate_of), **data))
         with transaction.atomic():
-            for row in rows:
-                if row.validation_error or row.resolution == UploadRow.Resolution.SKIP:
-                    continue
-                data = row.data.copy()
-                data["enquiry_date"] = data.get("enquiry_date") or None
-                if row.duplicate_of and row.resolution == UploadRow.Resolution.OVERWRITE:
-                    for field in ("name", "email", "source", "source_label", "campaign", "model_interest", "city", "enquiry_date"):
-                        setattr(row.duplicate_of, field, data.get(field, ""))
-                    row.duplicate_of.save()
-                    LeadAudit.objects.create(lead=row.duplicate_of, actor=request.user, event="import_overwrite")
-                    overwritten += 1
-                else:
-                    lead = Lead.objects.create(phone=row.normalized_phone, duplicate_flag=bool(row.duplicate_of), **data)
-                    LeadAudit.objects.create(lead=lead, actor=request.user, event="imported")
-                    created += 1
+            if overwrite_leads:
+                Lead.objects.bulk_update(overwrite_leads, ["name", "email", "source", "source_label", "campaign", "model_interest", "city", "enquiry_date"])
+                LeadAudit.objects.bulk_create([LeadAudit(lead=lead, actor=request.user, event="import_overwrite") for lead in overwrite_leads])
+            created_leads = Lead.objects.bulk_create(new_leads)
+            LeadAudit.objects.bulk_create([LeadAudit(lead=lead, actor=request.user, event="imported") for lead in created_leads])
             batch.status = UploadBatch.Status.COMMITTED
             batch.committed_at = timezone.now()
             batch.save(update_fields=["status", "committed_at"])
-        return Response({"created": created, "overwritten": overwritten, "skipped": batch.skipped})
+        return Response({"created": len(created_leads), "overwritten": len(overwrite_leads), "skipped": batch.skipped})
