@@ -24,6 +24,17 @@ class Lead(models.Model):
         OTHER = "OTHER", "Other"
         UNKNOWN = "UNKNOWN", "Unknown"
 
+    class Category(models.TextChoices):
+        HOT = "HOT", "Hot"
+        WARM = "WARM", "Warm"
+        COLD = "COLD", "Cold"
+
+    class SalesOutcome(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        BOOKED = "BOOKED", "Booked"
+        RETAILED = "RETAILED", "Retailed"
+        LOST = "LOST", "Lost"
+
     uid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     name = models.CharField(max_length=160)
     phone = models.CharField(max_length=10, db_index=True)
@@ -33,8 +44,11 @@ class Lead(models.Model):
     campaign = models.CharField(max_length=160, blank=True)
     model_interest = models.CharField(max_length=100, blank=True)
     city = models.CharField(max_length=100, blank=True)
+    branch = models.CharField(max_length=120, blank=True)
     enquiry_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.FRESH, db_index=True)
+    category = models.CharField(max_length=10, choices=Category.choices, default=Category.WARM, db_index=True)
+    sales_outcome = models.CharField(max_length=12, choices=SalesOutcome.choices, default=SalesOutcome.PENDING, db_index=True)
     assigned_so = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="assigned_leads")
     duplicate_flag = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
@@ -42,13 +56,14 @@ class Lead(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [models.Index(fields=["assigned_so", "status"]), models.Index(fields=["source", "created_at"])]
+        indexes = [models.Index(fields=["assigned_so", "status"]), models.Index(fields=["assigned_so", "category"]), models.Index(fields=["source", "created_at"])]
 
 
 class CallLog(models.Model):
     lead = models.ForeignKey(Lead, on_delete=models.PROTECT, related_name="call_logs")
     so = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="call_logs")
     status = models.CharField(max_length=20, choices=Lead.Status.choices)
+    outcome = models.CharField(max_length=30, blank=True)
     remarks = models.CharField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -60,6 +75,18 @@ class FollowUp(models.Model):
     resolved_at = models.DateTimeField(null=True, blank=True)
     notified_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class LeadQualification(models.Model):
+    lead = models.OneToOneField(Lead, on_delete=models.CASCADE, related_name="qualification")
+    variant = models.CharField(max_length=120, blank=True)
+    buying_timeline = models.CharField(max_length=80, blank=True)
+    finance_type = models.CharField(max_length=80, blank=True)
+    trade_in = models.BooleanField(null=True, blank=True)
+    test_drive = models.CharField(max_length=80, blank=True)
+    notes = models.TextField(blank=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="updated_qualifications")
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class LeadAudit(models.Model):

@@ -1,5 +1,5 @@
-import { LeadDesk } from "@/features/leads/lead-desk";
+import { SalesWorkspace } from "@/features/leads/sales-workspace";
 
 export default function FollowUpsPage() {
-  return <LeadDesk officerMode followUpsOnly />;
+  return <SalesWorkspace followUpsOnly />;
 }

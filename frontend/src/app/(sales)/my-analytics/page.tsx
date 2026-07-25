@@ -1,5 +1,5 @@
-import { AnalyticsPage } from "@/features/analytics/analytics-page";
+import { SalesAnalyticsPage } from "@/features/analytics/sales-analytics-page";
 
 export default function MyAnalyticsPage() {
-  return <AnalyticsPage personal />;
+  return <SalesAnalyticsPage />;
 }

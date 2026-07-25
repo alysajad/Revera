@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -13,8 +13,8 @@ from rest_framework.response import Response
 from accounts.models import User
 from accounts.permissions import IsAdmin
 from notifications.models import Notification
-from .models import CallLog, FollowUp, Lead, LeadAudit
-from .serializers import AssignmentSerializer, FollowUpSerializer, LeadSerializer, LeadUpdateSerializer
+from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification
+from .serializers import AssignmentSerializer, FollowUpSerializer, LeadDetailSerializer, LeadSerializer, LeadUpdateSerializer, SOLeadUpdateSerializer
 
 FORWARD_TRANSITIONS = {
     Lead.Status.FRESH: {Lead.Status.RNR, Lead.Status.CALLBACK, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED},
@@ -48,6 +48,7 @@ def apply_lead_filters(queryset, filters):
 
 class LeadViewSet(viewsets.ModelViewSet):
     serializer_class = LeadSerializer
+
     def get_queryset(self):
         queryset = Lead.objects.filter(deleted_at__isnull=True).select_related("assigned_so")
         if not self.request.user.is_admin:
@@ -58,12 +59,97 @@ class LeadViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(assigned_so=value)
         queryset = apply_lead_filters(queryset, self.request.query_params)
         ordering = self.request.query_params.get("ordering", "-created_at")
-        return queryset.order_by(ordering if ordering.lstrip("-") in {"created_at", "enquiry_date", "status"} else "-created_at")
+        return queryset.prefetch_related(Prefetch("follow_ups", queryset=FollowUp.objects.filter(resolved_at__isnull=True).order_by("scheduled_for"), to_attr="_open_followups")).order_by(ordering if ordering.lstrip("-") in {"created_at", "enquiry_date", "status"} else "-created_at")
+
+    def retrieve(self, request, *args, **kwargs):
+        return Response(LeadDetailSerializer(self.get_object()).data)
 
     def get_permissions(self):
         if self.action in {"assign", "bulk_assign", "auto_assign", "reopen", "create", "destroy"}:
             return [IsAdmin()]
         return super().get_permissions()
+
+    @action(detail=False, methods=["get"], url_path="my-dashboard")
+    def my_dashboard(self, request):
+        today = timezone.localdate()
+        queryset = Lead.objects.filter(assigned_so=request.user, deleted_at__isnull=True).select_related("assigned_so").prefetch_related(Prefetch("follow_ups", queryset=FollowUp.objects.filter(resolved_at__isnull=True).order_by("scheduled_for"), to_attr="_open_followups"))
+        date_range = request.query_params.get("range", "all")
+        if date_range == "today":
+            queryset = queryset.filter(enquiry_date=today)
+        elif date_range == "mtd":
+            queryset = queryset.filter(enquiry_date__year=today.year, enquiry_date__month=today.month)
+        elif request.query_params.get("date_from") or request.query_params.get("date_to"):
+            if request.query_params.get("date_from"):
+                queryset = queryset.filter(enquiry_date__gte=parse_date(request.query_params["date_from"]))
+            if request.query_params.get("date_to"):
+                queryset = queryset.filter(enquiry_date__lte=parse_date(request.query_params["date_to"]))
+
+        summary = {
+            "total": queryset.count(),
+            "fresh": queryset.filter(status=Lead.Status.FRESH).count(),
+            "followups": queryset.filter(follow_ups__resolved_at__isnull=True, follow_ups__scheduled_for__date=today).distinct().count(),
+            "pending": queryset.filter(status__in=[Lead.Status.RNR, Lead.Status.CALLBACK]).count(),
+            "qualified": queryset.filter(status=Lead.Status.QUALIFIED).count(),
+            "walkin": queryset.filter(status=Lead.Status.WALKIN).count(),
+            "won": queryset.filter(status=Lead.Status.WON).count(),
+            "lost": queryset.filter(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED]).count(),
+            "won_lost": queryset.filter(status__in=[Lead.Status.WON, Lead.Status.LOST, Lead.Status.UNQUALIFIED]).count(),
+            "untouched": queryset.filter(status=Lead.Status.FRESH).count(),
+            "called": queryset.exclude(status=Lead.Status.FRESH).count(),
+            "scheduled": queryset.filter(follow_ups__resolved_at__isnull=True).distinct().count(),
+        }
+        section = request.query_params.get("section", "fresh")
+        section_filters = {
+            "fresh": Q(status=Lead.Status.FRESH),
+            "followups": Q(follow_ups__resolved_at__isnull=True, follow_ups__scheduled_for__date=today),
+            "pending": Q(status__in=[Lead.Status.RNR, Lead.Status.CALLBACK]),
+            "qualified": Q(status=Lead.Status.QUALIFIED),
+            "walkin": Q(status=Lead.Status.WALKIN),
+            "won_lost": Q(status__in=[Lead.Status.WON, Lead.Status.LOST, Lead.Status.UNQUALIFIED]),
+        }
+        if section in section_filters:
+            queryset = queryset.filter(section_filters[section])
+        if value := request.query_params.get("category"):
+            queryset = queryset.filter(category=value.upper())
+        if value := request.query_params.get("source"):
+            queryset = queryset.filter(source=value.upper())
+        if value := request.query_params.get("q"):
+            queryset = queryset.filter(Q(name__icontains=value) | Q(phone__icontains=value) | Q(campaign__icontains=value) | Q(model_interest__icontains=value) | Q(branch__icontains=value))
+        leads = queryset.distinct().order_by("-enquiry_date", "-created_at")
+        return Response({"summary": summary, "section": section, "results": LeadSerializer(leads, many=True).data})
+
+    @action(detail=True, methods=["patch"], url_path="so-update")
+    def so_update(self, request, pk=None):
+        lead = self.get_object()
+        if lead.assigned_so_id != request.user.id:
+            return Response({"detail": "This lead is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = SOLeadUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        sales_status = {Lead.SalesOutcome.BOOKED: Lead.Status.WALKIN, Lead.SalesOutcome.RETAILED: Lead.Status.WON, Lead.SalesOutcome.LOST: Lead.Status.LOST}
+        next_status = data.get("status") or sales_status.get(data.get("sales_outcome"), lead.status)
+        if next_status != lead.status and next_status not in FORWARD_TRANSITIONS.get(lead.status, set()):
+            return Response({"detail": "This status transition is not allowed."}, status=status.HTTP_400_BAD_REQUEST)
+        before = {"status": lead.status, "category": lead.category, "sales_outcome": lead.sales_outcome}
+        with transaction.atomic():
+            lead.status = next_status
+            for field in ("category", "sales_outcome", "branch"):
+                if field in data:
+                    setattr(lead, field, data[field])
+            lead.save(update_fields=["status", "category", "sales_outcome", "branch", "updated_at"])
+            if qualification := data.get("qualification"):
+                record, _ = LeadQualification.objects.get_or_create(lead=lead)
+                for field, value in qualification.items():
+                    setattr(record, field, value)
+                record.updated_by = request.user
+                record.save()
+            if any(field in data for field in ("status", "sales_outcome", "remarks", "call_outcome", "follow_up_at")):
+                FollowUp.objects.filter(lead=lead, resolved_at__isnull=True).update(resolved_at=timezone.now())
+                CallLog.objects.create(lead=lead, so=request.user, status=next_status, outcome=data.get("call_outcome", ""), remarks=data.get("remarks", ""))
+                if follow_up_at := data.get("follow_up_at"):
+                    FollowUp.objects.create(lead=lead, so=request.user, scheduled_for=follow_up_at)
+            LeadAudit.objects.create(lead=lead, actor=request.user, event="so_updated", before=before, after={"status": lead.status, "category": lead.category, "sales_outcome": lead.sales_outcome})
+        return Response(LeadDetailSerializer(self.get_object()).data)
 
     @action(detail=True, methods=["post"])
     def assign(self, request, pk=None):
@@ -138,7 +224,7 @@ class LeadViewSet(viewsets.ModelViewSet):
             previous = lead.status
             lead.status = next_status
             lead.save(update_fields=["status", "updated_at"])
-            CallLog.objects.create(lead=lead, so=request.user, status=next_status, remarks=serializer.validated_data.get("remarks", ""))
+            CallLog.objects.create(lead=lead, so=request.user, status=next_status, outcome=serializer.validated_data.get("call_outcome", ""), remarks=serializer.validated_data.get("remarks", ""))
             FollowUp.objects.filter(lead=lead, resolved_at__isnull=True).update(resolved_at=timezone.now())
             if follow_up_at := serializer.validated_data.get("follow_up_at"):
                 FollowUp.objects.create(lead=lead, so=lead.assigned_so or request.user, scheduled_for=follow_up_at)

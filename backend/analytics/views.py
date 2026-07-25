@@ -1,4 +1,8 @@
+import csv
+
 from django.db.models import Count, Q
+from django.db.models.functions import TruncMonth
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -36,4 +40,39 @@ class AdminAnalyticsView(APIView):
 
 class MyAnalyticsView(APIView):
     def get(self, request):
-        return Response(metrics(Lead.objects.filter(assigned_so=request.user, deleted_at__isnull=True)))
+        queryset = Lead.objects.filter(assigned_so=request.user, deleted_at__isnull=True)
+        date_range = request.query_params.get("range", "mtd")
+        today = timezone.localdate()
+        if date_range == "today":
+            queryset = queryset.filter(enquiry_date=today)
+        elif date_range == "mtd":
+            queryset = queryset.filter(enquiry_date__year=today.year, enquiry_date__month=today.month)
+        elif request.query_params.get("date_from"):
+            queryset = queryset.filter(enquiry_date__gte=request.query_params["date_from"])
+            if request.query_params.get("date_to"):
+                queryset = queryset.filter(enquiry_date__lte=request.query_params["date_to"])
+        summary = queryset.aggregate(
+            total=Count("id"),
+            qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)),
+            booked=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.BOOKED)),
+            lost=Count("id", filter=Q(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED])),
+            retailed=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.RETAILED)),
+        )
+        summary["assigned"] = summary["total"]
+        summary["conversion_rate"] = round((summary["retailed"] / summary["total"]) * 100, 1) if summary["total"] else 0
+        status_counts = list(queryset.values("status").annotate(count=Count("id")).order_by("status"))
+        source = list(queryset.values("source").annotate(total=Count("id"), qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)), booked=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.BOOKED)), retailed=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.RETAILED))).order_by("-total"))
+        models = list(queryset.values("model_interest").annotate(total=Count("id"), qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)), booked=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.BOOKED))).order_by("-total"))
+        monthly = list(queryset.annotate(month=TruncMonth("enquiry_date")).values("month").annotate(total=Count("id"), qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)), booked=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.BOOKED)), retailed=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.RETAILED))).order_by("month"))
+        return Response({"range": date_range, "summary": summary, "status_counts": status_counts, "source": source, "models": models, "monthly": monthly, "generated_at": timezone.now()})
+
+
+class MyAnalyticsExportView(APIView):
+    def get(self, request):
+        queryset = Lead.objects.filter(assigned_so=request.user, deleted_at__isnull=True).order_by("-enquiry_date")
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="revera-my-analytics.csv"'
+        writer = csv.writer(response)
+        writer.writerow(["Lead", "Phone", "Source", "Model", "Status", "Sales outcome", "Enquiry date", "Branch"])
+        writer.writerows(queryset.values_list("name", "phone", "source", "model_interest", "status", "sales_outcome", "enquiry_date", "branch"))
+        return response

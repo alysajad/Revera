@@ -1,0 +1,93 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { getLeadDetail, getMyDashboard, updateMyLead, type Lead, type LeadDetail, type LeadQualification, type SalesDashboard } from "@/lib/crm";
+
+type Section = "fresh" | "followups" | "pending" | "qualified" | "walkin" | "won_lost";
+type Draft = { status: string; category: string; sales_outcome: string; call_outcome: string; remarks: string; follow_up_at: string; qualification: LeadQualification };
+
+const sections: { key: Section; label: string; count: keyof SalesDashboard["summary"]; icon: string }[] = [
+  { key: "fresh", label: "Fresh leads", count: "fresh", icon: "✦" },
+  { key: "followups", label: "Today's follow-ups", count: "followups", icon: "◷" },
+  { key: "pending", label: "Pending leads", count: "pending", icon: "!" },
+  { key: "qualified", label: "Qualified leads", count: "qualified", icon: "◎" },
+  { key: "walkin", label: "Walk-in leads", count: "walkin", icon: "↗" },
+  { key: "won_lost", label: "Won / lost", count: "won_lost", icon: "◇" },
+];
+const statusOptions: Record<string, string[]> = {
+  FRESH: ["RNR", "CALLBACK", "QUALIFIED", "UNQUALIFIED"],
+  RNR: ["CALLBACK", "QUALIFIED", "UNQUALIFIED"],
+  CALLBACK: ["RNR", "QUALIFIED", "WALKIN", "UNQUALIFIED"],
+  QUALIFIED: ["WALKIN", "WON", "LOST"],
+  WALKIN: ["WON", "LOST"],
+};
+const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", CALLBACK: "Callback", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
+const outcomeLabels: Record<string, string> = { CONNECTED: "Connected", NO_RESPONSE: "No response", CALLBACK: "Callback", QUALIFIED: "Qualified", WRONG_NUMBER: "Wrong number" };
+const emptyQualification = (): LeadQualification => ({ variant: "", buying_timeline: "", finance_type: "", trade_in: null, test_drive: "", notes: "" });
+
+function formatFollowUp(value: string | null) {
+  return value ? new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "Not scheduled";
+}
+
+function inputDate(value: string | null) {
+  return value ? new Date(value).toISOString().slice(0, 16) : "";
+}
+
+function draftFor(lead: LeadDetail): Draft {
+  return { status: lead.statusCode, category: lead.category || "WARM", sales_outcome: lead.salesOutcome || "PENDING", call_outcome: "", remarks: "", follow_up_at: inputDate(lead.nextFollowUp), qualification: lead.qualification || emptyQualification() };
+}
+
+export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: boolean }) {
+  const [section, setSection] = useState<Section>(followUpsOnly ? "followups" : "fresh");
+  const [range, setRange] = useState("all");
+  const [category, setCategory] = useState("");
+  const [source, setSource] = useState("");
+  const [query, setQuery] = useState("");
+  const [dashboard, setDashboard] = useState<SalesDashboard | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [detail, setDetail] = useState<LeadDetail | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  const loadDashboard = useCallback(async () => {
+    setLoading(true); setError("");
+    try { setDashboard(await getMyDashboard({ section, range, ...(category ? { category } : {}), ...(source ? { source } : {}), ...(query ? { q: query } : {}) })); }
+    catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to load your leads."); }
+    finally { setLoading(false); }
+  }, [category, query, range, section, source]);
+
+  useEffect(() => { const timer = window.setTimeout(() => void loadDashboard(), query ? 250 : 0); return () => window.clearTimeout(timer); }, [loadDashboard, query]);
+
+  const openLead = async (lead: Lead) => {
+    setDetailLoading(true); setError("");
+    try { const fullLead = await getLeadDetail(lead.id); setDetail(fullLead); setDraft(draftFor(fullLead)); }
+    catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to open this lead."); }
+    finally { setDetailLoading(false); }
+  };
+
+  const save = async () => {
+    if (!detail || !draft || saving) return;
+    setSaving(true); setError("");
+    try {
+      const updated = await updateMyLead(detail.id, { ...draft, follow_up_at: draft.follow_up_at ? new Date(draft.follow_up_at).toISOString() : null });
+      setDetail(updated); setDraft(draftFor(updated)); setNotice("Lead updated and follow-up history saved."); await loadDashboard();
+    } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Lead update could not be saved."); }
+    finally { setSaving(false); }
+  };
+
+  const summary = dashboard?.summary;
+  const currentStatusOptions = useMemo(() => draft ? statusOptions[draft.status] || [] : [], [draft]);
+
+  return <section className="page sales-workspace">
+    <div className="sales-hero"><div><p className="eyebrow">MY WORKSPACE</p><h1>Every lead deserves a <span>next move.</span></h1><p className="subtext">Your assigned pipeline, follow-ups, and conversion progress in one place.</p></div><div className="sales-hero-actions"><button className="filter" onClick={() => void loadDashboard()}>↻ Refresh</button><a className="button primary" href="/my-analytics">View analytics →</a></div></div>
+    <section className="sales-metrics">{[{label:"Fresh leads", value:summary?.fresh ?? 0, tone:"blue"}, {label:"Today’s follow-ups", value:summary?.followups ?? 0, tone:"yellow"}, {label:"Pending leads", value:summary?.pending ?? 0, tone:"orange"}, {label:"Qualified leads", value:summary?.qualified ?? 0, tone:"green"}, {label:"Won leads", value:summary?.won ?? 0, tone:"mint"}, {label:"Lost leads", value:summary?.lost ?? 0, tone:"red"}].map(metric => <article className={`sales-metric ${metric.tone}`} key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><small>Assigned to you</small></article>)}</section>
+    <nav className="sales-tabs" aria-label="Lead status views">{sections.map(item => <button key={item.key} className={section === item.key ? "active" : ""} onClick={() => setSection(item.key)}><i>{item.icon}</i><span>{item.label}</span><b>{summary?.[item.count] ?? 0}</b></button>)}</nav>
+    <section className="panel sales-table-panel"><header className="sales-table-heading"><div><p className="eyebrow">{sections.find(item => item.key === section)?.label.toUpperCase()}</p><h2>{loading ? "Loading your pipeline…" : `${dashboard?.results.length ?? 0} leads in this view`}</h2></div><div className="sales-filters"><select aria-label="Date range" value={range} onChange={event => setRange(event.target.value)}><option value="all">All time</option><option value="today">Today</option><option value="mtd">Month to date</option></select><select aria-label="Lead category" value={category} onChange={event => setCategory(event.target.value)}><option value="">All categories</option><option value="HOT">Hot</option><option value="WARM">Warm</option><option value="COLD">Cold</option></select><select aria-label="Lead source" value={source} onChange={event => setSource(event.target.value)}><option value="">All sources</option><option value="META">Meta Ads</option><option value="WEBSITE">Website</option><option value="CARWALE">CarWale</option><option value="CAMPAIGN">Campaign</option><option value="OTHER">Other</option></select><label className="sales-search">⌕<input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search name, phone, model" /></label></div></header><div className="sales-subfilters">{section === "fresh" ? <><button className="selected">✦ Untouched <b>{summary?.untouched ?? 0}</b></button><button>☎ Called <b>{summary?.called ?? 0}</b></button><button>◷ Follow-up <b>{summary?.scheduled ?? 0}</b></button></> : section === "pending" ? <><span>Lead category</span><button className={!category ? "selected" : ""} onClick={() => setCategory("")}>All</button><button className={category === "HOT" ? "selected hot" : "hot"} onClick={() => setCategory("HOT")}>Hot</button><button className={category === "WARM" ? "selected warm" : "warm"} onClick={() => setCategory("WARM")}>Warm</button><button className={category === "COLD" ? "selected cold" : "cold"} onClick={() => setCategory("COLD")}>Cold</button></> : <span>{summary?.total ?? 0} assigned leads in your workspace</span>}</div><div className="sales-table-scroll"><table className="sales-table"><thead><tr><th>Action</th><th>Status</th><th>Customer</th><th>Mobile</th><th>Date</th><th>Next follow-up</th><th>Source</th><th>Model</th><th>Campaign</th><th>Branch</th></tr></thead><tbody>{loading ? <tr><td colSpan={10} className="sales-empty">Loading…</td></tr> : dashboard?.results.length ? dashboard.results.map(lead => <tr key={lead.id} onClick={() => void openLead(lead)}><td><button className="sales-row-action" onClick={event => { event.stopPropagation(); void openLead(lead); }}>↗ Open</button></td><td><span className={`sales-status ${lead.statusCode.toLowerCase()}`}>{lead.status}</span></td><td><b>{lead.name}</b><small>#{String(lead.id).padStart(6, "0")}</small></td><td>{lead.phone}</td><td>{lead.enquiredAt}</td><td>{formatFollowUp(lead.nextFollowUp)}</td><td>{lead.source}</td><td>{lead.model}</td><td>{lead.campaign || "—"}</td><td>{lead.branch || "—"}</td></tr>) : <tr><td colSpan={10} className="sales-empty"><strong>No leads in this view.</strong><span>New assignments and follow-ups will appear here automatically.</span></td></tr>}</tbody></table></div></section>
+    {notice && <div className="toast" role="status">{notice}<button aria-label="Dismiss" onClick={() => setNotice("")}>×</button></div>}
+    {detailLoading && <div className="modal-layer"><section className="modal sales-loading-modal"><span className="sales-spinner" /><p>Opening lead history…</p></section></div>}
+    {detail && draft && <div className="modal-layer" role="presentation"><section className="modal sales-detail-modal" role="dialog" aria-modal="true" aria-labelledby="sales-detail-title"><header className="sales-detail-header"><div><p className="eyebrow">LEAD DETAIL · #{String(detail.id).padStart(6, "0")}</p><h2 id="sales-detail-title">Update {detail.name}</h2><p className="subtext">Customer information, qualification, and call history.</p></div><button className="modal-close" onClick={() => setDetail(null)} aria-label="Close">×</button></header><div className="sales-detail-scroll"><section className="sales-info-card"><h3>Customer information <button className="row-action">Edit fields</button></h3><div className="sales-info-grid"><span><small>Name</small><b>{detail.name}</b></span><span><small>Phone</small><b>{detail.phone}</b></span><span><small>Source</small><b>{detail.source}</b></span><span><small>Enquiry date</small><b>{detail.enquiredAt}</b></span><span><small>Campaign</small><b>{detail.campaign || "—"}</b></span><span><small>Branch</small><b>{detail.branch || "—"}</b></span></div><div className="sales-detail-meta"><span>Category <b className={`category-pill ${draft.category.toLowerCase()}`}>{draft.category}</b></span><span>Next follow-up <b>{formatFollowUp(detail.nextFollowUp)}</b></span></div></section><section className="sales-form-card"><h3>Lead progress</h3><div className="sales-stepper">{["F1", "F2", "F3", "F4", "F5"].map((step, index) => <span className={index === 0 ? "current" : index < Math.min(detail.callCount, 4) ? "done" : "locked"} key={step}>{index < Math.min(detail.callCount, 4) ? "✓" : index === 0 ? "○" : "▣"} {step}</span>)}</div><div className="sales-form-grid"><label>Current follow-up date<input type="datetime-local" value={draft.follow_up_at} onChange={event => setDraft({ ...draft, follow_up_at: event.target.value })} /></label><label>Call outcome<select value={draft.call_outcome} onChange={event => setDraft({ ...draft, call_outcome: event.target.value })}><option value="">Select outcome</option>{Object.entries(outcomeLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div><label className="sales-full-label">Remarks<textarea value={draft.remarks} onChange={event => setDraft({ ...draft, remarks: event.target.value })} placeholder="Add call remarks for the next person who opens this lead." /></label><h4>Lead status</h4><div className="sales-choice-row">{currentStatusOptions.map(status => <button type="button" className={draft.status === status ? "chosen" : ""} onClick={() => setDraft({ ...draft, status })} key={status}>{statusLabels[status]}</button>)}</div><h4>Sales outcome</h4><div className="sales-choice-row sales-outcomes">{[["BOOKED", "Booked"], ["RETAILED", "Retailed"], ["LOST", "Lost"], ["PENDING", "Pending"]].map(([value, label]) => <button type="button" className={draft.sales_outcome === value ? "chosen" : ""} onClick={() => setDraft({ ...draft, sales_outcome: value })} key={value}>{label}</button>)}</div></section><section className="sales-form-card"><h3>Qualification details</h3><div className="sales-form-grid"><label>Variant<input value={draft.qualification.variant} onChange={event => setDraft({ ...draft, qualification: { ...draft.qualification, variant: event.target.value } })} placeholder="Variant / trim" /></label><label>Buying timeline<select value={draft.qualification.buying_timeline} onChange={event => setDraft({ ...draft, qualification: { ...draft.qualification, buying_timeline: event.target.value } })}><option value="">Select timeline</option><option>Immediate</option><option>1–2 months</option><option>3–6 months</option><option>Just exploring</option></select></label><label>Finance<select value={draft.qualification.finance_type} onChange={event => setDraft({ ...draft, qualification: { ...draft.qualification, finance_type: event.target.value } })}><option value="">Select finance</option><option>In-house</option><option>Bank finance</option><option>Self funded</option></select></label><label>Trade-in<select value={draft.qualification.trade_in === null ? "" : String(draft.qualification.trade_in)} onChange={event => setDraft({ ...draft, qualification: { ...draft.qualification, trade_in: event.target.value === "" ? null : event.target.value === "true" } })}><option value="">Not discussed</option><option value="true">Yes</option><option value="false">No</option></select></label><label>Test drive<select value={draft.qualification.test_drive} onChange={event => setDraft({ ...draft, qualification: { ...draft.qualification, test_drive: event.target.value } })}><option value="">Not discussed</option><option>Requested</option><option>Completed</option><option>Not interested</option></select></label></div><label className="sales-full-label">Qualification notes<textarea value={draft.qualification.notes} onChange={event => setDraft({ ...draft, qualification: { ...draft.qualification, notes: event.target.value } })} /></label></section><section className="sales-history"><h3>History</h3>{detail.callHistory.length ? detail.callHistory.map(call => <div className="sales-history-row" key={`call-${call.id}`}><span className="history-dot" /><div><b>{call.outcome || statusLabels[call.status] || call.status}</b><small>{call.remarks || "No remarks"} · {call.so_name || "You"}</small></div><time>{formatFollowUp(call.created_at)}</time></div>) : <p className="subtext">No calls recorded yet.</p>}{detail.followUpHistory.length ? detail.followUpHistory.map(followUp => <div className="sales-history-row" key={`follow-${followUp.id}`}><span className="history-dot follow" /><div><b>Follow-up {followUp.resolved_at ? "completed" : "scheduled"}</b><small>{formatFollowUp(followUp.scheduled_for)}</small></div><time>{followUp.resolved_at ? "Resolved" : "Open"}</time></div>) : null}</section></div><footer className="sales-detail-footer"><button className="filter" onClick={() => setDetail(null)}>Close</button><button className="button primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save follow-up"}</button></footer></section></div>}
+  </section>;
+}
