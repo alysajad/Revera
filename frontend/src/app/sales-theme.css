@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap");
 
 .sales-shell {
   --sales-background: #f7faf9;
@@ -145,3 +145,42 @@
   .sales-hero-banner { padding: 30px; }
   .sales-hero-art { opacity: .3; right: -70px; }
 }
+
+/* SO readability pass: Montserrat throughout, with a calmer but larger working scale. */
+.sales-shell,
+.sales-shell * {
+  font-family: "Montserrat", Arial, sans-serif !important;
+}
+
+.sales-shell { font-size: 15px; }
+.sales-shell .workspace-label { font-size: 12px; letter-spacing: .12em; }
+.sales-shell .nav-link { font-size: 14px; }
+.sales-shell .nav-link b { font-size: 14px; }
+.sales-shell .topbar > div > b { font-size: 20px; }
+.sales-shell .topbar > div > small { font-size: 12px; }
+.sales-shell .sales-hero h1 { font-size: 42px; letter-spacing: -1.2px; }
+.sales-shell .sales-hero .eyebrow,
+.sales-shell .sales-table-heading .eyebrow,
+.sales-shell .sales-chart-card .eyebrow { font-size: 12px; letter-spacing: .12em; }
+.sales-shell .sales-hero .subtext { font-size: 18px; }
+.sales-hero-banner .eyebrow { font-size: 12px; letter-spacing: .12em; }
+.sales-hero-banner h2 { font-size: 32px; }
+.sales-hero-banner p:not(.eyebrow) { font-size: 18px; }
+.sales-hero-banner button { font-size: 13px; }
+.sales-shell .sales-metric span { font-size: 14px; letter-spacing: .04em; }
+.sales-shell .sales-metric strong { font-size: 38px; }
+.sales-shell .sales-metric small { font-size: 12px; }
+.sales-shell .sales-tabs button { font-size: 14px; }
+.sales-shell .sales-tabs b { font-size: 13px; }
+.sales-shell .sales-filters select,
+.sales-shell .sales-search,
+.sales-shell .sales-search input { font-size: 13px; }
+.sales-shell .sales-subfilters,
+.sales-shell .sales-subfilters button { font-size: 13px; }
+.sales-shell .sales-table th { font-size: 12px; }
+.sales-shell .sales-table td { font-size: 13px; }
+.sales-shell .sales-table td b { font-size: 15px; }
+.sales-shell .sales-table td small { font-size: 11px; }
+.sales-shell .sales-row-action { font-size: 12px; }
+.sales-shell .sales-status { font-size: 12px; }
+.sales-shell .sales-chart-card h2 { font-size: 23px; }
