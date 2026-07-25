@@ -138,6 +138,12 @@ class LeadAccessTests(TestCase):
         self.assertEqual(self.first_lead.phone, "7305198422")
         self.assertEqual(self.first_lead.source, Lead.Source.WEBSITE)
         self.assertEqual(self.first_lead.branch, "Central")
+        self.client.force_authenticate(self.admin)
+        admin_view = self.client.get(f"/api/leads/?assigned_so={self.first_so.id}")
+        self.assertEqual(admin_view.status_code, 200)
+        self.assertEqual(admin_view.data["results"][0]["name"], "Aarav Updated")
+        self.assertEqual(admin_view.data["results"][0]["branch"], "Central")
+        self.client.force_authenticate(self.first_so)
         response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"enquiry_date": (timezone.localdate() + timedelta(days=1)).isoformat()}, format="json")
         self.assertEqual(response.status_code, 400)
 
