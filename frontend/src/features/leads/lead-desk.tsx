@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { assignLead, autoAssignLeads, commitUpload, createLead, getAdminAnalytics, getLeads, getOfficers, getUpload, logCall, resolveUploadDuplicates, sourceClass, toLead, toOfficer, type Lead, type LeadInput, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
+import { assignFilteredLeads, assignLead, autoAssignLeads, commitUpload, createLead, getAdminAnalytics, getLeads, getOfficers, getUpload, logCall, resolveUploadDuplicates, sourceClass, toLead, toOfficer, type Lead, type LeadFilters, type LeadInput, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
 import { formatDate, parseDate, parseDateTime } from "@/lib/dates";
 
 const nextOutcomes: Record<string, { label: string; value: string }[]> = {
@@ -15,6 +15,7 @@ const nextOutcomes: Record<string, { label: string; value: string }[]> = {
 const sources = [["META", "Meta Ads"], ["WEBSITE", "Website"], ["CARWALE", "CarWale"], ["WALKIN", "Walk-in"], ["CAMPAIGN", "Campaign"], ["OTHER", "Other"], ["UNKNOWN", "Unknown"]];
 const models = ["R6 GT", "R7 City", "R8 Lite", "R8 Pro", "R9 Plus"];
 const emptyLead = (): LeadInput => ({ name: "", phone: "", email: "", source: "OTHER", source_label: "", campaign: "", model_interest: "", city: "", enquiry_date: formatDate(new Date()) });
+const filterQuery = (filters: LeadFilters) => Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value as string)}`).join("&");
 
 export function LeadDesk({ officerMode = false, followUpsOnly = false }: { officerMode?: boolean; followUpsOnly?: boolean }) {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -34,11 +35,15 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const [draggedOfficerId, setDraggedOfficerId] = useState<number | null>(null);
   const [dropTargetId, setDropTargetId] = useState<number | null>(null);
   const [upload, setUpload] = useState<UploadBatch | null>(null);
+  const [filters, setFilters] = useState<LeadFilters>({});
+  const [activeFilters, setActiveFilters] = useState<LeadFilters>({});
+  const [bulkOfficerId, setBulkOfficerId] = useState("");
+  const [bulkAssigning, setBulkAssigning] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const leadQuery = officerMode ? (followUpsOnly ? "?status=CALLBACK" : "") : "?unassigned=true";
+      const leadQuery = officerMode ? (followUpsOnly ? "?status=CALLBACK" : "") : `?unassigned=true${filterQuery(activeFilters) ? `&${filterQuery(activeFilters)}` : ""}`;
       if (officerMode) setLeads(await getLeads(leadQuery));
       else {
         const [pool, officerRecords, analytics] = await Promise.all([getLeads(leadQuery), getOfficers(), getAdminAnalytics()]);
@@ -47,7 +52,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
       }
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to load CRM data."); }
     finally { setLoading(false); }
-  }, [followUpsOnly, officerMode]);
+  }, [activeFilters, followUpsOnly, officerMode]);
 
   useEffect(() => { const timer = window.setTimeout(() => void refresh(), 0); return () => window.clearTimeout(timer); }, [refresh]);
   useEffect(() => {
@@ -73,6 +78,16 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const autoAssign = async () => {
     try { const result = await autoAssignLeads(); setNotice(`${result.assigned} leads assigned.`); await refresh(); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Auto-assignment failed."); }
+  };
+
+  const bulkAssign = async () => {
+    const officer = officers.find(item => item.id === Number(bulkOfficerId));
+    if (!officer || !leads.length || bulkAssigning) return;
+    if (!window.confirm(`Assign all leads matching these filters to ${officer.name}?`)) return;
+    setBulkAssigning(true); setError("");
+    try { const result = await assignFilteredLeads(officer.id, activeFilters); setNotice(`${result.assigned} leads assigned to ${officer.name}.`); setBulkOfficerId(""); await refresh(); }
+    catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Bulk assignment failed."); }
+    finally { setBulkAssigning(false); }
   };
 
   const saveCall = async () => {
@@ -129,6 +144,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   return <section className="page">
     <div className="page-heading compact"><div><p className="eyebrow">{heading.toUpperCase()}</p><h1>{officerMode ? <>Keep the <span>promise.</span></> : <>Move leads to the <span>right rider.</span></>}</h1><p className="subtext">{officerMode ? "Your assigned conversations and follow-ups." : "Upload leads, then hand them to an active sales officer."}</p></div>{!officerMode && <button className="button primary" onClick={autoAssign} disabled={!leads.length}>↻ Auto assign {leads.length} leads</button>}</div>
     <section className="lead-toolbar"><label className="search"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search name or phone" /></label>{!officerMode && <><button className="button primary" onClick={() => { setError(""); setAddingLead(true); }}>＋ Add lead</button><label className="button filter">Upload Excel<input hidden type="file" accept=".xlsx,.csv" onChange={event => void selectFile(event.target.files?.[0])} /></label></>}<button className="filter" onClick={() => void refresh()}>Refresh</button></section>
+    {!officerMode && <section className="panel lead-filters"><div className="lead-filters-grid"><label>Source<select value={filters.source || ""} onChange={event => setFilters(current => ({ ...current, source: event.target.value || undefined }))}><option value="">All sources</option>{sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Model<input value={filters.model || ""} onChange={event => setFilters(current => ({ ...current, model: event.target.value || undefined }))} placeholder="Any model" /></label><label>City<input value={filters.city || ""} onChange={event => setFilters(current => ({ ...current, city: event.target.value || undefined }))} placeholder="Any city" /></label><label>Source detail<input value={filters.source_label || ""} onChange={event => setFilters(current => ({ ...current, source_label: event.target.value || undefined }))} placeholder="Google, OEM, or campaign" /></label><label>From<input type="date" value={filters.date_from || ""} onChange={event => setFilters(current => ({ ...current, date_from: event.target.value || undefined }))} /></label><label>To<input type="date" value={filters.date_to || ""} onChange={event => setFilters(current => ({ ...current, date_to: event.target.value || undefined }))} /></label></div><footer className="lead-filters-actions"><span>{Object.values(activeFilters).filter(Boolean).length ? "Filtered unassigned leads" : "All unassigned leads"}</span><div><button className="filter" onClick={() => { setFilters({}); setActiveFilters({}); }}>Clear</button><button className="filter" onClick={() => setActiveFilters({ ...filters })}>Apply filters</button><select className="filter" aria-label="Assign filtered leads to" value={bulkOfficerId} onChange={event => setBulkOfficerId(event.target.value)}><option value="">Assign to…</option>{officers.map(officer => <option key={officer.id} value={officer.id}>{officer.name}</option>)}</select><button className="button primary" onClick={() => void bulkAssign()} disabled={!bulkOfficerId || !leads.length || bulkAssigning}>{bulkAssigning ? "Assigning…" : "Assign matching leads"}</button></div></footer></section>}
     {upload && <section className="panel" style={{ padding: "1rem", marginBottom: "1rem" }}><b>Import: {upload.status}</b><span> · {importableRows}/{upload.total_rows} rows ready to import</span>{upload.duplicates_found > 0 && <span> · {upload.duplicates_found} duplicates need review</span>}<div style={{ display: "inline-flex", gap: ".5rem", marginLeft: "1rem" }}><button className="filter" onClick={() => void checkUpload()}>Check import</button>{upload.status === "READY" && !duplicateRows.length && upload.duplicates_found === 0 && <button className="button primary" onClick={() => void importUpload()}>Import leads</button>}</div>{duplicateRows.length > 0 && <div style={{ marginTop: "1rem" }}><p className="subtext">Duplicates already exist in the CRM. Remove them from this import to keep the existing lead.</p><button className="filter" onClick={() => void removeDuplicates(duplicateRows.map(row => row.id))}>Remove all duplicates</button><div style={{ display: "grid", gap: ".5rem", marginTop: ".75rem" }}>{duplicateRows.map(row => <div key={row.id} className="lead-summary"><b>Row {row.row_number} · {row.data.name || "Unnamed lead"}</b><span>Matches {row.existing_name || "existing lead"}</span><small>{row.normalized_phone} · Current status: {row.existing_status}</small><button className="row-action" onClick={() => void removeDuplicates([row.id])}>Remove duplicate</button></div>)}</div></div>}{upload.error_message && <p className="subtext">{upload.error_message}</p>}</section>}
     {error && <div className="empty-state">{error}</div>}
     <section className={officerMode ? "lead-layout one-column" : "lead-layout"}>

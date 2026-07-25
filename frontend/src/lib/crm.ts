@@ -13,6 +13,7 @@ export type Lead = {
   status: string; assignedSoId: number | null; assignedSoName: string;
 };
 export type LeadInput = { name: string; phone: string; email?: string; source: string; source_label?: string; campaign?: string; model_interest?: string; city?: string; enquiry_date?: string };
+export type LeadFilters = { source?: string; model?: string; city?: string; source_label?: string; date_from?: string; date_to?: string };
 export type Officer = { id: number; name: string; initials: string; color: "blue" | "green" | "violet" | "orange"; assigned: number; calls: number; qualified: number; won: number };
 export type Metrics = { total_assigned: number; total_called: number; qualified: number; walkins: number; won: number; lost: number; conversion_rate: number };
 export type Analytics = { summary: Metrics; source: { source: string; total: number; qualified: number; won: number }[]; officers: (Metrics & { id: number; name: string })[] };
@@ -57,6 +58,7 @@ export async function getOfficers() { const data = await api<Paginated<ApiOffice
 export const getAdminAnalytics = () => api<Analytics>("/api/analytics/admin/");
 export const getMyAnalytics = () => api<Metrics>("/api/analytics/me/");
 export const assignLead = (leadId: number, officerId: number) => api<Lead>(`/api/leads/${leadId}/assign/`, { method: "POST", body: JSON.stringify({ sales_officer_id: officerId }) });
+export const assignFilteredLeads = (officerId: number, filters: LeadFilters) => api<{ assigned: number }>("/api/leads/bulk-assign/", { method: "POST", body: JSON.stringify({ sales_officer_id: officerId, filters }) });
 export const autoAssignLeads = () => api<{ assigned: number }>("/api/leads/auto-assign/", { method: "POST", body: JSON.stringify({}) });
 export const logCall = (leadId: number, payload: { status: string; remarks?: string; follow_up_at?: string }) => api<Lead>(`/api/leads/${leadId}/log-call/`, { method: "POST", body: JSON.stringify(payload) });
 export const login = (email: string, password: string) => api<{ user: CurrentUser }>("/api/auth/login/", { method: "POST", body: JSON.stringify({ email, password }) });

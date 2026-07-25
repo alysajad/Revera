@@ -4,8 +4,10 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from accounts.models import User
@@ -23,6 +25,27 @@ FORWARD_TRANSITIONS = {
 }
 
 
+def apply_lead_filters(queryset, filters):
+    if value := filters.get("source"):
+        queryset = queryset.filter(source=value)
+    if value := filters.get("status"):
+        queryset = queryset.filter(status=value)
+    for key, field in (("model", "model_interest"), ("city", "city"), ("campaign", "campaign")):
+        if value := filters.get(key):
+            queryset = queryset.filter(**{f"{field}__icontains": value})
+    if value := filters.get("source_label"):
+        queryset = queryset.filter(Q(source_label__icontains=value) | Q(campaign__icontains=value))
+    if value := filters.get("q"):
+        queryset = queryset.filter(Q(name__icontains=value) | Q(phone__icontains=value) | Q(campaign__icontains=value) | Q(model_interest__icontains=value) | Q(source_label__icontains=value))
+    for key, lookup in (("date_from", "enquiry_date__gte"), ("date_to", "enquiry_date__lte")):
+        if value := filters.get(key):
+            parsed = parse_date(str(value))
+            if not parsed:
+                raise ValidationError({key: "Use YYYY-MM-DD."})
+            queryset = queryset.filter(**{lookup: parsed})
+    return queryset
+
+
 class LeadViewSet(viewsets.ModelViewSet):
     serializer_class = LeadSerializer
     def get_queryset(self):
@@ -31,16 +54,14 @@ class LeadViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(assigned_so=self.request.user)
         elif self.request.query_params.get("unassigned") == "true":
             queryset = queryset.filter(assigned_so__isnull=True)
-        for field in ("source", "status", "city", "assigned_so"):
-            if value := self.request.query_params.get(field):
-                queryset = queryset.filter(**{field: value})
-        if query := self.request.query_params.get("q"):
-            queryset = queryset.filter(Q(name__icontains=query) | Q(phone__icontains=query) | Q(campaign__icontains=query) | Q(model_interest__icontains=query))
+        if value := self.request.query_params.get("assigned_so"):
+            queryset = queryset.filter(assigned_so=value)
+        queryset = apply_lead_filters(queryset, self.request.query_params)
         ordering = self.request.query_params.get("ordering", "-created_at")
         return queryset.order_by(ordering if ordering.lstrip("-") in {"created_at", "enquiry_date", "status"} else "-created_at")
 
     def get_permissions(self):
-        if self.action in {"assign", "auto_assign", "reopen", "create", "destroy"}:
+        if self.action in {"assign", "bulk_assign", "auto_assign", "reopen", "create", "destroy"}:
             return [IsAdmin()]
         return super().get_permissions()
 
@@ -59,6 +80,26 @@ class LeadViewSet(viewsets.ModelViewSet):
             LeadAudit.objects.create(lead=lead, actor=request.user, event="assigned", after={"assigned_so": officer.id})
             Notification.objects.create(user=officer, lead=lead, kind=Notification.Kind.ASSIGNMENT, message=f"You have a new lead: {lead.name}.")
         return Response(self.get_serializer(lead).data)
+
+    @action(detail=False, methods=["post"], url_path="bulk-assign")
+    def bulk_assign(self, request):
+        serializer = AssignmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        filters = request.data.get("filters", {})
+        if not isinstance(filters, dict):
+            raise ValidationError({"filters": "Expected an object of filter values."})
+        officer = serializer.validated_data["sales_officer"]
+        leads = Lead.objects.filter(deleted_at__isnull=True, assigned_so__isnull=True)
+        leads = apply_lead_filters(leads, filters)
+        with transaction.atomic():
+            leads = list(leads.select_for_update().order_by("created_at"))
+            for lead in leads:
+                lead.assigned_so = officer
+                lead.save(update_fields=["assigned_so", "updated_at"])
+            LeadAudit.objects.bulk_create([LeadAudit(lead=lead, actor=request.user, event="assigned", after={"assigned_so": officer.id}) for lead in leads])
+            if leads:
+                Notification.objects.create(user=officer, kind=Notification.Kind.ASSIGNMENT, message=f"You have {len(leads)} new lead(s) assigned.")
+        return Response({"assigned": len(leads)})
 
     @action(detail=False, methods=["post"], url_path="auto-assign")
     def auto_assign(self, request):

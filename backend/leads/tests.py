@@ -32,6 +32,24 @@ class LeadAccessTests(TestCase):
         unowned.refresh_from_db()
         self.assertIn(unowned.assigned_so, [self.first_so, self.second_so])
 
+    def test_admin_bulk_assigns_matching_filters(self):
+        meta = Lead.objects.create(name="Meta lead", phone="7006682394", source=Lead.Source.META)
+        google = Lead.objects.create(name="Google lead", phone="7006682395", source=Lead.Source.OTHER, source_label="Google")
+        self.client.force_authenticate(self.admin)
+        response = self.client.post("/api/leads/bulk-assign/", {"sales_officer_id": self.first_so.id, "filters": {"source": Lead.Source.META}}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["assigned"], 1)
+        meta.refresh_from_db()
+        google.refresh_from_db()
+        self.assertEqual(meta.assigned_so, self.first_so)
+        self.assertIsNone(google.assigned_so)
+
+        response = self.client.post("/api/leads/bulk-assign/", {"sales_officer_id": self.second_so.id, "filters": {"source_label": "Google"}}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["assigned"], 1)
+        google.refresh_from_db()
+        self.assertEqual(google.assigned_so, self.second_so)
+
     def test_admin_can_add_an_unassigned_lead(self):
         self.client.force_authenticate(self.admin)
         response = self.client.post("/api/leads/", {"name": "Manual lead", "phone": "7006682392", "source": Lead.Source.WEBSITE, "model_interest": "R8 Lite", "city": "Srinagar"}, format="json")
