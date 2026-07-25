@@ -2,7 +2,31 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assignFilteredLeads, assignLead, autoAssignLeads, commitUpload, createLead, getAdminAnalytics, getLeadsPage, getOfficers, getUpload, logCall, resolveUploadDuplicates, sourceClass, toLead, toOfficer, type Lead, type LeadFilters, type LeadInput, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
-import { formatDate, parseDate, parseDateTime } from "@/lib/dates";
+import { formatDate, parseDate } from "@/lib/dates";
+
+function followUpOptions() {
+  const now = new Date();
+  const slot = (label: string, offsetMs: number) => {
+    const date = new Date(now.getTime() + offsetMs);
+    return { label, value: date.toISOString() };
+  };
+  const atHour = (label: string, daysAhead: number, hour: number) => {
+    const date = new Date(now);
+    date.setDate(date.getDate() + daysAhead);
+    date.setHours(hour, 0, 0, 0);
+    if (date <= now) return null;
+    return { label, value: date.toISOString() };
+  };
+  return [
+    slot("In 30 minutes", 30 * 60_000),
+    slot("In 1 hour", 60 * 60_000),
+    slot("In 2 hours", 2 * 60 * 60_000),
+    slot("In 4 hours", 4 * 60 * 60_000),
+    atHour("Tomorrow 10:00 AM", 1, 10),
+    atHour("Tomorrow 2:00 PM", 1, 14),
+    atHour("Day after 10:00 AM", 2, 10),
+  ].filter(Boolean) as { label: string; value: string }[];
+}
 
 const nextOutcomes: Record<string, { label: string; value: string }[]> = {
   Fresh: [{ label: "No response", value: "RNR" }, { label: "Schedule callback", value: "CALLBACK" }, { label: "Interested / Qualified", value: "QUALIFIED" }, { label: "Not interested", value: "UNQUALIFIED" }],
@@ -123,12 +147,10 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
 
   const saveCall = async () => {
     if (!activeLead || !outcome || savingCall) return;
-    const scheduledFor = followUpAt ? parseDateTime(followUpAt) : null;
-    if (needsAppointment && !scheduledFor) { setError("Enter the appointment as DD/MM/YYYY HH:MM."); return; }
-    if (scheduledFor && new Date(scheduledFor) <= new Date()) { setError("Choose a future appointment time."); return; }
+    if (needsAppointment && !followUpAt) { setError("Select a follow-up time."); return; }
     setSavingCall(true);
     try {
-      await logCall(activeLead.id, { status: outcome, remarks, ...(scheduledFor ? { follow_up_at: scheduledFor } : {}) });
+      await logCall(activeLead.id, { status: outcome, remarks, ...(followUpAt ? { follow_up_at: followUpAt } : {}) });
       setNotice(`Call log saved for ${activeLead.name}.`); setActiveLead(null); setRemarks(""); setFollowUpAt(""); await refresh();
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Call log could not be saved."); }
     finally { setSavingCall(false); }
@@ -209,6 +231,6 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     {notice && <div className="toast" role="status">{notice}<button aria-label="Dismiss" onClick={() => setNotice("")}>×</button></div>}
     {addingLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-lead-title"><button className="modal-close" onClick={() => setAddingLead(false)} aria-label="Close">×</button><p className="eyebrow">LEAD INTAKE</p><h2 id="add-lead-title">Add a lead</h2><form className="lead-form" onSubmit={event => { event.preventDefault(); void saveLead(); }}><div className="form-grid"><label>Full name<input required maxLength={160} value={newLead.name} onChange={event => setNewLead(current => ({ ...current, name: event.target.value }))} placeholder="Customer name" /></label><label>Phone number<input required inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={newLead.phone} onChange={event => setNewLead(current => ({ ...current, phone: event.target.value.replace(/\D/g, "") }))} placeholder="10-digit mobile number" /></label></div><div className="form-grid"><label>Email<input type="email" inputMode="email" pattern={emailPattern.source} title="Use a complete email such as name@example.com" value={newLead.email} onChange={event => setNewLead(current => ({ ...current, email: event.target.value }))} placeholder="name@example.com" /></label><label>City<input maxLength={100} value={newLead.city} onChange={event => setNewLead(current => ({ ...current, city: event.target.value }))} placeholder="City" /></label></div><div className="form-grid"><label>Lead source<select value={newLead.source} onChange={event => setNewLead(current => ({ ...current, source: event.target.value }))}>{sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Enquiry date<input required type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={newLead.enquiry_date} onChange={event => setNewLead(current => ({ ...current, enquiry_date: event.target.value }))} placeholder="DD/MM/YYYY" /></label></div><div className="form-grid"><label>Vehicle interest<input list="vehicle-options" maxLength={100} value={newLead.model_interest} onChange={event => setNewLead(current => ({ ...current, model_interest: event.target.value }))} placeholder="Choose or type a model" /><datalist id="vehicle-options">{models.map(model => <option key={model} value={model} />)}</datalist></label><label>Campaign<input maxLength={160} value={newLead.campaign} onChange={event => setNewLead(current => ({ ...current, campaign: event.target.value }))} placeholder="Campaign name" /></label></div><label>Source detail<input maxLength={100} value={newLead.source_label} onChange={event => setNewLead(current => ({ ...current, source_label: event.target.value }))} placeholder="Ad set, partner, referral, or other detail" /></label>{error && <p className="form-error" role="alert">{error}</p>}<p className="subtext">New leads start as Fresh and appear unassigned, ready to hand to a sales officer.</p><footer><button type="button" className="filter" onClick={() => setAddingLead(false)}>Cancel</button><button className="button primary" disabled={creatingLead}>{creatingLead ? "Adding…" : "Add lead"}</button></footer></form></section></div>}
     {submittedLead && <div className="modal-layer" role="presentation"><section className="modal success-modal" role="dialog" aria-modal="true" aria-labelledby="submitted-title"><button className="modal-close" onClick={() => setSubmittedLead(null)} aria-label="Close">×</button><div className="success-mark" aria-hidden="true">✓</div><p className="eyebrow">LEAD SUBMITTED</p><h2 id="submitted-title">Thank you, lead submitted.</h2><p className="subtext">{submittedLead} is now in the unassigned pool, ready for a sales officer.</p><button className="button primary" onClick={() => setSubmittedLead(null)}>Done</button></section></div>}
-    {activeLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="call-title"><button className="modal-close" onClick={() => setActiveLead(null)} aria-label="Close">×</button><p className="eyebrow">CALL LOG</p><h2 id="call-title">Update {activeLead.name}</h2><div className="lead-summary"><b>#{activeLead.id} · {activeLead.model}</b><span>{activeLead.source} lead</span><small>{activeLead.phone} · {activeLead.city || "—"}</small></div>{nextOutcomes[activeLead.status]?.length ? <><div className="form-grid"><label>Next outcome<select value={outcome} onChange={event => { setOutcome(event.target.value); if (!["CALLBACK", "WALKIN"].includes(event.target.value)) setFollowUpAt(""); }}>{nextOutcomes[activeLead.status].map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{needsAppointment && <label>{outcome === "WALKIN" ? "Walk-in appointment" : "Follow-up time"}<input required type="text" inputMode="numeric" value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} placeholder="DD/MM/YYYY HH:MM" /></label>}</div><label>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Add a clear note from the conversation" /></label><footer><button className="filter" onClick={() => setActiveLead(null)}>Cancel</button><button className="button primary" disabled={savingCall || (needsAppointment && !followUpAt) || !outcome} onClick={() => void saveCall()}>{savingCall ? "Saving…" : "Save call log"}</button></footer></> : <p className="subtext">This lead is closed. Reopen it before recording another outcome.</p>}</section></div>}
+    {activeLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="call-title"><button className="modal-close" onClick={() => setActiveLead(null)} aria-label="Close">×</button><p className="eyebrow">CALL LOG</p><h2 id="call-title">Update {activeLead.name}</h2><div className="lead-summary"><b>#{activeLead.id} · {activeLead.model}</b><span>{activeLead.source} lead</span><small>{activeLead.phone} · {activeLead.city || "—"}</small></div>{nextOutcomes[activeLead.status]?.length ? <><div className="form-grid"><label>Next outcome<select value={outcome} onChange={event => { setOutcome(event.target.value); if (!["CALLBACK", "WALKIN"].includes(event.target.value)) setFollowUpAt(""); }}>{nextOutcomes[activeLead.status].map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{needsAppointment && <label>{outcome === "WALKIN" ? "Walk-in appointment" : "Follow-up time"}<select required value={followUpAt} onChange={event => setFollowUpAt(event.target.value)}><option value="">Select time</option>{followUpOptions().map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></label>}</div><label>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Add a clear note from the conversation" /></label><footer><button className="filter" onClick={() => setActiveLead(null)}>Cancel</button><button className="button primary" disabled={savingCall || (needsAppointment && !followUpAt) || !outcome} onClick={() => void saveCall()}>{savingCall ? "Saving…" : "Save call log"}</button></footer></> : <p className="subtext">This lead is closed. Reopen it before recording another outcome.</p>}</section></div>}
   </section>;
 }
