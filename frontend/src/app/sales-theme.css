@@ -226,3 +226,10 @@
 .sales-shell .sales-history-row small,
 .sales-shell .sales-history-row time { font-size: 12px; }
 .sales-shell .sales-detail-footer button { font-size: 14px; }
+.lead-pagination { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 14px; padding: 12px 16px; color: #707977; font-size: 12px; }
+.lead-pagination > div { display: flex; align-items: center; gap: 10px; }
+.lead-pagination b { color: #181c1c; font-size: 12px; font-weight: 600; }
+.lead-pagination .filter { min-width: 34px; padding: 7px 10px; font-size: 16px; line-height: 1; }
+.lead-pagination .filter:disabled { opacity: .4; cursor: not-allowed; }
+.sales-edit-layer { z-index: 8; }
+@media (max-width: 620px) { .lead-pagination { align-items: flex-start; flex-direction: column; } }

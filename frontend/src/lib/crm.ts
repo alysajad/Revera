@@ -1,7 +1,7 @@
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 import { formatDate } from "@/lib/dates";
 
-type Paginated<T> = { results: T[] };
+type Paginated<T> = { count?: number; next?: string | null; previous?: string | null; results: T[] };
 type ApiLead = {
   id: number; name: string; phone: string; email: string; source: string; source_label: string; campaign: string; model_interest: string; city: string;
   branch: string; enquiry_date: string | null; status: string; category: string; sales_outcome: string; assigned_so: number | null; assigned_so_name: string; next_follow_up: string | null; call_count: number; qualification: LeadQualification | null; created_at: string;
@@ -70,7 +70,8 @@ export const toLead = (lead: ApiLead): Lead => ({ ...lead, source: sourceName(le
 const toLeadDetail = (lead: ApiLead & { call_history: CallHistory[]; follow_up_history: FollowUpHistory[]; audit_history: LeadDetail["auditHistory"] }): LeadDetail => ({ ...toLead(lead), email: lead.email, sourceLabel: lead.source_label, campaign: lead.campaign, qualification: lead.qualification, callHistory: lead.call_history, followUpHistory: lead.follow_up_history, auditHistory: lead.audit_history });
 export const toOfficer = (officer: ApiOfficer, metrics?: Metrics): Officer => ({ id: officer.id, name: `${officer.first_name} ${officer.last_name}`.trim() || officer.email, initials: `${officer.first_name[0] || ""}${officer.last_name[0] || ""}` || officer.email.slice(0, 2).toUpperCase(), color: colors[officer.id % colors.length], assigned: metrics?.total_assigned || 0, calls: metrics?.total_called || 0, qualified: metrics?.qualified || 0, won: metrics?.won || 0 });
 
-export async function getLeads(query = "") { const data = await api<Paginated<ApiLead>>(`/api/leads/${query}`); return data.results.map(toLead); }
+export async function getLeadsPage(query = "") { const data = await api<Paginated<ApiLead>>(`/api/leads/${query}`); return { count: data.count ?? data.results.length, next: data.next ?? null, previous: data.previous ?? null, results: data.results.map(toLead) }; }
+export async function getLeads(query = "") { return (await getLeadsPage(query)).results; }
 export async function getMyDashboard(params: Record<string, string>) { const query = new URLSearchParams(params).toString(); const data = await api<{ summary: SalesDashboard["summary"]; section: string; results: ApiLead[] }>(`/api/leads/my-dashboard/${query ? `?${query}` : ""}`); return { ...data, results: data.results.map(toLead) }; }
 export async function getLeadDetail(id: number) { const data = await api<ApiLead & { call_history: CallHistory[]; follow_up_history: FollowUpHistory[]; audit_history: LeadDetail["auditHistory"] }>(`/api/leads/${id}/`); return toLeadDetail(data); }
 export async function updateMyLead(id: number, payload: { name?: string; phone?: string; email?: string; source?: string; source_label?: string; campaign?: string; model_interest?: string; city?: string; branch?: string; enquiry_date?: string | null; status?: string; category?: string; sales_outcome?: string; remarks?: string; call_outcome?: string; follow_up_at?: string | null; qualification?: LeadQualification }) { const data = await api<ApiLead & { call_history: CallHistory[]; follow_up_history: FollowUpHistory[]; audit_history: LeadDetail["auditHistory"] }>(`/api/leads/${id}/so-update/`, { method: "PATCH", body: JSON.stringify(payload) }); return toLeadDetail(data); }

@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { assignFilteredLeads, assignLead, autoAssignLeads, commitUpload, createLead, getAdminAnalytics, getLeads, getOfficers, getUpload, logCall, resolveUploadDuplicates, sourceClass, toLead, toOfficer, type Lead, type LeadFilters, type LeadInput, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { assignFilteredLeads, assignLead, autoAssignLeads, commitUpload, createLead, getAdminAnalytics, getLeadsPage, getOfficers, getUpload, logCall, resolveUploadDuplicates, sourceClass, toLead, toOfficer, type Lead, type LeadFilters, type LeadInput, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
 import { formatDate, parseDate, parseDateTime } from "@/lib/dates";
 
 const nextOutcomes: Record<string, { label: string; value: string }[]> = {
@@ -16,7 +16,21 @@ const sources = [["META", "Meta Ads"], ["WEBSITE", "Website"], ["CARWALE", "CarW
 const models = ["R6 GT", "R7 City", "R8 Lite", "R8 Pro", "R9 Plus"];
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const emptyLead = (): LeadInput => ({ name: "", phone: "", email: "", source: "OTHER", source_label: "", campaign: "", model_interest: "", city: "", enquiry_date: formatDate(new Date()) });
-const filterQuery = (filters: LeadFilters) => Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value as string)}`).join("&");
+const leadQuery = (officerMode: boolean, followUpsOnly: boolean, filters: LeadFilters, page: number, search: string) => {
+  const params = new URLSearchParams();
+  if (officerMode) { if (followUpsOnly) params.set("status", "CALLBACK"); }
+  else { params.set("unassigned", "true"); params.set("page", String(page)); Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value); }); }
+  if (search) params.set("q", search);
+  return `?${params.toString()}`;
+};
+
+function LeadPagination({ page, total, loading, onPageChange }: { page: number; total: number; loading: boolean; onPageChange: (page: number) => void }) {
+  const pageSize = 50;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const first = total ? (page - 1) * pageSize + 1 : 0;
+  const last = Math.min(page * pageSize, total);
+  return <nav className="lead-pagination" aria-label="Lead pages"><span>Showing {first}–{last} of {total} leads</span><div><button className="filter" disabled={loading || page <= 1} onClick={() => onPageChange(page - 1)} aria-label="Previous page">‹</button><b>Page {page} of {totalPages}</b><button className="filter" disabled={loading || page >= totalPages} onClick={() => onPageChange(page + 1)} aria-label="Next page">›</button></div></nav>;
+}
 
 export function LeadDesk({ officerMode = false, followUpsOnly = false }: { officerMode?: boolean; followUpsOnly?: boolean }) {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -44,22 +58,34 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const [activeFilters, setActiveFilters] = useState<LeadFilters>({});
   const [bulkOfficerId, setBulkOfficerId] = useState("");
   const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [page, setPage] = useState(1);
+  const [searchFilter, setSearchFilter] = useState("");
+  const [totalLeads, setTotalLeads] = useState(0);
+  const supportLoaded = useRef(false);
 
   const refresh = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const leadQuery = officerMode ? (followUpsOnly ? "?status=CALLBACK" : "") : `?unassigned=true${filterQuery(activeFilters) ? `&${filterQuery(activeFilters)}` : ""}`;
-      if (officerMode) setLeads(await getLeads(leadQuery));
+      const queryString = leadQuery(officerMode, followUpsOnly, activeFilters, page, searchFilter);
+      if (officerMode) { const result = await getLeadsPage(queryString); setLeads(result.results); setTotalLeads(result.count); }
       else {
-        const [pool, officerRecords, analytics] = await Promise.all([getLeads(leadQuery), getOfficers(), getAdminAnalytics()]);
-        setLeads(pool);
-        setOfficers(officerRecords.map(officer => toOfficer(officer, analytics.officers.find(item => item.id === officer.id))));
+        if (!supportLoaded.current) {
+          const [pool, officerRecords, analytics] = await Promise.all([getLeadsPage(queryString), getOfficers(), getAdminAnalytics()]);
+          setLeads(pool.results); setTotalLeads(pool.count);
+          setOfficers(officerRecords.map(officer => toOfficer(officer, analytics.officers.find(item => item.id === officer.id))));
+          supportLoaded.current = true;
+        } else {
+          const pool = await getLeadsPage(queryString);
+          setLeads(pool.results); setTotalLeads(pool.count);
+        }
       }
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to load CRM data."); }
     finally { setLoading(false); }
-  }, [activeFilters, followUpsOnly, officerMode]);
+  }, [activeFilters, followUpsOnly, officerMode, page, searchFilter]);
 
   useEffect(() => { const timer = window.setTimeout(() => void refresh(), 0); return () => window.clearTimeout(timer); }, [refresh]);
+  useEffect(() => { const timer = window.setTimeout(() => { setPage(1); setSearchFilter(query.trim()); }, 250); return () => window.clearTimeout(timer); }, [query]);
+  useEffect(() => { const timer = window.setTimeout(() => { setPage(1); setActiveFilters(current => JSON.stringify(current) === JSON.stringify(filters) ? current : { ...filters }); }, 250); return () => window.clearTimeout(timer); }, [filters]);
   useEffect(() => {
     const open = () => setAddingLead(true);
     window.addEventListener("revera:add-lead", open);
@@ -160,8 +186,8 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
       const result = await commitUpload(upload.id);
       setUpload(null); setNotice(`${result.created} leads imported. Assign them from the pool.`);
       setLoading(true);
-      const leadQuery = `?unassigned=true${filterQuery(activeFilters) ? `&${filterQuery(activeFilters)}` : ""}`;
-      setLeads(await getLeads(leadQuery));
+      const pageResult = await getLeadsPage(leadQuery(false, false, activeFilters, page, searchFilter));
+      setLeads(pageResult.results); setTotalLeads(pageResult.count);
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Import failed."); }
     finally { setImportingUpload(false); setLoading(false); }
   };
@@ -179,6 +205,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
       <article className="panel lead-pool"><header className="panel-heading"><div><p className="eyebrow">{officerMode ? "ACTIVE LEADS" : "UNASSIGNED"}</p><h2>{loading ? "Loading leads…" : `${leads.length} leads in pool`}</h2></div></header><div className="lead-list">{!loading && visible.length ? visible.map(lead => <div className={`lead-row ${dropTargetId === lead.id ? "drop-target" : ""}`} key={lead.id} onDragOver={event => { if (!officerMode) { event.preventDefault(); setDropTargetId(lead.id); } }} onDragLeave={() => setDropTargetId(null)} onDrop={event => { event.preventDefault(); const officerId = Number(event.dataTransfer.getData("application/revera-officer")) || draggedOfficerId; if (officerId) void assign(lead, officerId); setDraggedOfficerId(null); }}>{!officerMode && <span className="drag-slot">↓</span>}<div><b>{lead.name}</b><small>{lead.phone} · #{lead.id}</small></div><span className={`badge ${sourceClass(lead.source)}`}>{lead.source}</span><span className="model">{lead.model}</span><span className={`status ${lead.status.toLowerCase().replaceAll(" ", "-")}`}>{lead.status}</span><button className="row-action" onClick={() => openLead(lead)}>{officerMode ? "Log call →" : "Open →"}</button></div>) : !loading && <div className="empty-state">No leads match this view.</div>}</div></article>
       {!officerMode && <aside className="officer-rail"><header><p className="eyebrow">ACTIVE SALES OFFICERS</p><span>Drag a card to a lead row</span></header>{officers.map(officer => <div className={`officer-card ${draggedOfficerId === officer.id ? "dragging" : ""}`} key={officer.id} draggable onDragStart={event => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/revera-officer", String(officer.id)); setDraggedOfficerId(officer.id); }} onDragEnd={() => { setDraggedOfficerId(null); setDropTargetId(null); }}><span className={`avatar ${officer.color}`}>{officer.initials}</span><span><b>{officer.name}</b><small>Sales officer</small></span><span className="officer-load"><small>LEAD LOAD</small><b>{officer.assigned}</b><small>CALLS TODAY</small><b>{officer.calls}</b></span></div>)}</aside>}
     </section>
+    {!officerMode && <LeadPagination page={page} total={totalLeads} loading={loading} onPageChange={setPage} />}
     {notice && <div className="toast" role="status">{notice}<button aria-label="Dismiss" onClick={() => setNotice("")}>×</button></div>}
     {addingLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-lead-title"><button className="modal-close" onClick={() => setAddingLead(false)} aria-label="Close">×</button><p className="eyebrow">LEAD INTAKE</p><h2 id="add-lead-title">Add a lead</h2><form className="lead-form" onSubmit={event => { event.preventDefault(); void saveLead(); }}><div className="form-grid"><label>Full name<input required maxLength={160} value={newLead.name} onChange={event => setNewLead(current => ({ ...current, name: event.target.value }))} placeholder="Customer name" /></label><label>Phone number<input required inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={newLead.phone} onChange={event => setNewLead(current => ({ ...current, phone: event.target.value.replace(/\D/g, "") }))} placeholder="10-digit mobile number" /></label></div><div className="form-grid"><label>Email<input type="email" inputMode="email" pattern={emailPattern.source} title="Use a complete email such as name@example.com" value={newLead.email} onChange={event => setNewLead(current => ({ ...current, email: event.target.value }))} placeholder="name@example.com" /></label><label>City<input maxLength={100} value={newLead.city} onChange={event => setNewLead(current => ({ ...current, city: event.target.value }))} placeholder="City" /></label></div><div className="form-grid"><label>Lead source<select value={newLead.source} onChange={event => setNewLead(current => ({ ...current, source: event.target.value }))}>{sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Enquiry date<input required type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={newLead.enquiry_date} onChange={event => setNewLead(current => ({ ...current, enquiry_date: event.target.value }))} placeholder="DD/MM/YYYY" /></label></div><div className="form-grid"><label>Vehicle interest<input list="vehicle-options" maxLength={100} value={newLead.model_interest} onChange={event => setNewLead(current => ({ ...current, model_interest: event.target.value }))} placeholder="Choose or type a model" /><datalist id="vehicle-options">{models.map(model => <option key={model} value={model} />)}</datalist></label><label>Campaign<input maxLength={160} value={newLead.campaign} onChange={event => setNewLead(current => ({ ...current, campaign: event.target.value }))} placeholder="Campaign name" /></label></div><label>Source detail<input maxLength={100} value={newLead.source_label} onChange={event => setNewLead(current => ({ ...current, source_label: event.target.value }))} placeholder="Ad set, partner, referral, or other detail" /></label>{error && <p className="form-error" role="alert">{error}</p>}<p className="subtext">New leads start as Fresh and appear unassigned, ready to hand to a sales officer.</p><footer><button type="button" className="filter" onClick={() => setAddingLead(false)}>Cancel</button><button className="button primary" disabled={creatingLead}>{creatingLead ? "Adding…" : "Add lead"}</button></footer></form></section></div>}
     {submittedLead && <div className="modal-layer" role="presentation"><section className="modal success-modal" role="dialog" aria-modal="true" aria-labelledby="submitted-title"><button className="modal-close" onClick={() => setSubmittedLead(null)} aria-label="Close">×</button><div className="success-mark" aria-hidden="true">✓</div><p className="eyebrow">LEAD SUBMITTED</p><h2 id="submitted-title">Thank you, lead submitted.</h2><p className="subtext">{submittedLead} is now in the unassigned pool, ready for a sales officer.</p><button className="button primary" onClick={() => setSubmittedLead(null)}>Done</button></section></div>}
