@@ -28,10 +28,15 @@ export function AppShell({ children, role }: AppShellProps) {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [checkingAccess, setCheckingAccess] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
+  const [sessionConflict, setSessionConflict] = useState<CurrentUser | null>(null);
   useEffect(() => {
     void getCurrentUser().then(result => {
-      setUser(result.user);
-      if ((role === "Admin") !== (result.user.role === "ADMIN")) router.replace(result.user.role === "ADMIN" ? "/dashboard" : "/my-leads");
+      const actual = result.user;
+      if ((role === "Admin") !== (actual.role === "ADMIN")) {
+        setSessionConflict(actual);
+      } else {
+        setUser(actual);
+      }
     }).catch(() => router.replace("/")).finally(() => setCheckingAccess(false));
   }, [role, router]);
   const displayName = user ? `${user.first_name} ${user.last_name}`.trim() || user.email : "Sign in";
@@ -44,7 +49,28 @@ export function AppShell({ children, role }: AppShellProps) {
 
   if (signingOut) return <AuthTransition stage="signout" />;
   if (checkingAccess) return <AuthTransition stage="workspace" />;
-  if (user && ((role === "Admin") !== (user.role === "ADMIN"))) return null;
+
+  if (sessionConflict) {
+    const actualRole = sessionConflict.role === "ADMIN" ? "Admin" : "Sales Officer";
+    const actualHome = sessionConflict.role === "ADMIN" ? "/dashboard" : "/my-leads";
+    const actualName = `${sessionConflict.first_name} ${sessionConflict.last_name}`.trim() || sessionConflict.email;
+    return (
+      <main className="page" style={{ maxWidth: "32rem", margin: "6rem auto", textAlign: "center" }}>
+        <div className="panel" style={{ padding: "2rem", display: "grid", gap: "1rem" }}>
+          <p className="eyebrow">SESSION CONFLICT</p>
+          <h2 style={{ margin: 0 }}>Signed in as a different user</h2>
+          <p className="subtext" style={{ margin: 0 }}>
+            You signed in as <strong>{actualName}</strong> ({actualRole}) in another tab.
+            That session replaced this one.
+          </p>
+          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", marginTop: "0.5rem" }}>
+            <button className="button primary" onClick={() => router.replace(actualHome)}>Continue as {actualRole}</button>
+            <button className="button" onClick={() => void signOut()}>Sign in again</button>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return <div className={`app-shell ${role === "Sales officer" ? "sales-shell" : ""}`}>
     <aside className="sidebar">
