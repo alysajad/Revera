@@ -54,7 +54,7 @@ class LeadViewSet(viewsets.ModelViewSet):
     serializer_class = LeadSerializer
 
     def get_queryset(self):
-        queryset = Lead.objects.filter(deleted_at__isnull=True).select_related("assigned_so")
+        queryset = Lead.objects.filter(deleted_at__isnull=True).select_related("assigned_so").annotate(_call_count=Count("call_logs", distinct=True)).prefetch_related("qualification")
         if not self.request.user.is_admin:
             queryset = queryset.filter(assigned_so=self.request.user)
         elif self.request.query_params.get("unassigned") == "true":
@@ -76,7 +76,7 @@ class LeadViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="my-dashboard")
     def my_dashboard(self, request):
         today = timezone.localdate()
-        queryset = Lead.objects.filter(assigned_so=request.user, deleted_at__isnull=True).select_related("assigned_so").prefetch_related(Prefetch("follow_ups", queryset=FollowUp.objects.filter(resolved_at__isnull=True).order_by("scheduled_for"), to_attr="_open_followups"))
+        queryset = Lead.objects.filter(assigned_so=request.user, deleted_at__isnull=True).select_related("assigned_so").annotate(_call_count=Count("call_logs", distinct=True)).prefetch_related("qualification", Prefetch("follow_ups", queryset=FollowUp.objects.filter(resolved_at__isnull=True).order_by("scheduled_for"), to_attr="_open_followups"))
         date_range = request.query_params.get("range", "all")
         if date_range == "today":
             queryset = queryset.filter(enquiry_date=today)
