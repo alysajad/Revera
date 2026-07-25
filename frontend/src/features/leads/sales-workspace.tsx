@@ -26,11 +26,27 @@ const outcomeLabels: Record<string, string> = { CONNECTED: "Connected", NO_RESPO
 const emptyQualification = (): LeadQualification => ({ variant: "", buying_timeline: "", finance_type: "", trade_in: null, test_drive: "", notes: "" });
 
 function formatFollowUp(value: string | null) {
-  return value ? new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "Not scheduled";
+  if (!value) return "Not scheduled";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Invalid date" : new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
+const localDateTimeValue = (date: Date) => {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
 function inputDate(value: string | null) {
-  return value ? new Date(value).toISOString().slice(0, 16) : "";
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) || date.getTime() <= Date.now() ? "" : localDateTimeValue(date);
+}
+
+function minimumFollowUpDate() {
+  const date = new Date();
+  date.setSeconds(0, 0);
+  date.setMinutes(date.getMinutes() + 1);
+  return localDateTimeValue(date);
 }
 
 function draftFor(lead: LeadDetail): Draft {
@@ -70,9 +86,14 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
 
   const save = async () => {
     if (!detail || !draft || saving) return;
+    const followUp = draft.follow_up_at ? new Date(draft.follow_up_at) : null;
+    if (followUp && (Number.isNaN(followUp.getTime()) || followUp.getTime() <= Date.now())) {
+      setError("Choose a future follow-up date and time.");
+      return;
+    }
     setSaving(true); setError("");
     try {
-      const updated = await updateMyLead(detail.id, { ...draft, follow_up_at: draft.follow_up_at ? new Date(draft.follow_up_at).toISOString() : null });
+      const updated = await updateMyLead(detail.id, { ...draft, follow_up_at: followUp ? followUp.toISOString() : null });
       setDetail(updated); setDraft(draftFor(updated)); setNotice("Lead updated and follow-up history saved."); await loadDashboard();
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Lead update could not be saved."); }
     finally { setSaving(false); }

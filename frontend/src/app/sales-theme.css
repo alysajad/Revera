@@ -184,3 +184,45 @@
 .sales-shell .sales-row-action { font-size: 12px; }
 .sales-shell .sales-status { font-size: 12px; }
 .sales-shell .sales-chart-card h2 { font-size: 23px; }
+.sales-shell .sales-metric,
+.sales-shell .sales-metric.blue,
+.sales-shell .sales-metric.yellow,
+.sales-shell .sales-metric.orange,
+.sales-shell .sales-metric.green,
+.sales-shell .sales-metric.mint,
+.sales-shell .sales-metric.red,
+.sales-shell .sales-metric.violet {
+  min-height: 168px;
+  padding: 25px 24px;
+  background: #050807 !important;
+  color: #ffffff !important;
+}
+.sales-shell .sales-metric span { color: #ffffff !important; font-size: 15px; font-weight: 600; }
+.sales-shell .sales-metric strong { color: #ffffff !important; font-size: 46px; font-weight: 600; }
+.sales-shell .sales-metric small { color: #ffffff !important; font-size: 13px; }
+.sales-shell .sales-detail-modal { font-size: 15px; }
+.sales-shell .sales-detail-header .eyebrow { font-size: 13px; }
+.sales-shell .sales-detail-header h2 { font-size: 27px; }
+.sales-shell .sales-detail-header p:not(.eyebrow) { font-size: 16px; }
+.sales-shell .sales-info-card h3,
+.sales-shell .sales-form-card h3,
+.sales-shell .sales-history h3 { font-size: 18px; }
+.sales-shell .sales-info-grid small,
+.sales-shell .sales-detail-meta,
+.sales-shell .sales-form-card label,
+.sales-shell .sales-form-card h4 { font-size: 13px; }
+.sales-shell .sales-info-grid b { font-size: 15px; }
+.sales-shell .sales-form-card input,
+.sales-shell .sales-form-card select,
+.sales-shell .sales-form-card textarea { min-height: 48px; padding: 13px 14px; font-size: 15px; line-height: 1.4; }
+.sales-shell .sales-form-card textarea { min-height: 100px; }
+.sales-shell .sales-form-card input::placeholder,
+.sales-shell .sales-form-card textarea::placeholder { font-size: 14px; }
+.sales-shell .sales-stepper span,
+.sales-shell .sales-choice-row button { font-size: 14px; }
+.sales-shell .sales-stepper span { padding: 10px 13px; }
+.sales-shell .sales-choice-row button { padding: 11px 15px; }
+.sales-shell .sales-history-row b { font-size: 14px; }
+.sales-shell .sales-history-row small,
+.sales-shell .sales-history-row time { font-size: 12px; }
+.sales-shell .sales-detail-footer button { font-size: 14px; }
