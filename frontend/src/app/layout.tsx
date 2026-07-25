@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./accessibility.css";
 import "./manual-lead.css";
+import "./sales-theme.css";
 
 export const metadata: Metadata = {
   title: "Revera Lead Control",

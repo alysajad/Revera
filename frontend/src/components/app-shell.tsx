@@ -46,7 +46,7 @@ export function AppShell({ children, role }: AppShellProps) {
   if (checkingAccess) return <AuthTransition stage="workspace" />;
   if (user && ((role === "Admin") !== (user.role === "ADMIN"))) return null;
 
-  return <div className="app-shell">
+  return <div className={`app-shell ${role === "Sales officer" ? "sales-shell" : ""}`}>
     <aside className="sidebar">
       <Link className="brand" href={role === "Admin" ? "/dashboard" : "/my-leads"}><span className="brand-mark">R</span><span className="brand-word">revera<span>.</span></span></Link>
       <p className="workspace-label">{role === "Admin" ? "SALES CONTROL" : "MY WORKSPACE"}</p>
@@ -59,7 +59,7 @@ export function AppShell({ children, role }: AppShellProps) {
       </div>
     </aside>
     <main className="main-content">
-      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : "My queue"}</b><small>{new Intl.DateTimeFormat("en", { weekday: "long" }).format(new Date())}, {formatDate(new Date())}</small></div><div className="top-actions">{role === "Admin" && <button className="button primary" onClick={() => pathname === "/leads" ? window.dispatchEvent(new Event("revera:add-lead")) : router.push("/leads?addLead=1")}>＋ Add lead</button>}</div></header>
+      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : "Leads pipeline"}</b><small>{new Intl.DateTimeFormat("en", { weekday: "long" }).format(new Date())}, {formatDate(new Date())}</small></div><div className="top-actions">{role === "Admin" && <button className="button primary" onClick={() => pathname === "/leads" ? window.dispatchEvent(new Event("revera:add-lead")) : router.push("/leads?addLead=1")}>＋ Add lead</button>}{role === "Sales officer" && <span className="sales-topbar-mark" aria-hidden="true">◌</span>}</div></header>
       {children}
     </main>
   </div>;
