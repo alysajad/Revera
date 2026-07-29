@@ -3,6 +3,7 @@ import "./globals.css";
 import "./accessibility.css";
 import "./manual-lead.css";
 import "./sales-theme.css";
+import "./responsive.css";
 
 export const metadata: Metadata = {
   title: "Revera Lead Control",

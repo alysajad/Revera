@@ -11,3 +11,4 @@
 .transition small{display:block;margin-top:13px;color:#aeb2b9;font-size:13px}
 @keyframes roll{to{transform:translateX(calc(min(430px,100vw) + 82px))}}
 @media (prefers-reduced-motion:reduce){.scooter{animation:none;left:calc(50% - 37px)}}
+@media (max-width: 420px){.transition{padding:18px}.transition h1{font-size:clamp(24px,8vw,30px);line-height:1.15}.transition small{font-size:12px;line-height:1.45}}
