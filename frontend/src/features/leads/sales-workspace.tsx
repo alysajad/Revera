@@ -53,7 +53,9 @@ function minimumFollowUpDate() {
 }
 
 function draftFor(lead: LeadDetail): Draft {
-  return { status: lead.statusCode, category: lead.category || "WARM", sales_outcome: lead.salesOutcome || "PENDING", call_outcome: "", remarks: "", follow_up_at: inputDate(lead.nextFollowUp), qualification: lead.qualification || emptyQualification() };
+  const status = lead.nextFollowUp && ["FRESH", "RNR"].includes(lead.statusCode) ? "CALLBACK" : lead.statusCode;
+  const { updated_at: _updatedAt, ...qualification } = lead.qualification || emptyQualification();
+  return { status, category: lead.category || "WARM", sales_outcome: lead.salesOutcome || "PENDING", call_outcome: "", remarks: "", follow_up_at: inputDate(lead.nextFollowUp), qualification };
 }
 
 function leadFieldsFor(lead: LeadDetail): LeadFields {
@@ -109,7 +111,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
     try {
       const updated = await updateMyLead(detail.id, { ...draft, follow_up_at: followUp ? followUp.toISOString() : null });
       setDetail(updated); setDraft(draftFor(updated)); setNotice("Lead updated and follow-up history saved."); await loadDashboard();
-    } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Lead update could not be saved."); }
+    } catch (requestError) { const message = requestError instanceof Error ? requestError.message : "Lead update could not be saved."; setError(message); setNotice(message); }
     finally { setSaving(false); }
   };
 
