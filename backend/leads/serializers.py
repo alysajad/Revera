@@ -109,9 +109,14 @@ class SOLeadUpdateSerializer(serializers.Serializer):
         enquiry_date = attrs.get("enquiry_date")
         if enquiry_date and enquiry_date > timezone.localdate():
             raise serializers.ValidationError({"enquiry_date": "Enquiry date cannot be in the future."})
+        next_status = attrs.get("status")
         follow_up_at = attrs.get("follow_up_at")
         if follow_up_at and follow_up_at <= timezone.now():
             raise serializers.ValidationError({"follow_up_at": "Choose a future appointment time."})
+        if next_status in [Lead.Status.CALLBACK, Lead.Status.WALKIN] and not follow_up_at:
+            raise serializers.ValidationError({"follow_up_at": "This status requires a follow-up time."})
+        if follow_up_at and next_status not in [None, Lead.Status.FRESH, Lead.Status.RNR, Lead.Status.CALLBACK, Lead.Status.WALKIN]:
+            raise serializers.ValidationError({"follow_up_at": "Only callbacks and walk-ins can have an appointment."})
         return attrs
 
 

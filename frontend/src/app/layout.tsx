@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./accessibility.css";
 import "./manual-lead.css";
+import "./admin-follow-up.css";
 import "./sales-theme.css";
 import "./responsive.css";
 

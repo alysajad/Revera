@@ -134,7 +134,9 @@ class LeadViewSet(viewsets.ModelViewSet):
         next_status = data.get("status") or sales_status.get(data.get("sales_outcome"), lead.status)
         if data.get("follow_up_at") and next_status in {Lead.Status.FRESH, Lead.Status.RNR}:
             next_status = Lead.Status.CALLBACK
-        if next_status != lead.status and next_status not in FORWARD_TRANSITIONS.get(lead.status, set()):
+        if data.get("follow_up_at") and next_status not in {Lead.Status.CALLBACK, Lead.Status.WALKIN}:
+            return Response({"detail": "Only callbacks and walk-ins can have an appointment."}, status=status.HTTP_400_BAD_REQUEST)
+        if not request.user.is_admin and next_status != lead.status and next_status not in FORWARD_TRANSITIONS.get(lead.status, set()):
             return Response({"detail": "This status transition is not allowed."}, status=status.HTTP_400_BAD_REQUEST)
         editable_fields = ("name", "phone", "email", "source", "source_label", "campaign", "model_interest", "city", "branch", "enquiry_date")
         before = {field: audit_value(getattr(lead, field)) for field in ("status", "category", "sales_outcome", *editable_fields)}
