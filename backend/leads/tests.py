@@ -129,6 +129,15 @@ class LeadAccessTests(TestCase):
         self.assertTrue(FollowUp.objects.filter(lead=self.first_lead, resolved_at__isnull=True).exists())
         self.assertEqual(LeadQualification.objects.get(lead=self.first_lead).variant, "R8 Pro")
 
+    def test_follow_up_status_requires_a_date_and_other_statuses_cannot_keep_one(self):
+        self.client.force_authenticate(self.first_so)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"status": Lead.Status.CALLBACK}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+        future = timezone.now() + timedelta(days=1)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"status": Lead.Status.QUALIFIED, "follow_up_at": future.isoformat()}, format="json")
+        self.assertEqual(response.status_code, 400)
+
     def test_sales_officer_can_edit_customer_details(self):
         self.client.force_authenticate(self.first_so)
         response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"name": "Aarav Updated", "phone": "7305198422", "email": "aarav@example.com", "source": Lead.Source.WEBSITE, "campaign": "Summer Drive", "model_interest": "R8 Pro", "city": "Kochi", "branch": "Central", "enquiry_date": timezone.localdate().isoformat()}, format="json")
@@ -146,6 +155,14 @@ class LeadAccessTests(TestCase):
         self.client.force_authenticate(self.first_so)
         response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"enquiry_date": (timezone.localdate() + timedelta(days=1)).isoformat()}, format="json")
         self.assertEqual(response.status_code, 400)
+
+    def test_admin_can_update_any_lead_outcome(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"status": Lead.Status.WON, "sales_outcome": Lead.SalesOutcome.RETAILED, "call_outcome": "RETAILED", "remarks": "Sale confirmed."}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.first_lead.refresh_from_db()
+        self.assertEqual(self.first_lead.status, Lead.Status.WON)
+        self.assertEqual(self.first_lead.sales_outcome, Lead.SalesOutcome.RETAILED)
 
     def test_follow_up_submission_moves_fresh_lead_to_follow_ups(self):
         self.client.force_authenticate(self.first_so)
