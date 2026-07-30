@@ -53,6 +53,10 @@ input[type="radio"] {
   display: none;
 }
 
+.mobile-assign {
+  display: none;
+}
+
 @media (max-width: 767px) {
   .sidebar,
   .sales-shell .sidebar {
@@ -300,13 +304,23 @@ input[type="radio"] {
   }
 
   .lead-row {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "lead lead"
+      "source assign"
+      "open open";
+    gap: 8px 10px;
     padding: 14px 16px;
   }
 
   .lead-row > div {
+    grid-area: lead;
     min-width: 0;
+  }
+
+  .lead-row > .badge {
+    grid-area: source;
+    justify-self: start;
   }
 
   .lead-row b,
@@ -322,13 +336,28 @@ input[type="radio"] {
   }
 
   .lead-row .row-action {
-    display: inline-block;
-    padding: 4px 0;
+    display: inline-flex;
+    grid-area: open;
+    justify-self: start;
+    padding: 6px 0;
     white-space: nowrap;
   }
 
+  .mobile-assign {
+    display: block;
+    grid-area: assign;
+    min-width: 136px;
+    min-height: 40px;
+    padding: 0 9px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+    color: #4f565f;
+    font: 600 11px Arial;
+  }
+
   .officer-rail {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: none;
   }
 
   .lead-filters-grid {
