@@ -12,6 +12,11 @@
 .admin-follow-up-modal .sales-detail-header h2 {
   color: #15243d;
   font-size: 24px;
+  line-height: 1.2;
+}
+
+.admin-follow-up-modal .sales-detail-header .subtext {
+  line-height: 1.45;
 }
 
 .admin-follow-up-modal .sales-detail-scroll {
@@ -41,7 +46,19 @@
 
 .admin-follow-up-modal .sales-info-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px 28px;
+  gap: 22px 28px;
+}
+
+.admin-follow-up-modal .sales-info-grid span,
+.admin-follow-up-modal .sales-detail-meta span,
+.admin-follow-up-grid > div {
+  min-width: 0;
+}
+
+.admin-follow-up-modal .sales-info-grid span,
+.admin-follow-up-modal .sales-detail-meta span {
+  gap: 6px;
+  line-height: 1.35;
 }
 
 .admin-follow-up-modal .sales-info-grid small,
@@ -97,8 +114,8 @@
 
 .admin-follow-up-grid {
   display: grid;
-  grid-template-columns: 1.08fr .92fr;
-  gap: 18px;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
+  gap: 24px;
   align-items: start;
 }
 
@@ -118,13 +135,16 @@
 }
 
 .admin-outcome-row button {
-  min-height: 42px;
+  min-width: 0;
+  min-height: 44px;
   border: 0;
   border-right: 1px solid #fff;
   border-radius: 0;
   background: transparent;
   color: #66728a;
   font-size: 12px;
+  line-height: 1.25;
+  padding: 8px 6px;
 }
 
 .admin-outcome-row button:last-child {
@@ -139,18 +159,20 @@
 
 .admin-checkbox-card {
   display: flex !important;
-  min-height: 42px;
+  min-height: 44px;
   align-items: center;
   gap: 8px;
   border: 1px solid #e1e5eb;
   border-radius: 8px;
-  padding: 0 12px;
+  padding: 9px 12px;
   color: #52617a !important;
   font-size: 12px !important;
+  line-height: 1.35;
   font-weight: 500 !important;
 }
 
 .admin-checkbox-card input {
+  flex: 0 0 auto;
   width: 16px !important;
   min-height: 16px !important;
   accent-color: #f26b35;
@@ -159,9 +181,10 @@
 .admin-follow-up-date {
   display: grid;
   gap: 8px;
-  margin-top: 18px;
+  margin-top: 22px;
   color: #16284b;
   font-size: 12px;
+  line-height: 1.35;
 }
 
 .admin-follow-up-date span:first-child {
