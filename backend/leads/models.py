@@ -8,6 +8,7 @@ class Lead(models.Model):
     class Status(models.TextChoices):
         FRESH = "FRESH", "Fresh"
         RNR = "RNR", "RNR"
+        SWITCHED_OFF = "SWITCHED_OFF", "Switched off"
         CALLBACK = "CALLBACK", "Callback Scheduled"
         QUALIFIED = "QUALIFIED", "Qualified"
         UNQUALIFIED = "UNQUALIFIED", "Unqualified"

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { AuthTransition } from "@/components/auth-transition";
 import { getCurrentUser, logout, type CurrentUser } from "@/lib/crm";
 import { formatDate } from "@/lib/dates";
 
@@ -27,7 +26,6 @@ export function AppShell({ children, role }: AppShellProps) {
   const links = role === "Admin" ? adminLinks : officerLinks;
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [checkingAccess, setCheckingAccess] = useState(true);
-  const [signingOut, setSigningOut] = useState(false);
   const [sessionConflict, setSessionConflict] = useState<CurrentUser | null>(null);
   useEffect(() => {
     void getCurrentUser().then(result => {
@@ -42,13 +40,11 @@ export function AppShell({ children, role }: AppShellProps) {
   const displayName = user ? `${user.first_name} ${user.last_name}`.trim() || user.email : "Sign in";
   const initials = user ? `${user.first_name[0] || ""}${user.last_name[0] || ""}` || user.email.slice(0, 2).toUpperCase() : "?";
   const signOut = async () => {
-    setSigningOut(true);
     try { await logout(); }
     finally { router.replace("/"); }
   };
 
-  if (signingOut) return <AuthTransition stage="signout" />;
-  if (checkingAccess) return <AuthTransition stage="workspace" />;
+  if (checkingAccess) return null;
 
   if (sessionConflict) {
     const actualRole = sessionConflict.role === "ADMIN" ? "Admin" : "Sales Officer";

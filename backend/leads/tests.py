@@ -117,17 +117,45 @@ class LeadAccessTests(TestCase):
         self.assertEqual(len(response.data["results"]), 1)
         self.assertEqual(response.data["results"][0]["category"], Lead.Category.HOT)
 
-    def test_sales_officer_can_save_qualification_and_follow_up(self):
+    def test_sales_officer_can_save_qualification_from_qualified_outcome(self):
+        self.client.force_authenticate(self.first_so)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"category": Lead.Category.HOT, "call_outcome": "QUALIFIED", "remarks": "Customer is qualified.", "qualification": {"variant": "R8 Pro", "buying_timeline": "1-2 months", "finance_type": "Bank finance", "trade_in": True, "test_drive": "Requested"}}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.first_lead.refresh_from_db()
+        self.assertEqual(self.first_lead.status, Lead.Status.QUALIFIED)
+        self.assertEqual(self.first_lead.category, Lead.Category.HOT)
+        self.assertEqual(CallLog.objects.get(lead=self.first_lead).outcome, "QUALIFIED")
+        self.assertFalse(FollowUp.objects.filter(lead=self.first_lead, resolved_at__isnull=True).exists())
+        self.assertEqual(LeadQualification.objects.get(lead=self.first_lead).variant, "R8 Pro")
+
+    def test_call_outcome_only_allows_matching_lead_statuses(self):
+        self.client.force_authenticate(self.first_so)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "CONNECTED", "status": Lead.Status.RNR}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+        future = timezone.now() + timedelta(days=1)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "CONNECTED", "status": Lead.Status.CALLBACK, "follow_up_at": future.isoformat()}, format="json")
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "NOT_CONNECTED", "status": Lead.Status.SWITCHED_OFF}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.first_lead.refresh_from_db()
+        self.assertEqual(self.first_lead.status, Lead.Status.SWITCHED_OFF)
+
+    def test_pending_call_outcome_moves_lead_to_callback(self):
         self.client.force_authenticate(self.first_so)
         future = timezone.now() + timedelta(days=1)
-        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"status": Lead.Status.CALLBACK, "category": Lead.Category.HOT, "call_outcome": "CONNECTED", "remarks": "Customer requested a callback.", "follow_up_at": future.isoformat(), "qualification": {"variant": "R8 Pro", "buying_timeline": "1-2 months", "finance_type": "Bank finance", "trade_in": True, "test_drive": "Requested"}}, format="json")
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "PENDING", "follow_up_at": future.isoformat()}, format="json")
         self.assertEqual(response.status_code, 200)
         self.first_lead.refresh_from_db()
         self.assertEqual(self.first_lead.status, Lead.Status.CALLBACK)
-        self.assertEqual(self.first_lead.category, Lead.Category.HOT)
-        self.assertEqual(CallLog.objects.get(lead=self.first_lead).outcome, "CONNECTED")
         self.assertTrue(FollowUp.objects.filter(lead=self.first_lead, resolved_at__isnull=True).exists())
-        self.assertEqual(LeadQualification.objects.get(lead=self.first_lead).variant, "R8 Pro")
+
+    def test_call_outcome_rejects_incompatible_follow_up(self):
+        self.client.force_authenticate(self.first_so)
+        future = timezone.now() + timedelta(days=1)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "QUALIFIED", "follow_up_at": future.isoformat()}, format="json")
+        self.assertEqual(response.status_code, 400)
 
     def test_follow_up_status_requires_a_date_and_other_statuses_cannot_keep_one(self):
         self.client.force_authenticate(self.first_so)
@@ -158,11 +186,25 @@ class LeadAccessTests(TestCase):
 
     def test_admin_can_update_any_lead_outcome(self):
         self.client.force_authenticate(self.admin)
-        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"status": Lead.Status.WON, "sales_outcome": Lead.SalesOutcome.RETAILED, "call_outcome": "RETAILED", "remarks": "Sale confirmed."}, format="json")
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"status": Lead.Status.WON, "sales_outcome": Lead.SalesOutcome.RETAILED, "remarks": "Sale confirmed."}, format="json")
         self.assertEqual(response.status_code, 200)
         self.first_lead.refresh_from_db()
         self.assertEqual(self.first_lead.status, Lead.Status.WON)
         self.assertEqual(self.first_lead.sales_outcome, Lead.SalesOutcome.RETAILED)
+
+    def test_admin_analytics_counts_calls_made_today(self):
+        CallLog.objects.create(lead=self.first_lead, so=self.first_so, status=Lead.Status.RNR)
+        yesterday = CallLog.objects.create(lead=self.second_lead, so=self.second_so, status=Lead.Status.RNR)
+        CallLog.objects.filter(pk=yesterday.pk).update(created_at=timezone.now() - timedelta(days=1))
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.get("/api/analytics/admin/")
+
+        self.assertEqual(response.status_code, 200)
+        first_officer = next(item for item in response.data["officers"] if item["id"] == self.first_so.id)
+        second_officer = next(item for item in response.data["officers"] if item["id"] == self.second_so.id)
+        self.assertEqual(first_officer["calls_today"], 1)
+        self.assertEqual(second_officer["calls_today"], 0)
 
     def test_follow_up_submission_moves_fresh_lead_to_follow_ups(self):
         self.client.force_authenticate(self.first_so)

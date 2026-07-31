@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assignFilteredLeads, assignLead, autoAssignLeads, commitUpload, createLead, getAdminAnalytics, getLeadDetail, getLeadsPage, getOfficers, getUpload, logCall, resolveUploadDuplicates, sourceClass, statusName, toLead, toOfficer, updateMyLead, type CallHistory, type Lead, type LeadDetail, type LeadFilters, type LeadInput, type LeadQualification, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
 import { formatDate, parseDate } from "@/lib/dates";
 
-const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", CALLBACK: "Callback", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
+const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", SWITCHED_OFF: "Switch off", CALLBACK: "Callback", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
 const outcomeLabels: Record<string, string> = { CONNECTED: "Connected", NO_RESPONSE: "No response", CALLBACK: "Callback", QUALIFIED: "Qualified", WRONG_NUMBER: "Wrong number" };
 
 function formatCallDate(value: string) {
@@ -292,18 +292,18 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
           </div>
           <div className="sales-detail-meta"><span>Trade-in <b>{leadDetail?.qualification?.trade_in === true ? "Yes" : leadDetail?.qualification?.trade_in === false ? "No" : "—"}</b></span><span>Category <b className={`category-pill ${activeLead.category?.toLowerCase() || "warm"}`}>{activeLead.category || "WARM"}</b></span></div>
         </section>
-        <section className="sales-form-card admin-call-history">
-          <h3>▱ Call History</h3>
-          {detailLoading ? <p className="subtext">Loading call history…</p> : leadDetail?.callHistory.length ? <div className="admin-history-list">{leadDetail.callHistory.map((call, index) => <div className="sales-history-row" key={`call-${call.id}`}><div><b>Call #{leadDetail.callHistory.length - index} · {call.so_name || "Admin"}</b><small>{call.remarks || "No remarks"}</small>{call.outcome && <span className="admin-history-outcome">{call.outcome}</span>}</div><time>{formatCallDate(call.created_at)}</time></div>)}</div> : <div className="admin-empty-history">No call history available</div>}
-        </section>
+        {(detailLoading || leadDetail?.callHistory.length) ? <section className="sales-form-card admin-call-history">
+          <h3>Call history</h3>
+          {detailLoading ? <p className="subtext">Loading call history…</p> : <div className="admin-history-list">{leadDetail?.callHistory.map((call, index) => <div className="sales-history-row" key={`call-${call.id}`}><div><b>Call #{leadDetail.callHistory.length - index} · {call.so_name || "Admin"}</b><small>{call.remarks || "No remarks"}</small>{call.outcome && <span className="admin-history-outcome">{call.outcome}</span>}</div><time>{formatCallDate(call.created_at)}</time></div>)}</div>}
+        </section> : null}
         <section className="sales-form-card admin-call-card">
-          <h3>▱ Call Remark {leadDetail ? `(Call #${leadDetail.callHistory.length + 1})` : ""}</h3>
+          <h3>Call remarks {leadDetail ? `(Call #${leadDetail.callHistory.length + 1})` : ""}</h3>
           <label className="sales-full-label"><textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Enter your call remarks…" /></label>
           <div className="admin-follow-up-grid">
-            <div><h4>Call Outcome</h4><div className="sales-choice-row admin-outcome-row">{adminOutcomeOptions.map(item => <button type="button" className={outcome === item.value ? "chosen" : ""} onClick={() => { setOutcome(item.value); if (item.value !== "CALLBACK") setFollowUpAt(""); }} key={item.value}>{item.label}</button>)}</div></div>
-            <div><h4>Test Drive Status</h4><label className="admin-checkbox-card"><input type="checkbox" checked={testDrive === "Completed"} onChange={event => setTestDrive(event.target.checked ? "Completed" : "")} /> <span>Mark test drive as done</span></label></div>
+            <div><h4>Call outcome</h4><div className="sales-choice-row admin-outcome-row">{adminOutcomeOptions.map(item => <button type="button" className={outcome === item.value ? "chosen" : ""} onClick={() => { setOutcome(item.value); if (item.value !== "CALLBACK") setFollowUpAt(""); }} key={item.value}>{item.label}</button>)}</div></div>
+            <label className="admin-follow-up-date"><span><b>Next follow-up date</b>{needsAppointment ? " *" : ""}</span><input type="datetime-local" required={needsAppointment} min={localDateTimeValue(new Date().toISOString())} value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>
+            <div><h4>Test drive</h4><label className="admin-checkbox-card"><input type="checkbox" checked={testDrive === "Completed"} onChange={event => setTestDrive(event.target.checked ? "Completed" : "")} /> <span>Mark test drive as done</span></label></div>
           </div>
-          <label className="admin-follow-up-date"><span>▣ <b>Next Follow-up Date</b>{needsAppointment ? " *" : ""}</span><input type="datetime-local" required={needsAppointment} min={localDateTimeValue(new Date().toISOString())} value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>
         </section>
       </div>
       <footer className="sales-detail-footer"><button className="filter" onClick={() => { setActiveLead(null); setLeadDetail(null); }}>Cancel</button><button className="button primary" disabled={savingCall || (needsAppointment && !followUpAt) || !outcome} onClick={() => void saveCall()}>{savingCall ? "Saving…" : "Update Follow-up"}</button></footer>

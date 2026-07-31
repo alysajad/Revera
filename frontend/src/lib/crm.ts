@@ -21,7 +21,7 @@ export type LeadDetail = Lead & { email: string; sourceLabel: string; campaign: 
 export type SalesDashboard = { summary: { total: number; fresh: number; followups: number; pending: number; qualified: number; walkin: number; won: number; lost: number; won_lost: number; untouched: number; called: number; scheduled: number }; section: string; results: Lead[] };
 export type PersonalAnalytics = { range: string; summary: { total: number; assigned: number; qualified: number; booked: number; lost: number; retailed: number; conversion_rate: number }; status_counts: { status: string; count: number }[]; source: { source: string; total: number; qualified: number; booked: number; retailed: number }[]; models: { model_interest: string; total: number; qualified: number; booked: number }[]; monthly: { month: string; total: number; qualified: number; booked: number; retailed: number }[] };
 export type Officer = { id: number; name: string; initials: string; color: "blue" | "green" | "violet" | "orange"; assigned: number; calls: number; qualified: number; won: number };
-export type Metrics = { total_assigned: number; total_called: number; qualified: number; walkins: number; won: number; lost: number; conversion_rate: number };
+export type Metrics = { total_assigned: number; total_called: number; calls_today?: number; qualified: number; walkins: number; won: number; lost: number; conversion_rate: number };
 export type Analytics = { summary: Metrics; source: { source: string; total: number; qualified: number; won: number }[]; officers: (Metrics & { id: number; name: string })[] };
 export type CurrentUser = { id: number; first_name: string; last_name: string; email: string; role: "ADMIN" | "SO" };
 
@@ -60,7 +60,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 }
 
 const sourceNames: Record<string, string> = { META: "Meta Ads", WEBSITE: "Website", CARWALE: "CarWale", WALKIN: "Walk-in", CAMPAIGN: "Campaign", OTHER: "Other", UNKNOWN: "Unknown" };
-const statusNames: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", CALLBACK: "Callback", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
+const statusNames: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", SWITCHED_OFF: "Switch off", CALLBACK: "Callback", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
 const colors: Officer["color"][] = ["blue", "green", "violet", "orange"];
 
 export const sourceName = (source: string) => sourceNames[source] || source;
@@ -68,7 +68,7 @@ export const statusName = (status: string) => statusNames[status] || status;
 export const sourceClass = (source: string) => sourceName(source).toLowerCase().replaceAll(" ", "-");
 export const toLead = (lead: ApiLead): Lead => ({ ...lead, source: sourceName(lead.source), sourceCode: lead.source, model: lead.model_interest || "—", enquiryDate: lead.enquiry_date, enquiredAt: formatDate(lead.enquiry_date || lead.created_at), statusCode: lead.status, status: statusName(lead.status), category: lead.category, salesOutcome: lead.sales_outcome, nextFollowUp: lead.next_follow_up, callCount: lead.call_count, assignedSoId: lead.assigned_so, assignedSoName: lead.assigned_so_name });
 const toLeadDetail = (lead: ApiLead & { call_history: CallHistory[]; follow_up_history: FollowUpHistory[]; audit_history: LeadDetail["auditHistory"] }): LeadDetail => ({ ...toLead(lead), email: lead.email, sourceLabel: lead.source_label, campaign: lead.campaign, qualification: lead.qualification, callHistory: lead.call_history, followUpHistory: lead.follow_up_history, auditHistory: lead.audit_history });
-export const toOfficer = (officer: ApiOfficer, metrics?: Metrics): Officer => ({ id: officer.id, name: `${officer.first_name} ${officer.last_name}`.trim() || officer.email, initials: `${officer.first_name[0] || ""}${officer.last_name[0] || ""}` || officer.email.slice(0, 2).toUpperCase(), color: colors[officer.id % colors.length], assigned: metrics?.total_assigned || 0, calls: metrics?.total_called || 0, qualified: metrics?.qualified || 0, won: metrics?.won || 0 });
+export const toOfficer = (officer: ApiOfficer, metrics?: Metrics): Officer => ({ id: officer.id, name: `${officer.first_name} ${officer.last_name}`.trim() || officer.email, initials: `${officer.first_name[0] || ""}${officer.last_name[0] || ""}` || officer.email.slice(0, 2).toUpperCase(), color: colors[officer.id % colors.length], assigned: metrics?.total_assigned || 0, calls: metrics?.calls_today || 0, qualified: metrics?.qualified || 0, won: metrics?.won || 0 });
 
 export async function getLeadsPage(query = "") { const data = await api<Paginated<ApiLead>>(`/api/leads/${query}`); return { count: data.count ?? data.results.length, next: data.next ?? null, previous: data.previous ?? null, results: data.results.map(toLead) }; }
 export async function getLeads(query = "") { return (await getLeadsPage(query)).results; }
