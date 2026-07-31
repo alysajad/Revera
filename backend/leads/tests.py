@@ -118,6 +118,21 @@ class LeadAccessTests(TestCase):
         self.assertEqual(set(response.data["results"][0]), {"id", "status", "name", "phone", "source"})
         self.assertEqual(response.data["results"][0]["status"], Lead.Status.QUALIFIED)
 
+    def test_fresh_dashboard_subfilters_return_matching_rows(self):
+        called = Lead.objects.create(name="Called", phone="7305198422", assigned_so=self.first_so, status=Lead.Status.QUALIFIED)
+        scheduled = Lead.objects.create(name="Scheduled", phone="7305198423", assigned_so=self.first_so, status=Lead.Status.PENDING)
+        FollowUp.objects.create(lead=scheduled, so=self.first_so, scheduled_for=timezone.now() + timedelta(days=1))
+        self.client.force_authenticate(self.first_so)
+
+        response = self.client.get("/api/leads/my-dashboard/?section=fresh&subfilter=untouched")
+        self.assertEqual([lead["id"] for lead in response.data["results"]], [self.first_lead.id])
+
+        response = self.client.get("/api/leads/my-dashboard/?section=fresh&subfilter=called")
+        self.assertEqual({lead["id"] for lead in response.data["results"]}, {called.id, scheduled.id})
+
+        response = self.client.get("/api/leads/my-dashboard/?section=fresh&subfilter=scheduled")
+        self.assertEqual([lead["id"] for lead in response.data["results"]], [scheduled.id])
+
     def test_sales_officer_can_save_qualification_from_qualified_outcome(self):
         self.client.force_authenticate(self.first_so)
         response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"category": Lead.Category.HOT, "call_outcome": "QUALIFIED", "remarks": "Customer is qualified.", "qualification": {"variant": "R8 Pro", "buying_timeline": "1-2 months", "finance_type": "Bank finance", "trade_in": True, "test_drive": "Requested"}}, format="json")
