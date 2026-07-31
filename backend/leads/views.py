@@ -79,6 +79,7 @@ class LeadViewSet(viewsets.ModelViewSet):
     def my_dashboard(self, request):
         today = timezone.localdate()
         queryset = Lead.objects.filter(assigned_so=request.user, deleted_at__isnull=True)
+        open_followup = Q(follow_ups__id__isnull=False, follow_ups__resolved_at__isnull=True)
         date_range = request.query_params.get("range", "all")
         if date_range == "today":
             queryset = queryset.filter(enquiry_date=today)
@@ -93,7 +94,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         summary = {
             "total": queryset.count(),
             "fresh": queryset.filter(status=Lead.Status.FRESH).count(),
-            "followups": queryset.filter(follow_ups__resolved_at__isnull=True).distinct().count(),
+            "followups": queryset.filter(open_followup).distinct().count(),
             "pending": queryset.filter(status__in=[Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING]).count(),
             "qualified": queryset.filter(status=Lead.Status.QUALIFIED).count(),
             "walkin": queryset.filter(status=Lead.Status.WALKIN).count(),
@@ -102,18 +103,26 @@ class LeadViewSet(viewsets.ModelViewSet):
             "won_lost": queryset.filter(status__in=[Lead.Status.WON, Lead.Status.LOST, Lead.Status.UNQUALIFIED]).count(),
             "untouched": queryset.filter(status=Lead.Status.FRESH).count(),
             "called": queryset.exclude(status=Lead.Status.FRESH).count(),
-            "scheduled": queryset.filter(follow_ups__resolved_at__isnull=True).distinct().count(),
+            "scheduled": queryset.filter(open_followup).distinct().count(),
         }
         section = request.query_params.get("section", "fresh")
+        fresh_subfilter = request.query_params.get("subfilter", "untouched")
+        fresh_filters = {
+            "untouched": Q(status=Lead.Status.FRESH),
+            "called": ~Q(status=Lead.Status.FRESH),
+            "scheduled": open_followup,
+        }
         section_filters = {
             "fresh": Q(status=Lead.Status.FRESH),
-            "followups": Q(follow_ups__resolved_at__isnull=True),
+            "followups": open_followup,
             "pending": Q(status__in=[Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING]),
             "qualified": Q(status=Lead.Status.QUALIFIED),
             "walkin": Q(status=Lead.Status.WALKIN),
             "won_lost": Q(status__in=[Lead.Status.WON, Lead.Status.LOST, Lead.Status.UNQUALIFIED]),
         }
-        if section in section_filters:
+        if section == "fresh" and fresh_subfilter in fresh_filters:
+            queryset = queryset.filter(fresh_filters[fresh_subfilter])
+        elif section in section_filters:
             queryset = queryset.filter(section_filters[section])
         if value := request.query_params.get("category"):
             queryset = queryset.filter(category=value.upper())
