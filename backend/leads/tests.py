@@ -143,14 +143,26 @@ class LeadAccessTests(TestCase):
         self.first_lead.refresh_from_db()
         self.assertEqual(self.first_lead.status, Lead.Status.SWITCHED_OFF)
 
-    def test_pending_call_outcome_moves_lead_to_callback(self):
+    def test_pending_call_outcome_moves_lead_to_pending(self):
         self.client.force_authenticate(self.first_so)
         future = timezone.now() + timedelta(days=1)
         response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "PENDING", "follow_up_at": future.isoformat()}, format="json")
         self.assertEqual(response.status_code, 200)
         self.first_lead.refresh_from_db()
-        self.assertEqual(self.first_lead.status, Lead.Status.CALLBACK)
+        self.assertEqual(self.first_lead.status, Lead.Status.PENDING)
         self.assertTrue(FollowUp.objects.filter(lead=self.first_lead, resolved_at__isnull=True).exists())
+
+    def test_direct_qualified_and_lost_outcomes_set_matching_statuses(self):
+        self.client.force_authenticate(self.first_so)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "QUALIFIED", "status": Lead.Status.QUALIFIED, "qualification": {"variant": "R8 Pro"}}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.first_lead.refresh_from_db()
+        self.assertEqual(self.first_lead.status, Lead.Status.QUALIFIED)
+
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "LOST", "status": Lead.Status.LOST}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.first_lead.refresh_from_db()
+        self.assertEqual(self.first_lead.status, Lead.Status.LOST)
 
     def test_call_outcome_rejects_incompatible_follow_up(self):
         self.client.force_authenticate(self.first_so)
