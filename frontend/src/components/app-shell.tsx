@@ -26,7 +26,6 @@ export function AppShell({ children, role }: AppShellProps) {
   const router = useRouter();
   const links = role === "Admin" ? adminLinks : officerLinks;
   const [user, setUser] = useState<CurrentUser | null>(null);
-  const [checkingAccess, setCheckingAccess] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
   const [sessionConflict, setSessionConflict] = useState<CurrentUser | null>(null);
   useEffect(() => {
@@ -37,7 +36,7 @@ export function AppShell({ children, role }: AppShellProps) {
       } else {
         setUser(actual);
       }
-    }).catch(() => router.replace("/")).finally(() => setCheckingAccess(false));
+    }).catch(() => router.replace("/"));
   }, [role, router]);
   const displayName = user ? `${user.first_name} ${user.last_name}`.trim() || user.email : "Sign in";
   const initials = user ? `${user.first_name[0] || ""}${user.last_name[0] || ""}` || user.email.slice(0, 2).toUpperCase() : "?";
@@ -48,7 +47,6 @@ export function AppShell({ children, role }: AppShellProps) {
   };
 
   if (signingOut) return <AuthTransition stage="signout" />;
-  if (checkingAccess) return <AuthTransition stage="workspace" />;
 
   if (sessionConflict) {
     const actualRole = sessionConflict.role === "ADMIN" ? "Admin" : "Sales Officer";
