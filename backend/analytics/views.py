@@ -23,18 +23,20 @@ class AdminAnalyticsView(APIView):
 
     def get(self, request):
         queryset = Lead.objects.filter(deleted_at__isnull=True)
+        today = timezone.localdate()
         source = list(queryset.values("source").annotate(total=Count("id"), qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)), won=Count("id", filter=Q(status=Lead.Status.WON))).order_by("source"))
         active_leads = Q(assigned_leads__deleted_at__isnull=True)
         officers = []
         for user in User.objects.filter(role=User.Role.SALES_OFFICER).annotate(
             total_assigned=Count("assigned_leads", filter=active_leads),
             total_called=Count("assigned_leads", filter=active_leads & ~Q(assigned_leads__status=Lead.Status.FRESH)),
+            calls_today=Count("call_logs", filter=Q(call_logs__created_at__date=today, call_logs__lead__deleted_at__isnull=True)),
             qualified=Count("assigned_leads", filter=active_leads & Q(assigned_leads__status=Lead.Status.QUALIFIED)),
             walkins=Count("assigned_leads", filter=active_leads & Q(assigned_leads__status=Lead.Status.WALKIN)),
             won=Count("assigned_leads", filter=active_leads & Q(assigned_leads__status=Lead.Status.WON)),
             lost=Count("assigned_leads", filter=active_leads & Q(assigned_leads__status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED])),
         ):
-            officers.append({"id": user.id, "name": user.get_full_name() or user.email, "total_assigned": user.total_assigned, "total_called": user.total_called, "qualified": user.qualified, "walkins": user.walkins, "won": user.won, "lost": user.lost, "conversion_rate": round((user.won / user.total_assigned) * 100, 1) if user.total_assigned else 0})
+            officers.append({"id": user.id, "name": user.get_full_name() or user.email, "total_assigned": user.total_assigned, "total_called": user.total_called, "calls_today": user.calls_today, "qualified": user.qualified, "walkins": user.walkins, "won": user.won, "lost": user.lost, "conversion_rate": round((user.won / user.total_assigned) * 100, 1) if user.total_assigned else 0})
         return Response({"summary": metrics(queryset), "source": source, "officers": officers, "generated_at": timezone.now()})
 
 
