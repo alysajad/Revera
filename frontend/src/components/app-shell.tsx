@@ -35,7 +35,7 @@ export function AppShell({ children, role }: AppShellProps) {
       } else {
         setUser(actual);
       }
-    }).catch(() => router.replace("/")).finally(() => setCheckingAccess(false));
+    }).catch(() => router.replace("/"));
   }, [role, router]);
   const displayName = user ? `${user.first_name} ${user.last_name}`.trim() || user.email : "Sign in";
   const initials = user ? `${user.first_name[0] || ""}${user.last_name[0] || ""}` || user.email.slice(0, 2).toUpperCase() : "?";

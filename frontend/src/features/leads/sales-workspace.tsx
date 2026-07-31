@@ -90,7 +90,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
 
   useEffect(() => { const timer = window.setTimeout(() => void loadDashboard(), query ? 250 : 0); return () => window.clearTimeout(timer); }, [loadDashboard, query]);
 
-  const openLead = async (lead: Lead) => {
+  const openLead = async (lead: { id: number }) => {
     setDetailLoading(true); setError("");
     try { const fullLead = await getLeadDetail(lead.id); setDetail(fullLead); setDraft(draftFor(fullLead)); setLeadFields(leadFieldsFor(fullLead)); setEditingLead(false); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to open this lead."); }

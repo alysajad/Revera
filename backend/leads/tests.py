@@ -115,7 +115,8 @@ class LeadAccessTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["summary"]["qualified"], 1)
         self.assertEqual(len(response.data["results"]), 1)
-        self.assertEqual(response.data["results"][0]["category"], Lead.Category.HOT)
+        self.assertEqual(set(response.data["results"][0]), {"id", "status", "name", "phone", "source"})
+        self.assertEqual(response.data["results"][0]["status"], Lead.Status.QUALIFIED)
 
     def test_sales_officer_can_save_qualification_from_qualified_outcome(self):
         self.client.force_authenticate(self.first_so)

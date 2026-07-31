@@ -77,7 +77,7 @@ class LeadViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="my-dashboard")
     def my_dashboard(self, request):
         today = timezone.localdate()
-        queryset = Lead.objects.filter(assigned_so=request.user, deleted_at__isnull=True).select_related("assigned_so").annotate(_call_count=Count("call_logs", distinct=True)).prefetch_related("qualification", Prefetch("follow_ups", queryset=FollowUp.objects.filter(resolved_at__isnull=True).order_by("scheduled_for"), to_attr="_open_followups"))
+        queryset = Lead.objects.filter(assigned_so=request.user, deleted_at__isnull=True)
         date_range = request.query_params.get("range", "all")
         if date_range == "today":
             queryset = queryset.filter(enquiry_date=today)
@@ -120,8 +120,8 @@ class LeadViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(source=value.upper())
         if value := request.query_params.get("q"):
             queryset = queryset.filter(Q(name__icontains=value) | Q(phone__icontains=value) | Q(campaign__icontains=value) | Q(model_interest__icontains=value) | Q(branch__icontains=value))
-        leads = queryset.distinct().order_by("-enquiry_date", "-created_at")
-        return Response({"summary": summary, "section": section, "results": LeadSerializer(leads, many=True).data})
+        leads = queryset.distinct().order_by("-enquiry_date", "-created_at").only("id", "status", "name", "phone", "source")
+        return Response({"summary": summary, "section": section, "results": SOLeadListSerializer(leads, many=True).data})
 
     @action(detail=True, methods=["patch"], url_path="so-update")
     def so_update(self, request, pk=None):
