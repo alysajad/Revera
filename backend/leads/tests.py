@@ -118,17 +118,31 @@ class LeadAccessTests(TestCase):
         self.assertEqual(set(response.data["results"][0]), {"id", "status", "name", "phone", "source"})
         self.assertEqual(response.data["results"][0]["status"], Lead.Status.QUALIFIED)
 
-    def test_sales_officer_can_save_qualification_and_follow_up(self):
+    def test_sales_officer_can_save_qualification_from_qualified_outcome(self):
+        self.client.force_authenticate(self.first_so)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"category": Lead.Category.HOT, "call_outcome": "QUALIFIED", "remarks": "Customer is qualified.", "qualification": {"variant": "R8 Pro", "buying_timeline": "1-2 months", "finance_type": "Bank finance", "trade_in": True, "test_drive": "Requested"}}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.first_lead.refresh_from_db()
+        self.assertEqual(self.first_lead.status, Lead.Status.QUALIFIED)
+        self.assertEqual(self.first_lead.category, Lead.Category.HOT)
+        self.assertEqual(CallLog.objects.get(lead=self.first_lead).outcome, "QUALIFIED")
+        self.assertFalse(FollowUp.objects.filter(lead=self.first_lead, resolved_at__isnull=True).exists())
+        self.assertEqual(LeadQualification.objects.get(lead=self.first_lead).variant, "R8 Pro")
+
+    def test_pending_call_outcome_moves_lead_to_callback(self):
         self.client.force_authenticate(self.first_so)
         future = timezone.now() + timedelta(days=1)
-        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"status": Lead.Status.CALLBACK, "category": Lead.Category.HOT, "call_outcome": "CONNECTED", "remarks": "Customer requested a callback.", "follow_up_at": future.isoformat(), "qualification": {"variant": "R8 Pro", "buying_timeline": "1-2 months", "finance_type": "Bank finance", "trade_in": True, "test_drive": "Requested"}}, format="json")
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "PENDING", "follow_up_at": future.isoformat()}, format="json")
         self.assertEqual(response.status_code, 200)
         self.first_lead.refresh_from_db()
         self.assertEqual(self.first_lead.status, Lead.Status.CALLBACK)
-        self.assertEqual(self.first_lead.category, Lead.Category.HOT)
-        self.assertEqual(CallLog.objects.get(lead=self.first_lead).outcome, "CONNECTED")
         self.assertTrue(FollowUp.objects.filter(lead=self.first_lead, resolved_at__isnull=True).exists())
-        self.assertEqual(LeadQualification.objects.get(lead=self.first_lead).variant, "R8 Pro")
+
+    def test_call_outcome_rejects_incompatible_follow_up(self):
+        self.client.force_authenticate(self.first_so)
+        future = timezone.now() + timedelta(days=1)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "QUALIFIED", "follow_up_at": future.isoformat()}, format="json")
+        self.assertEqual(response.status_code, 400)
 
     def test_follow_up_status_requires_a_date_and_other_statuses_cannot_keep_one(self):
         self.client.force_authenticate(self.first_so)
@@ -159,7 +173,7 @@ class LeadAccessTests(TestCase):
 
     def test_admin_can_update_any_lead_outcome(self):
         self.client.force_authenticate(self.admin)
-        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"status": Lead.Status.WON, "sales_outcome": Lead.SalesOutcome.RETAILED, "call_outcome": "RETAILED", "remarks": "Sale confirmed."}, format="json")
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"status": Lead.Status.WON, "sales_outcome": Lead.SalesOutcome.RETAILED, "remarks": "Sale confirmed."}, format="json")
         self.assertEqual(response.status_code, 200)
         self.first_lead.refresh_from_db()
         self.assertEqual(self.first_lead.status, Lead.Status.WON)

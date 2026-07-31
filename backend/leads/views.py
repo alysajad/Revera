@@ -17,9 +17,9 @@ from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification
 from .serializers import AssignmentSerializer, FollowUpSerializer, LeadDetailSerializer, LeadSerializer, LeadUpdateSerializer, SOLeadListSerializer, SOLeadUpdateSerializer
 
 FORWARD_TRANSITIONS = {
-    Lead.Status.FRESH: {Lead.Status.RNR, Lead.Status.CALLBACK, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED},
-    Lead.Status.RNR: {Lead.Status.CALLBACK, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED},
-    Lead.Status.CALLBACK: {Lead.Status.RNR, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED, Lead.Status.WALKIN},
+    Lead.Status.FRESH: {Lead.Status.RNR, Lead.Status.CALLBACK, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED, Lead.Status.LOST},
+    Lead.Status.RNR: {Lead.Status.CALLBACK, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED, Lead.Status.LOST},
+    Lead.Status.CALLBACK: {Lead.Status.RNR, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED, Lead.Status.WALKIN, Lead.Status.LOST},
     Lead.Status.QUALIFIED: {Lead.Status.WALKIN, Lead.Status.WON, Lead.Status.LOST},
     Lead.Status.WALKIN: {Lead.Status.WON, Lead.Status.LOST},
 }
@@ -131,7 +131,13 @@ class LeadViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         sales_status = {Lead.SalesOutcome.BOOKED: Lead.Status.WALKIN, Lead.SalesOutcome.RETAILED: Lead.Status.WON, Lead.SalesOutcome.LOST: Lead.Status.LOST}
-        next_status = data.get("status") or sales_status.get(data.get("sales_outcome"), lead.status)
+        call_status = {"QUALIFIED": Lead.Status.QUALIFIED, "NOT_CONNECTED": Lead.Status.RNR, "PENDING": Lead.Status.CALLBACK, "LOST": Lead.Status.LOST}
+        call_outcome = data.get("call_outcome")
+        if call_outcome == "PENDING" and not data.get("follow_up_at"):
+            return Response({"detail": "Pending calls require a follow-up time."}, status=status.HTTP_400_BAD_REQUEST)
+        if call_outcome and call_outcome != "PENDING" and data.get("follow_up_at"):
+            return Response({"detail": "Only pending calls can have a follow-up time."}, status=status.HTTP_400_BAD_REQUEST)
+        next_status = call_status.get(call_outcome) if call_outcome else data.get("status") or sales_status.get(data.get("sales_outcome"), lead.status)
         if data.get("follow_up_at") and next_status in {Lead.Status.FRESH, Lead.Status.RNR}:
             next_status = Lead.Status.CALLBACK
         if data.get("follow_up_at") and next_status not in {Lead.Status.CALLBACK, Lead.Status.WALKIN}:

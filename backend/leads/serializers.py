@@ -107,7 +107,7 @@ class SOLeadUpdateSerializer(serializers.Serializer):
     branch = serializers.CharField(max_length=120, required=False, allow_blank=True)
     enquiry_date = serializers.DateField(required=False, allow_null=True)
     remarks = serializers.CharField(max_length=500, required=False, allow_blank=True)
-    call_outcome = serializers.CharField(max_length=30, required=False, allow_blank=True)
+    call_outcome = serializers.ChoiceField(choices=[("QUALIFIED", "Qualified"), ("NOT_CONNECTED", "Not connected"), ("PENDING", "Pending"), ("LOST", "Lost")], required=False, allow_blank=True)
     follow_up_at = serializers.DateTimeField(required=False, allow_null=True)
     qualification = QualificationSerializer(required=False)
 
