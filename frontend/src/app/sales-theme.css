@@ -120,6 +120,7 @@
 .sales-shell .sales-subfilters button,.sales-shell .sales-row-action { border-radius: 6px; font-family: "JetBrains Mono", monospace; }
 .sales-shell .sales-table th { background: var(--sales-surface-low); color: var(--sales-muted); font-family: "JetBrains Mono", monospace; letter-spacing: .05em; }
 .sales-shell .sales-table td { color: var(--sales-muted); font-family: "Hanken Grotesk", Arial, sans-serif; }
+.sales-shell .sales-table { min-width: 640px; }
 .sales-shell .sales-table td b { color: #181c1c; font-family: "Space Grotesk", Arial, sans-serif; font-size: 14px; font-weight: 500; }
 .sales-shell .sales-chart-card { min-height: 310px; padding: 26px; border: 1px solid var(--sales-outline); border-radius: 0; box-shadow: none; background: var(--sales-surface); }
 .sales-shell .sales-chart-card h2 { color: #181c1c; font-family: "Space Grotesk", Arial, sans-serif; font-size: 21px; font-weight: 500; }
