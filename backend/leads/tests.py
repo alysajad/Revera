@@ -179,6 +179,20 @@ class LeadAccessTests(TestCase):
         self.assertEqual(self.first_lead.status, Lead.Status.WON)
         self.assertEqual(self.first_lead.sales_outcome, Lead.SalesOutcome.RETAILED)
 
+    def test_admin_analytics_counts_calls_made_today(self):
+        CallLog.objects.create(lead=self.first_lead, so=self.first_so, status=Lead.Status.RNR)
+        yesterday = CallLog.objects.create(lead=self.second_lead, so=self.second_so, status=Lead.Status.RNR)
+        CallLog.objects.filter(pk=yesterday.pk).update(created_at=timezone.now() - timedelta(days=1))
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.get("/api/analytics/admin/")
+
+        self.assertEqual(response.status_code, 200)
+        first_officer = next(item for item in response.data["officers"] if item["id"] == self.first_so.id)
+        second_officer = next(item for item in response.data["officers"] if item["id"] == self.second_so.id)
+        self.assertEqual(first_officer["calls_today"], 1)
+        self.assertEqual(second_officer["calls_today"], 0)
+
     def test_follow_up_submission_moves_fresh_lead_to_follow_ups(self):
         self.client.force_authenticate(self.first_so)
         future = timezone.now() + timedelta(days=2)
