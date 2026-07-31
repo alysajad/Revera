@@ -52,6 +52,11 @@ function minimumFollowUpDate() {
   return localDateTimeValue(date);
 }
 
+function defaultFollowUpDate(lead: LeadDetail) {
+  const existing = inputDate(lead.nextFollowUp);
+  return existing || (["FRESH", "RNR", "CALLBACK", "WALKIN"].includes(lead.statusCode) ? minimumFollowUpDate() : "");
+}
+
 const followUpStatuses = new Set(["CALLBACK", "WALKIN"]);
 
 function progressState(callCount: number, index: number) {
@@ -62,7 +67,7 @@ function progressState(callCount: number, index: number) {
 function draftFor(lead: LeadDetail): Draft {
   const status = lead.nextFollowUp && ["FRESH", "RNR"].includes(lead.statusCode) ? "CALLBACK" : lead.statusCode;
   const { updated_at: _updatedAt, ...qualification } = lead.qualification || emptyQualification();
-  return { status, category: lead.category || "WARM", sales_outcome: lead.salesOutcome || "PENDING", call_outcome: "", remarks: "", follow_up_at: inputDate(lead.nextFollowUp), qualification };
+  return { status, category: lead.category || "WARM", sales_outcome: lead.salesOutcome || "PENDING", call_outcome: "", remarks: "", follow_up_at: defaultFollowUpDate(lead), qualification };
 }
 
 function leadFieldsFor(lead: LeadDetail): LeadFields {
