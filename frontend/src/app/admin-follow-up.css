@@ -181,7 +181,7 @@
 .admin-follow-up-date {
   display: grid;
   gap: 8px;
-  margin-top: 22px;
+  margin-top: 0;
   color: #16284b;
   font-size: 12px;
   line-height: 1.35;
