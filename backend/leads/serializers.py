@@ -4,6 +4,11 @@ from django.utils import timezone
 from accounts.models import User
 from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification
 
+CALL_OUTCOME_STATUS_OPTIONS = {
+    "CONNECTED": {Lead.Status.CALLBACK, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED},
+    "NOT_CONNECTED": {Lead.Status.RNR, Lead.Status.SWITCHED_OFF},
+}
+
 
 class LeadSerializer(serializers.ModelSerializer):
     assigned_so_name = serializers.CharField(source="assigned_so.get_full_name", read_only=True)
@@ -101,13 +106,13 @@ class SOLeadUpdateSerializer(serializers.Serializer):
     campaign = serializers.CharField(max_length=160, required=False, allow_blank=True)
     model_interest = serializers.CharField(max_length=100, required=False, allow_blank=True)
     city = serializers.CharField(max_length=100, required=False, allow_blank=True)
-    status = serializers.ChoiceField(choices=Lead.Status.choices, required=False)
+    status = serializers.ChoiceField(choices=Lead.Status.choices, required=False, allow_blank=True)
     category = serializers.ChoiceField(choices=Lead.Category.choices, required=False)
     sales_outcome = serializers.ChoiceField(choices=Lead.SalesOutcome.choices, required=False)
     branch = serializers.CharField(max_length=120, required=False, allow_blank=True)
     enquiry_date = serializers.DateField(required=False, allow_null=True)
     remarks = serializers.CharField(max_length=500, required=False, allow_blank=True)
-    call_outcome = serializers.ChoiceField(choices=[("QUALIFIED", "Qualified"), ("NOT_CONNECTED", "Not connected"), ("PENDING", "Pending"), ("LOST", "Lost")], required=False, allow_blank=True)
+    call_outcome = serializers.ChoiceField(choices=[("CONNECTED", "Connected"), ("NOT_CONNECTED", "Not connected"), ("QUALIFIED", "Qualified"), ("PENDING", "Pending"), ("LOST", "Lost")], required=False, allow_blank=True)
     follow_up_at = serializers.DateTimeField(required=False, allow_null=True)
     qualification = QualificationSerializer(required=False)
 
@@ -117,6 +122,10 @@ class SOLeadUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError({"enquiry_date": "Enquiry date cannot be in the future."})
         next_status = attrs.get("status")
         follow_up_at = attrs.get("follow_up_at")
+        call_outcome = attrs.get("call_outcome")
+        if call_outcome in CALL_OUTCOME_STATUS_OPTIONS:
+            if next_status not in CALL_OUTCOME_STATUS_OPTIONS[call_outcome]:
+                raise serializers.ValidationError({"status": "Choose a lead status that matches the call outcome."})
         if follow_up_at and follow_up_at <= timezone.now():
             raise serializers.ValidationError({"follow_up_at": "Choose a future appointment time."})
         if next_status in [Lead.Status.CALLBACK, Lead.Status.WALKIN] and not follow_up_at:

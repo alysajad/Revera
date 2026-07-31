@@ -129,6 +129,20 @@ class LeadAccessTests(TestCase):
         self.assertFalse(FollowUp.objects.filter(lead=self.first_lead, resolved_at__isnull=True).exists())
         self.assertEqual(LeadQualification.objects.get(lead=self.first_lead).variant, "R8 Pro")
 
+    def test_call_outcome_only_allows_matching_lead_statuses(self):
+        self.client.force_authenticate(self.first_so)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "CONNECTED", "status": Lead.Status.RNR}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+        future = timezone.now() + timedelta(days=1)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "CONNECTED", "status": Lead.Status.CALLBACK, "follow_up_at": future.isoformat()}, format="json")
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "NOT_CONNECTED", "status": Lead.Status.SWITCHED_OFF}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.first_lead.refresh_from_db()
+        self.assertEqual(self.first_lead.status, Lead.Status.SWITCHED_OFF)
+
     def test_pending_call_outcome_moves_lead_to_callback(self):
         self.client.force_authenticate(self.first_so)
         future = timezone.now() + timedelta(days=1)

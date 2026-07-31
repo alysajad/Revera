@@ -25,6 +25,7 @@ export function AppShell({ children, role }: AppShellProps) {
   const router = useRouter();
   const links = role === "Admin" ? adminLinks : officerLinks;
   const [user, setUser] = useState<CurrentUser | null>(null);
+  const [checkingAccess, setCheckingAccess] = useState(true);
   const [sessionConflict, setSessionConflict] = useState<CurrentUser | null>(null);
   useEffect(() => {
     void getCurrentUser().then(result => {
@@ -42,6 +43,8 @@ export function AppShell({ children, role }: AppShellProps) {
     try { await logout(); }
     finally { router.replace("/"); }
   };
+
+  if (checkingAccess) return null;
 
   if (sessionConflict) {
     const actualRole = sessionConflict.role === "ADMIN" ? "Admin" : "Sales Officer";
