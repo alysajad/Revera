@@ -135,13 +135,13 @@ class LeadAccessTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
         future = timezone.now() + timedelta(days=1)
-        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "CONNECTED", "status": Lead.Status.CALLBACK, "follow_up_at": future.isoformat()}, format="json")
-        self.assertEqual(response.status_code, 200)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "PENDING", "status": Lead.Status.QUALIFIED, "follow_up_at": future.isoformat()}, format="json")
+        self.assertEqual(response.status_code, 400)
 
-        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "NOT_CONNECTED", "status": Lead.Status.SWITCHED_OFF}, format="json")
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "PENDING", "status": Lead.Status.PENDING, "follow_up_at": future.isoformat()}, format="json")
         self.assertEqual(response.status_code, 200)
         self.first_lead.refresh_from_db()
-        self.assertEqual(self.first_lead.status, Lead.Status.SWITCHED_OFF)
+        self.assertEqual(self.first_lead.status, Lead.Status.PENDING)
 
     def test_pending_call_outcome_moves_lead_to_pending(self):
         self.client.force_authenticate(self.first_so)

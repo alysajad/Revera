@@ -5,8 +5,6 @@ from accounts.models import User
 from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification
 
 CALL_OUTCOME_STATUS_OPTIONS = {
-    "CONNECTED": {Lead.Status.CALLBACK, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED},
-    "NOT_CONNECTED": {Lead.Status.RNR, Lead.Status.SWITCHED_OFF},
     "PENDING": {Lead.Status.PENDING},
     "QUALIFIED": {Lead.Status.QUALIFIED},
     "LOST": {Lead.Status.LOST},
@@ -115,7 +113,7 @@ class SOLeadUpdateSerializer(serializers.Serializer):
     branch = serializers.CharField(max_length=120, required=False, allow_blank=True)
     enquiry_date = serializers.DateField(required=False, allow_null=True)
     remarks = serializers.CharField(max_length=500, required=False, allow_blank=True)
-    call_outcome = serializers.ChoiceField(choices=[("CONNECTED", "Connected"), ("NOT_CONNECTED", "Not connected"), ("QUALIFIED", "Qualified"), ("PENDING", "Pending"), ("LOST", "Lost")], required=False, allow_blank=True)
+    call_outcome = serializers.ChoiceField(choices=[("QUALIFIED", "Qualified"), ("LOST", "Lost"), ("PENDING", "Pending")], required=False, allow_blank=True)
     follow_up_at = serializers.DateTimeField(required=False, allow_null=True)
     qualification = QualificationSerializer(required=False)
 
