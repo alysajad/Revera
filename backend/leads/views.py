@@ -133,7 +133,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         sales_status = {Lead.SalesOutcome.BOOKED: Lead.Status.WALKIN, Lead.SalesOutcome.RETAILED: Lead.Status.WON, Lead.SalesOutcome.LOST: Lead.Status.LOST}
-        call_status = {"QUALIFIED": Lead.Status.QUALIFIED, "NOT_CONNECTED": Lead.Status.RNR, "PENDING": Lead.Status.PENDING, "LOST": Lead.Status.LOST}
+        call_status = {"QUALIFIED": Lead.Status.QUALIFIED, "PENDING": Lead.Status.PENDING, "LOST": Lead.Status.LOST}
         call_outcome = data.get("call_outcome")
         if call_outcome in CALL_OUTCOME_STATUS_OPTIONS:
             next_status = data.get("status") or {"PENDING": Lead.Status.PENDING, "QUALIFIED": Lead.Status.QUALIFIED, "LOST": Lead.Status.LOST}.get(call_outcome)
