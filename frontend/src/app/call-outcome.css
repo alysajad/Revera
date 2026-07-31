@@ -12,24 +12,40 @@
 .sales-status-update .pending,
 .sales-status-update .pending.chosen { border-color: #f2c14e; background: #fff8e6; color: #b36a00; box-shadow: 0 0 0 3px #ffd97855; }
 .sales-outcome-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-bottom: 14px; }
-.sales-branch-card { background: #08dfdf; border: 0; border-radius: 10px; padding: 18px 16px; color: #10151d; }
+.sales-branch-card { background: #fff; border: 1px solid var(--line); border-top: 3px solid var(--orange); border-radius: 10px; padding: 18px 16px; color: var(--ink); }
 .sales-branch-card h3 { margin: 0 0 16px; font-size: 14px; }
-.sales-branch-card label { display: grid; gap: 8px; margin-top: 12px; color: #234; font-size: 10px; font-weight: 700; }
+.sales-branch-card label { display: grid; gap: 8px; margin-top: 12px; color: #666b71; font-size: 10px; font-weight: 700; }
 .sales-branch-card input,
 .sales-branch-card select,
-.sales-branch-card textarea { width: 100%; border: 1px solid #dfffff; border-radius: 8px; background: #07d4d4; color: #fff; padding: 11px 12px; font: 12px Arial; outline-color: #fff; }
+.sales-branch-card textarea { width: 100%; border: 1px solid #dededb; border-radius: 8px; background: #fff; color: var(--ink); padding: 11px 12px; font: 12px Arial; outline-color: var(--orange); }
 .sales-branch-card input::placeholder,
-.sales-branch-card textarea::placeholder { color: #ecffff; }
+.sales-branch-card textarea::placeholder { color: #8b9198; }
 .sales-branch-card textarea { min-height: 66px; resize: vertical; }
 .sales-branch-card .sales-choice-row { margin-bottom: 10px; }
-.sales-branch-card .sales-choice-row button { background: #fff; border-color: #e7eeee; color: #17202a; padding: 11px 14px; font-size: 12px; }
-.sales-branch-card .sales-choice-row button.chosen { border-color: #72e3bd; background: #dffdef; color: #0b7550; box-shadow: 0 0 0 3px #ffffff66; }
+.sales-branch-card .sales-choice-row button { background: #fff; border-color: var(--line); color: #4a5058; padding: 11px 14px; font-size: 12px; }
+.sales-branch-card .sales-choice-row button.chosen { border-color: #f49a78; background: var(--orange-soft); color: #bd4927; box-shadow: none; }
 .sales-single-branch { grid-column: 1 / -1; }
 .sales-single-branch .sales-choice-row { align-items: flex-start; }
 .sales-single-branch textarea { min-height: 80px; }
-.sales-branch-card.lost h3 { color: #c31212; }
+.sales-branch-card.lost { border-top-color: #d64a4a; }
+.sales-branch-card.lost h3 { color: #b34242; }
 .sales-warning { margin: 14px 0 0; border-radius: 8px; background: #fff1f1; color: #c31212; padding: 12px; font-size: 11px; font-weight: 700; }
 .sales-detail-footer .button.lost { background: #ffe4e4; border-color: #ffb7b7; color: #bc1616; }
 .sales-detail-footer .button.pending { background: #fff2cc; border-color: #ffd979; color: #a76400; }
+
+.sales-shell .sales-outcome-card,
+.sales-shell .sales-branch-card { border-color: var(--sales-outline); border-radius: 0; box-shadow: none; }
+.sales-shell .sales-branch-card { background: var(--sales-surface); border-top-color: var(--sales-primary); color: #181c1c; }
+.sales-shell .sales-branch-card h3 { font-size: 18px; font-weight: 700; }
+.sales-shell .sales-branch-card label { color: var(--sales-muted); font-size: 13px; }
+.sales-shell .sales-branch-card input,
+.sales-shell .sales-branch-card select,
+.sales-shell .sales-branch-card textarea { min-height: 48px; border-color: var(--sales-outline); background: var(--sales-surface); color: #181c1c; font-size: 15px; }
+.sales-shell .sales-branch-card input::placeholder,
+.sales-shell .sales-branch-card textarea::placeholder { color: #707977; }
+.sales-shell .sales-branch-card .sales-choice-row button { border-color: var(--sales-outline); color: var(--sales-muted); font-size: 14px; }
+.sales-shell .sales-branch-card .sales-choice-row button.chosen { border-color: var(--sales-secondary); background: #fff0ea; color: var(--sales-secondary); }
+.sales-shell .sales-branch-card.lost { border-top-color: #ba1a1a; }
+.sales-shell .sales-warning { border: 1px solid #ffd4d4; border-radius: 0; background: #fff8f8; color: #ba1a1a; }
 
 @media(max-width:850px){.sales-outcome-grid{grid-template-columns:1fr;gap:14px}}
