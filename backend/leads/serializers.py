@@ -7,6 +7,9 @@ from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification
 CALL_OUTCOME_STATUS_OPTIONS = {
     "CONNECTED": {Lead.Status.CALLBACK, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED},
     "NOT_CONNECTED": {Lead.Status.RNR, Lead.Status.SWITCHED_OFF},
+    "PENDING": {Lead.Status.PENDING},
+    "QUALIFIED": {Lead.Status.QUALIFIED},
+    "LOST": {Lead.Status.LOST},
 }
 
 
@@ -120,7 +123,7 @@ class SOLeadUpdateSerializer(serializers.Serializer):
         enquiry_date = attrs.get("enquiry_date")
         if enquiry_date and enquiry_date > timezone.localdate():
             raise serializers.ValidationError({"enquiry_date": "Enquiry date cannot be in the future."})
-        next_status = attrs.get("status")
+        next_status = attrs.get("status") or {"PENDING": Lead.Status.PENDING, "QUALIFIED": Lead.Status.QUALIFIED, "LOST": Lead.Status.LOST}.get(attrs.get("call_outcome"))
         follow_up_at = attrs.get("follow_up_at")
         call_outcome = attrs.get("call_outcome")
         if call_outcome in CALL_OUTCOME_STATUS_OPTIONS:
@@ -128,9 +131,9 @@ class SOLeadUpdateSerializer(serializers.Serializer):
                 raise serializers.ValidationError({"status": "Choose a lead status that matches the call outcome."})
         if follow_up_at and follow_up_at <= timezone.now():
             raise serializers.ValidationError({"follow_up_at": "Choose a future appointment time."})
-        if next_status in [Lead.Status.CALLBACK, Lead.Status.WALKIN] and not follow_up_at:
+        if next_status in [Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.WALKIN] and not follow_up_at:
             raise serializers.ValidationError({"follow_up_at": "This status requires a follow-up time."})
-        if follow_up_at and next_status not in [None, Lead.Status.FRESH, Lead.Status.RNR, Lead.Status.CALLBACK, Lead.Status.WALKIN]:
+        if follow_up_at and next_status not in [None, Lead.Status.FRESH, Lead.Status.RNR, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.WALKIN]:
             raise serializers.ValidationError({"follow_up_at": "Only callbacks and walk-ins can have an appointment."})
         return attrs
 

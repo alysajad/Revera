@@ -1,0 +1,4 @@
+.sales-form-card h4:has(+ .sales-choice-row:empty),
+.sales-form-card .sales-choice-row:empty { display: none; }
+
+.sales-status.pending { background: #fff4d8; color: #9c6817; }

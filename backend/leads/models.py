@@ -10,6 +10,7 @@ class Lead(models.Model):
         RNR = "RNR", "RNR"
         SWITCHED_OFF = "SWITCHED_OFF", "Switched off"
         CALLBACK = "CALLBACK", "Callback Scheduled"
+        PENDING = "PENDING", "Pending"
         QUALIFIED = "QUALIFIED", "Qualified"
         UNQUALIFIED = "UNQUALIFIED", "Unqualified"
         WALKIN = "WALKIN", "Walk-in Booked"

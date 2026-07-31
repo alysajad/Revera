@@ -15,10 +15,10 @@ const sections: { key: Section; label: string; count: keyof SalesDashboard["summ
   { key: "walkin", label: "Walk-in leads", count: "walkin", icon: "↗" },
   { key: "won_lost", label: "Won / lost", count: "won_lost", icon: "◇" },
 ];
-const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", SWITCHED_OFF: "Switch off", CALLBACK: "Callback", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
-const outcomeLabels: Record<string, string> = { CONNECTED: "Connected", NOT_CONNECTED: "Not connected" };
-const callOutcomeLabels: Record<string, string> = { ...outcomeLabels, QUALIFIED: "Connected", PENDING: "Connected", LOST: "Connected" };
-const statusOptions: Record<string, string[]> = { CONNECTED: ["CALLBACK", "QUALIFIED", "UNQUALIFIED"], NOT_CONNECTED: ["RNR", "SWITCHED_OFF"] };
+const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", SWITCHED_OFF: "Switch off", CALLBACK: "Callback", PENDING: "Pending", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
+const outcomeLabels: Record<string, string> = { CONNECTED: "Connected", NOT_CONNECTED: "Not connected", PENDING: "Pending", QUALIFIED: "Qualified", LOST: "Lost" };
+const callOutcomeLabels: Record<string, string> = outcomeLabels;
+const statusOptions: Record<string, string[]> = { CONNECTED: ["CALLBACK", "QUALIFIED", "UNQUALIFIED"], NOT_CONNECTED: ["RNR", "SWITCHED_OFF"], PENDING: ["PENDING"], QUALIFIED: ["QUALIFIED"], LOST: [] };
 const sourceOptions = [{ value: "META", label: "Meta Ads" }, { value: "WEBSITE", label: "Website" }, { value: "CARWALE", label: "CarWale" }, { value: "WALKIN", label: "Walk-in" }, { value: "CAMPAIGN", label: "Campaign" }, { value: "OTHER", label: "Other" }, { value: "UNKNOWN", label: "Unknown" }];
 const modelOptions = ["R6 GT", "R7 City", "R8 Lite", "R8 Pro", "R9 Plus"];
 const emptyQualification = (): LeadQualification => ({ variant: "", buying_timeline: "", finance_type: "", trade_in: null, test_drive: "", notes: "" });
@@ -41,7 +41,7 @@ function minimumFollowUpDate() {
   return localDateTimeValue(date);
 }
 
-const followUpStatuses = new Set(["CALLBACK", "WALKIN"]);
+const followUpStatuses = new Set(["CALLBACK", "PENDING", "WALKIN"]);
 
 function progressState(callCount: number, index: number) {
   const currentStep = Math.min(callCount, 4);
@@ -51,7 +51,7 @@ function progressState(callCount: number, index: number) {
 function draftFor(lead: LeadDetail): Draft {
   const { updated_at: _updatedAt, ...qualification } = lead.qualification || emptyQualification();
   const latestOutcome = lead.callHistory[0]?.outcome;
-  const call_outcome = latestOutcome === "NOT_CONNECTED" ? "NOT_CONNECTED" : latestOutcome === "CONNECTED" || ["CALLBACK", "QUALIFIED", "UNQUALIFIED"].includes(lead.statusCode) ? "CONNECTED" : ["RNR", "SWITCHED_OFF"].includes(lead.statusCode) ? "NOT_CONNECTED" : "";
+  const call_outcome = ["CONNECTED", "NOT_CONNECTED", "PENDING", "QUALIFIED", "LOST"].includes(latestOutcome || "") ? latestOutcome : lead.statusCode === "PENDING" ? "PENDING" : latestOutcome === "CONNECTED" || ["CALLBACK", "QUALIFIED", "UNQUALIFIED"].includes(lead.statusCode) ? "CONNECTED" : ["RNR", "SWITCHED_OFF"].includes(lead.statusCode) ? "NOT_CONNECTED" : lead.statusCode === "LOST" ? "LOST" : "";
   return { status: lead.statusCode, category: lead.category || "WARM", sales_outcome: lead.salesOutcome || "PENDING", call_outcome, remarks: "", follow_up_at: "", qualification };
 }
 
@@ -131,7 +131,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   };
 
   const summary = dashboard?.summary;
-  const selectCallOutcome = (call_outcome: string) => setDraft(current => current ? { ...current, call_outcome, status: statusOptions[call_outcome]?.includes(current.status) ? current.status : "", follow_up_at: "" } : current);
+  const selectCallOutcome = (call_outcome: string) => setDraft(current => { if (!current) return current; const options = statusOptions[call_outcome] || []; return { ...current, call_outcome, status: call_outcome === "LOST" ? "LOST" : options.length === 1 ? options[0] : options.includes(current.status) ? current.status : "", follow_up_at: "" }; });
   const selectStatus = (status: string) => setDraft(current => current ? { ...current, status, follow_up_at: status === "CALLBACK" ? current.follow_up_at : "" } : current);
   const selectSalesOutcome = (sales_outcome: string) => setDraft(current => current ? { ...current, sales_outcome } : current);
 
