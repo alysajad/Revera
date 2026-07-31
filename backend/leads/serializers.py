@@ -35,6 +35,12 @@ class LeadSerializer(serializers.ModelSerializer):
         read_only_fields = ["uid", "assigned_so", "created_at", "updated_at"]
 
 
+class SOLeadListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Lead
+        fields = ["id", "status", "name", "phone", "source"]
+
+
 class QualificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = LeadQualification
