@@ -14,6 +14,8 @@ class LeadAccessTests(TestCase):
         self.first_so = User.objects.create_user(email="first@example.com", password="password-12345", role=User.Role.CRE)
         self.second_so = User.objects.create_user(email="second@example.com", password="password-12345", role=User.Role.CRE)
         self.ps_so = User.objects.create_user(email="ps@example.com", password="password-12345", role=User.Role.SALES_OFFICER)
+        self.ps_so.location = "Kochi"
+        self.ps_so.save(update_fields=["location"])
         self.first_lead = Lead.objects.create(name="Aarav", phone="7305198421", assigned_so=self.first_so)
         self.second_lead = Lead.objects.create(name="Mehak", phone="9797210468", assigned_so=self.second_so)
         self.client = APIClient()
@@ -31,7 +33,7 @@ class LeadAccessTests(TestCase):
         response = self.client.post("/api/leads/auto-assign/", {"lead_ids": [unowned.id]}, format="json")
         self.assertEqual(response.status_code, 200)
         unowned.refresh_from_db()
-        self.assertIn(unowned.assigned_so, [self.first_so, self.second_so])
+        self.assertEqual(unowned.assigned_so.role, User.Role.CRE)
 
     def test_admin_bulk_assigns_matching_filters(self):
         meta = Lead.objects.create(name="Meta lead", phone="7006682394", source=Lead.Source.META)
@@ -136,14 +138,36 @@ class LeadAccessTests(TestCase):
 
     def test_sales_officer_can_save_qualification_from_qualified_outcome(self):
         self.client.force_authenticate(self.first_so)
-        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"category": Lead.Category.HOT, "call_outcome": "QUALIFIED", "remarks": "Customer is qualified.", "qualification": {"variant": "R8 Pro", "buying_timeline": "1-2 months", "finance_type": "Bank finance", "trade_in": True, "test_drive": "Requested"}}, format="json")
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"category": Lead.Category.HOT, "call_outcome": "QUALIFIED", "city": "Kochi", "ps_officer_id": self.ps_so.id, "remarks": "Customer is qualified.", "qualification": {"variant": "R8 Pro", "buying_timeline": "1-2 months", "finance_type": "Bank finance", "trade_in": True, "test_drive": "Requested"}}, format="json")
         self.assertEqual(response.status_code, 200)
         self.first_lead.refresh_from_db()
         self.assertEqual(self.first_lead.status, Lead.Status.QUALIFIED)
+        self.assertEqual(self.first_lead.assigned_ps, self.ps_so)
         self.assertEqual(self.first_lead.category, Lead.Category.HOT)
         self.assertEqual(CallLog.objects.get(lead=self.first_lead).outcome, "QUALIFIED")
         self.assertFalse(FollowUp.objects.filter(lead=self.first_lead, resolved_at__isnull=True).exists())
         self.assertEqual(LeadQualification.objects.get(lead=self.first_lead).variant, "R8 Pro")
+
+    def test_cre_sees_ps_options_for_customer_location(self):
+        other_ps = User.objects.create_user(email="north@example.com", password="password-12345", role=User.Role.SALES_OFFICER, location="Kannur")
+        self.client.force_authenticate(self.first_so)
+
+        response = self.client.get("/api/auth/sales-officers/?location=Kochi")
+
+        self.assertEqual(response.status_code, 200)
+        ids = [officer["id"] for officer in response.data["results"]]
+        self.assertIn(self.ps_so.id, ids)
+        self.assertNotIn(other_ps.id, ids)
+
+    def test_cre_must_choose_matching_ps_for_qualified_lead(self):
+        other_ps = User.objects.create_user(email="north@example.com", password="password-12345", role=User.Role.SALES_OFFICER, location="Kannur")
+        self.client.force_authenticate(self.first_so)
+
+        missing = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "QUALIFIED", "city": "Kochi"}, format="json")
+        mismatch = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "QUALIFIED", "city": "Kochi", "ps_officer_id": other_ps.id}, format="json")
+
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(mismatch.status_code, 400)
 
     def test_call_outcome_only_allows_matching_lead_statuses(self):
         self.client.force_authenticate(self.first_so)
@@ -170,11 +194,12 @@ class LeadAccessTests(TestCase):
 
     def test_direct_qualified_and_lost_outcomes_set_matching_statuses(self):
         self.client.force_authenticate(self.first_so)
-        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "QUALIFIED", "status": Lead.Status.QUALIFIED, "qualification": {"variant": "R8 Pro"}}, format="json")
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "QUALIFIED", "status": Lead.Status.QUALIFIED, "city": "Kochi", "ps_officer_id": self.ps_so.id, "qualification": {"variant": "R8 Pro"}}, format="json")
         self.assertEqual(response.status_code, 200)
         self.first_lead.refresh_from_db()
         self.assertEqual(self.first_lead.status, Lead.Status.QUALIFIED)
 
+        self.client.force_authenticate(self.ps_so)
         response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "LOST", "status": Lead.Status.LOST}, format="json")
         self.assertEqual(response.status_code, 200)
         self.first_lead.refresh_from_db()

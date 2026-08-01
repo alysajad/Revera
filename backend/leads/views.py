@@ -172,6 +172,15 @@ class LeadViewSet(viewsets.ModelViewSet):
             next_status = Lead.Status.CALLBACK
         if data.get("follow_up_at") and next_status not in {Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.WALKIN}:
             return Response({"detail": "Only callbacks and walk-ins can have an appointment."}, status=status.HTTP_400_BAD_REQUEST)
+        ps_officer = data.get("ps_officer")
+        if not request.user.is_admin and request.user.role == User.Role.CRE and next_status == Lead.Status.QUALIFIED:
+            location = (data.get("city") or lead.city or "").strip()
+            if not location:
+                return Response({"city": "Select customer location before qualifying this lead."}, status=status.HTTP_400_BAD_REQUEST)
+            if not ps_officer:
+                return Response({"ps_officer_id": "Choose the PS/SO for this customer location."}, status=status.HTTP_400_BAD_REQUEST)
+            if ps_officer.location.strip().lower() != location.lower():
+                return Response({"ps_officer_id": "Choose a PS/SO assigned to this customer location."}, status=status.HTTP_400_BAD_REQUEST)
         if not request.user.is_admin and next_status != lead.status and next_status not in FORWARD_TRANSITIONS.get(lead.status, set()):
             return Response({"detail": "This status transition is not allowed."}, status=status.HTTP_400_BAD_REQUEST)
         if not request.user.is_admin and request.user.role == User.Role.SALES_OFFICER and data.get("qualification"):
@@ -183,7 +192,11 @@ class LeadViewSet(viewsets.ModelViewSet):
             for field in ("category", "sales_outcome", *editable_fields):
                 if field in data:
                     setattr(lead, field, data[field])
-            lead.save(update_fields=["status", "category", "sales_outcome", *[field for field in editable_fields if field in data], "updated_at"])
+            update_fields = ["status", "category", "sales_outcome", *[field for field in editable_fields if field in data], "updated_at"]
+            if ps_officer and request.user.role == User.Role.CRE:
+                lead.assigned_ps = ps_officer
+                update_fields.append("assigned_ps")
+            lead.save(update_fields=update_fields)
             if qualification := data.get("qualification"):
                 record, _ = LeadQualification.objects.get_or_create(lead=lead)
                 for field, value in qualification.items():
@@ -197,6 +210,9 @@ class LeadViewSet(viewsets.ModelViewSet):
                     FollowUp.objects.create(lead=lead, so=request.user, scheduled_for=follow_up_at)
             after = {field: audit_value(getattr(lead, field)) for field in ("status", "category", "sales_outcome", *editable_fields)}
             LeadAudit.objects.create(lead=lead, actor=request.user, event="so_updated", before=before, after=after)
+            if ps_officer and request.user.role == User.Role.CRE:
+                LeadAudit.objects.create(lead=lead, actor=request.user, event="assigned_ps", after={"assigned_ps": ps_officer.id})
+                Notification.objects.create(user=ps_officer, lead=lead, kind=Notification.Kind.ASSIGNMENT, message=f"You have a qualified lead: {lead.name}.")
         return Response(LeadDetailSerializer(self.get_object()).data)
 
     @action(detail=True, methods=["post"])
