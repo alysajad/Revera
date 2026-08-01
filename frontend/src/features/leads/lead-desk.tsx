@@ -53,8 +53,8 @@ const nextOutcomes: Record<string, { label: string; value: string }[]> = {
 };
 
 const adminOutcomeOptions = [
-  { label: "Retailed", value: "WON", callOutcome: "RETAILED", salesOutcome: "RETAILED" },
-  { label: "Booked Follow-up", value: "CALLBACK", callOutcome: "CALLBACK", salesOutcome: "PENDING" },
+  { label: "Retailed", value: "WON", callOutcome: "", salesOutcome: "RETAILED" },
+  { label: "Booked Follow-up", value: "PENDING", callOutcome: "PENDING", salesOutcome: "PENDING" },
   { label: "Lost", value: "LOST", callOutcome: "LOST", salesOutcome: "LOST" },
 ];
 
@@ -143,7 +143,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   }, [officerMode]);
 
   const visible = useMemo(() => leads.filter(lead => `${lead.name} ${lead.phone}`.toLowerCase().includes(query.toLowerCase())), [leads, query]);
-  const needsAppointment = ["CALLBACK", "WALKIN"].includes(outcome);
+  const needsAppointment = ["CALLBACK", "WALKIN", "PENDING"].includes(outcome);
 
   const assign = async (lead: Lead, officerId: number) => {
     const previousLeads = leads;
@@ -181,7 +181,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
         await updateMyLead(activeLead.id, {
           status: outcome,
           remarks,
-          call_outcome: selectedOutcome?.callOutcome || outcome,
+          ...(selectedOutcome?.callOutcome ? { call_outcome: selectedOutcome.callOutcome } : {}),
           ...(selectedOutcome?.salesOutcome ? { sales_outcome: selectedOutcome.salesOutcome } : {}),
           ...(normalizedFollowUpAt ? { follow_up_at: normalizedFollowUpAt } : {}),
           ...(testDrive ? { qualification: { variant: leadDetail.qualification?.variant || "", buying_timeline: leadDetail.qualification?.buying_timeline || "", finance_type: leadDetail.qualification?.finance_type || "", trade_in: leadDetail.qualification?.trade_in ?? null, test_drive: testDrive, notes: leadDetail.qualification?.notes || "" } } : {}),
@@ -195,7 +195,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   };
 
   const openLead = async (lead: Lead) => {
-    const initialOutcome = officerMode ? nextOutcomes[lead.status]?.[0]?.value || "" : lead.statusCode === "WON" ? "WON" : ["LOST", "UNQUALIFIED"].includes(lead.statusCode) ? "LOST" : lead.nextFollowUp ? "CALLBACK" : "";
+    const initialOutcome = officerMode ? nextOutcomes[lead.status]?.[0]?.value || "" : lead.statusCode === "WON" ? "WON" : ["LOST", "UNQUALIFIED"].includes(lead.statusCode) ? "LOST" : lead.statusCode === "PENDING" || lead.nextFollowUp ? "PENDING" : "";
     setActiveLead(lead); setOutcome(initialOutcome); setRemarks(""); setFollowUpAt(localDateTimeValue(lead.nextFollowUp)); setTestDrive(""); setSavingCall(false); setError("");
     if (!officerMode) {
       setDetailLoading(true);
@@ -300,7 +300,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
           <h3>Call remarks {leadDetail ? `(Call #${leadDetail.callHistory.length + 1})` : ""}</h3>
           <label className="sales-full-label"><textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Enter your call remarks…" /></label>
           <div className="admin-follow-up-grid">
-            <div><h4>Call outcome</h4><div className="sales-choice-row admin-outcome-row">{adminOutcomeOptions.map(item => <button type="button" className={outcome === item.value ? "chosen" : ""} onClick={() => { setOutcome(item.value); if (item.value !== "CALLBACK") setFollowUpAt(""); }} key={item.value}>{item.label}</button>)}</div></div>
+            <div><h4>Call outcome</h4><div className="sales-choice-row admin-outcome-row">{adminOutcomeOptions.map(item => <button type="button" className={outcome === item.value ? "chosen" : ""} onClick={() => { setOutcome(item.value); if (!["CALLBACK", "WALKIN", "PENDING"].includes(item.value)) setFollowUpAt(""); }} key={item.value}>{item.label}</button>)}</div></div>
             <label className="admin-follow-up-date"><span><b>Next follow-up date</b>{needsAppointment ? " *" : ""}</span><input type="datetime-local" required={needsAppointment} min={localDateTimeValue(new Date().toISOString())} value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>
             <div><h4>Test drive</h4><label className="admin-checkbox-card"><input type="checkbox" checked={testDrive === "Completed"} onChange={event => setTestDrive(event.target.checked ? "Completed" : "")} /> <span>Mark test drive as done</span></label></div>
           </div>
