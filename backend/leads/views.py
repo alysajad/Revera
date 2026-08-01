@@ -86,6 +86,8 @@ class LeadViewSet(viewsets.ModelViewSet):
         today = timezone.localdate()
         owner_filter = {"assigned_so": request.user} if request.user.role == User.Role.CRE else {"assigned_ps": request.user}
         queryset = Lead.objects.filter(deleted_at__isnull=True, **owner_filter)
+        if request.user.role == User.Role.CRE:
+            queryset = queryset.filter(assigned_ps__isnull=True)
         open_followup = Q(follow_ups__id__isnull=False, follow_ups__resolved_at__isnull=True)
         date_range = request.query_params.get("range", "all")
         if date_range == "today":
@@ -143,6 +145,8 @@ class LeadViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["patch"], url_path="so-update")
     def so_update(self, request, pk=None):
         lead = self.get_object()
+        if not request.user.is_admin and request.user.role == User.Role.CRE and lead.assigned_ps_id:
+            return Response({"detail": "This lead has been handed to PS/SO."}, status=status.HTTP_403_FORBIDDEN)
         user_field = "assigned_so_id" if request.user.role == User.Role.CRE else "assigned_ps_id"
         if not request.user.is_admin and getattr(lead, user_field) != request.user.id:
             return Response({"detail": "This lead is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
@@ -299,6 +303,8 @@ class LeadViewSet(viewsets.ModelViewSet):
             user_field = "assigned_so_id" if request.user.role == User.Role.CRE else "assigned_ps_id"
             if not request.user.is_admin and getattr(lead, user_field) != request.user.id:
                 return Response({"detail": "This lead is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
+            if request.user.role == User.Role.CRE and lead.assigned_ps_id:
+                return Response({"detail": "This lead has been handed to PS/SO."}, status=status.HTTP_403_FORBIDDEN)
             serializer = LeadUpdateSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             next_status = serializer.validated_data["status"]
