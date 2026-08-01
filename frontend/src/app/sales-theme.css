@@ -234,3 +234,160 @@
 .lead-pagination .filter:disabled { opacity: .4; cursor: not-allowed; }
 .sales-edit-layer { z-index: 20 !important; isolation: isolate; }
 @media (max-width: 620px) { .lead-pagination { align-items: flex-start; flex-direction: column; } }
+
+.sales-shell.ps-shell {
+  --sales-background: #ffffe3;
+  --sales-surface: #ffffe3;
+  --sales-surface-low: #cbcbcb;
+  --sales-primary: #4a4a4a;
+  --sales-primary-container: #6d8196;
+  --sales-primary-soft: #ffffe3;
+  --sales-outline: #cbcbcb;
+  --sales-muted: #4a4a4a;
+  --sales-secondary: #6d8196;
+  background: #ffffe3;
+  color: #202020;
+}
+
+.sales-shell.ps-shell .sidebar,
+.sales-shell.ps-shell .main-content,
+.sales-shell.ps-shell .page {
+  background: #ffffe3;
+}
+
+.sales-shell.ps-shell .sidebar {
+  border-right-color: #cbcbcb;
+}
+
+.sales-shell.ps-shell .brand,
+.sales-shell.ps-shell .topbar > div > b,
+.sales-shell.ps-shell .sales-hero h1,
+.sales-shell.ps-shell .sales-table td b,
+.sales-shell.ps-shell .sales-chart-card h2,
+.sales-shell.ps-shell .lead-pagination b {
+  color: #202020;
+}
+
+.sales-shell.ps-shell .brand-mark,
+.sales-shell.ps-shell .button.primary {
+  background: #4a4a4a;
+  color: #ffffe3;
+}
+
+.sales-shell.ps-shell .brand-word span,
+.sales-shell.ps-shell .sales-hero h1 span,
+.sales-shell.ps-shell .sales-topbar-mark,
+.sales-shell.ps-shell .user-card button {
+  color: #6d8196;
+}
+
+.sales-shell.ps-shell .workspace-label,
+.sales-shell.ps-shell .sales-hero .eyebrow,
+.sales-shell.ps-shell .sales-table-heading .eyebrow,
+.sales-shell.ps-shell .sales-chart-card .eyebrow,
+.sales-shell.ps-shell .topbar > div > small,
+.sales-shell.ps-shell .sales-hero .subtext,
+.sales-shell.ps-shell .sales-metric span,
+.sales-shell.ps-shell .sales-metric small,
+.sales-shell.ps-shell .sales-table td,
+.sales-shell.ps-shell .lead-pagination {
+  color: #4a4a4a !important;
+}
+
+.sales-shell.ps-shell .topbar {
+  background: rgba(255, 255, 227, .92);
+  border-bottom-color: #cbcbcb;
+}
+
+.sales-shell.ps-shell .nav-link:hover {
+  background: #cbcbcb;
+  color: #202020;
+}
+
+.sales-shell.ps-shell .nav-link.active {
+  background: #6d8196;
+  color: #ffffe3;
+}
+
+.sales-shell.ps-shell .sales-hero-banner {
+  background: linear-gradient(110deg, #4a4a4a 0 52%, #6d8196 52% 100%);
+  color: #ffffe3;
+}
+
+.sales-shell.ps-shell .sales-hero-banner .eyebrow,
+.sales-shell.ps-shell .sales-hero-banner p:not(.eyebrow),
+.sales-shell.ps-shell .sales-hero-art span,
+.sales-shell.ps-shell .sales-hero-art i {
+  color: #ffffe3;
+}
+
+.sales-shell.ps-shell .sales-hero-art,
+.sales-shell.ps-shell .sales-hero-art::before,
+.sales-shell.ps-shell .sales-hero-art::after {
+  border-color: rgba(255, 255, 227, .45);
+}
+
+.sales-shell.ps-shell .filter,
+.sales-shell.ps-shell .sales-table-panel,
+.sales-shell.ps-shell .sales-chart-card,
+.sales-shell.ps-shell .sales-info-card,
+.sales-shell.ps-shell .sales-form-card,
+.sales-shell.ps-shell .modal,
+.sales-shell.ps-shell .sales-search,
+.sales-shell.ps-shell .sales-filters select {
+  background: #ffffe3;
+  border-color: #cbcbcb;
+  color: #4a4a4a;
+}
+
+.sales-shell.ps-shell .sales-table th,
+.sales-shell.ps-shell .sales-status-line > div,
+.sales-shell.ps-shell .sales-model-line > div > i {
+  background: #cbcbcb;
+  color: #4a4a4a;
+}
+
+.sales-shell.ps-shell .sales-metric,
+.sales-shell.ps-shell .sales-metric.blue,
+.sales-shell.ps-shell .sales-metric.yellow,
+.sales-shell.ps-shell .sales-metric.orange,
+.sales-shell.ps-shell .sales-metric.green,
+.sales-shell.ps-shell .sales-metric.mint,
+.sales-shell.ps-shell .sales-metric.red,
+.sales-shell.ps-shell .sales-metric.violet {
+  background: #ffffe3 !important;
+  border-color: #cbcbcb;
+  color: #202020 !important;
+}
+
+.sales-shell.ps-shell .sales-metric.blue,
+.sales-shell.ps-shell .sales-metric.green,
+.sales-shell.ps-shell .sales-metric.mint {
+  border-top-color: #6d8196;
+}
+
+.sales-shell.ps-shell .sales-metric.yellow,
+.sales-shell.ps-shell .sales-metric.orange,
+.sales-shell.ps-shell .sales-metric.red,
+.sales-shell.ps-shell .sales-metric.violet {
+  border-top-color: #4a4a4a;
+}
+
+.sales-shell.ps-shell .sales-metric strong {
+  color: #4a4a4a !important;
+}
+
+.sales-shell.ps-shell .sales-tabs button.active {
+  border-bottom-color: #6d8196;
+  color: #4a4a4a;
+}
+
+.sales-shell.ps-shell .sales-bar {
+  background: #cbcbcb;
+}
+
+.sales-shell.ps-shell .sales-bar i,
+.sales-shell.ps-shell .sales-status-line > div i,
+.sales-shell.ps-shell .sales-model-line > div > i em {
+  background: #6d8196;
+}
