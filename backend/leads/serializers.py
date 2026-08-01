@@ -13,6 +13,7 @@ CALL_OUTCOME_STATUS_OPTIONS = {
 
 class LeadSerializer(serializers.ModelSerializer):
     assigned_so_name = serializers.CharField(source="assigned_so.get_full_name", read_only=True)
+    assigned_ps_name = serializers.CharField(source="assigned_ps.get_full_name", read_only=True)
     next_follow_up = serializers.SerializerMethodField()
     call_count = serializers.SerializerMethodField()
     qualification = serializers.SerializerMethodField()
@@ -37,8 +38,8 @@ class LeadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lead
-        fields = ["id", "uid", "name", "phone", "email", "source", "source_label", "campaign", "model_interest", "city", "branch", "enquiry_date", "status", "category", "sales_outcome", "assigned_so", "assigned_so_name", "next_follow_up", "call_count", "qualification", "created_at", "updated_at"]
-        read_only_fields = ["uid", "assigned_so", "created_at", "updated_at"]
+        fields = ["id", "uid", "name", "phone", "email", "source", "source_label", "campaign", "model_interest", "city", "branch", "enquiry_date", "status", "category", "sales_outcome", "assigned_so", "assigned_so_name", "assigned_ps", "assigned_ps_name", "next_follow_up", "call_count", "qualification", "created_at", "updated_at"]
+        read_only_fields = ["uid", "assigned_so", "assigned_ps", "created_at", "updated_at"]
 
 
 class SOLeadListSerializer(serializers.ModelSerializer):
@@ -137,6 +138,10 @@ class SOLeadUpdateSerializer(serializers.Serializer):
 
 
 class AssignmentSerializer(serializers.Serializer):
+    sales_officer_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=User.Role.CRE, is_active=True), source="sales_officer")
+
+
+class PSAssignmentSerializer(serializers.Serializer):
     sales_officer_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True), source="sales_officer")
 
 

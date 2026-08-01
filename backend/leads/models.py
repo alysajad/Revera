@@ -52,13 +52,14 @@ class Lead(models.Model):
     category = models.CharField(max_length=10, choices=Category.choices, default=Category.WARM, db_index=True)
     sales_outcome = models.CharField(max_length=12, choices=SalesOutcome.choices, default=SalesOutcome.PENDING, db_index=True)
     assigned_so = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="assigned_leads")
+    assigned_ps = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="ps_leads")
     duplicate_flag = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [models.Index(fields=["assigned_so", "status"]), models.Index(fields=["assigned_so", "category"]), models.Index(fields=["source", "created_at"])]
+        indexes = [models.Index(fields=["assigned_so", "status"]), models.Index(fields=["assigned_so", "category"]), models.Index(fields=["assigned_ps", "status"]), models.Index(fields=["source", "created_at"])]
 
 
 class CallLog(models.Model):

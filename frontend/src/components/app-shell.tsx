@@ -39,6 +39,7 @@ export function AppShell({ children, role }: AppShellProps) {
   }, [role, router]);
   const displayName = user ? `${user.first_name} ${user.last_name}`.trim() || user.email : "Sign in";
   const initials = user ? `${user.first_name[0] || ""}${user.last_name[0] || ""}` || user.email.slice(0, 2).toUpperCase() : "?";
+  const workspaceRole = user?.role === "CRE" ? "CRE" : user?.role === "SO" ? "PS/SO" : role;
   const signOut = async () => {
     try { await logout(); }
     finally { router.replace("/"); }
@@ -47,7 +48,7 @@ export function AppShell({ children, role }: AppShellProps) {
   if (checkingAccess) return null;
 
   if (sessionConflict) {
-    const actualRole = sessionConflict.role === "ADMIN" ? "Admin" : "Sales Officer";
+    const actualRole = sessionConflict.role === "ADMIN" ? "Admin" : sessionConflict.role === "CRE" ? "CRE" : "PS/SO";
     const actualHome = sessionConflict.role === "ADMIN" ? "/dashboard" : "/my-leads";
     const actualName = `${sessionConflict.first_name} ${sessionConflict.last_name}`.trim() || sessionConflict.email;
     return (
@@ -71,17 +72,17 @@ export function AppShell({ children, role }: AppShellProps) {
   return <div className={`app-shell ${role === "Sales officer" ? "sales-shell" : ""}`}>
     <aside className="sidebar">
       <Link className="brand" href={role === "Admin" ? "/dashboard" : "/my-leads"}><span className="brand-mark">R</span><span className="brand-word">revera<span>.</span></span></Link>
-      <p className="workspace-label">{role === "Admin" ? "SALES CONTROL" : "MY WORKSPACE"}</p>
+      <p className="workspace-label">{role === "Admin" ? "SALES CONTROL" : `${workspaceRole} WORKSPACE`}</p>
       <nav className="nav" aria-label="Main navigation">
         {links.map(([href, label, icon]) => <Link key={href} className={`nav-link ${pathname === href ? "active" : ""}`} href={href}><span>{icon}</span><b>{label}</b></Link>)}
       </nav>
       <div className="sidebar-footer">
         <Link className="support" href="#support"><span>?</span><p>Need a hand?<small>Open the operator guide</small></p></Link>
-        <div className="user-card"><div className={`avatar ${role === "Admin" ? "orange" : "blue"}`}>{initials}</div><p><b>{displayName}</b><small>{user ? role : "Authenticate to continue"}</small></p><button onClick={() => void signOut()}>Sign out</button></div>
+        <div className="user-card"><div className={`avatar ${role === "Admin" ? "orange" : "blue"}`}>{initials}</div><p><b>{displayName}</b><small>{user ? workspaceRole : "Authenticate to continue"}</small></p><button onClick={() => void signOut()}>Sign out</button></div>
       </div>
     </aside>
     <main className="main-content">
-      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : "Leads pipeline"}</b><small>{new Intl.DateTimeFormat("en", { weekday: "long" }).format(new Date())}, {formatDate(new Date())}</small></div><div className="top-actions">{role === "Admin" && <button className="button primary" onClick={() => pathname === "/leads" ? window.dispatchEvent(new Event("revera:add-lead")) : router.push("/leads?addLead=1")}>＋ Add lead</button>}{role === "Sales officer" && <span className="sales-topbar-mark" aria-hidden="true">◌</span>}<button className="mobile-signout" onClick={() => void signOut()} aria-label="Sign out" title="Sign out">↪</button></div></header>
+      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : `${workspaceRole} pipeline`}</b><small>{new Intl.DateTimeFormat("en", { weekday: "long" }).format(new Date())}, {formatDate(new Date())}</small></div><div className="top-actions">{role === "Admin" && <button className="button primary" onClick={() => pathname === "/leads" ? window.dispatchEvent(new Event("revera:add-lead")) : router.push("/leads?addLead=1")}>＋ Add lead</button>}{role === "Sales officer" && <span className="sales-topbar-mark" aria-hidden="true">◌</span>}<button className="mobile-signout" onClick={() => void signOut()} aria-label="Sign out" title="Sign out">↪</button></div></header>
       {children}
     </main>
   </div>;
