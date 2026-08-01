@@ -40,6 +40,7 @@ export function AppShell({ children, role }: AppShellProps) {
   const displayName = user ? `${user.first_name} ${user.last_name}`.trim() || user.email : "Sign in";
   const initials = user ? `${user.first_name[0] || ""}${user.last_name[0] || ""}` || user.email.slice(0, 2).toUpperCase() : "?";
   const workspaceRole = user?.role === "CRE" ? "CRE" : user?.role === "SO" ? "PS/SO" : role;
+  const shellRoleClass = role === "Sales officer" ? user?.role === "SO" ? "ps-shell" : "cre-shell" : "";
   const signOut = async () => {
     try { await logout(); }
     finally { router.replace("/"); }
@@ -69,7 +70,7 @@ export function AppShell({ children, role }: AppShellProps) {
     );
   }
 
-  return <div className={`app-shell ${role === "Sales officer" ? "sales-shell" : ""}`}>
+  return <div className={`app-shell ${role === "Sales officer" ? "sales-shell" : ""} ${shellRoleClass}`}>
     <aside className="sidebar">
       <Link className="brand" href={role === "Admin" ? "/dashboard" : "/my-leads"}><span className="brand-mark">R</span><span className="brand-word">revera<span>.</span></span></Link>
       <p className="workspace-label">{role === "Admin" ? "SALES CONTROL" : `${workspaceRole} WORKSPACE`}</p>
