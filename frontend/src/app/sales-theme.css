@@ -236,27 +236,27 @@
 @media (max-width: 620px) { .lead-pagination { align-items: flex-start; flex-direction: column; } }
 
 .sales-shell.ps-shell {
-  --sales-background: #ffffe3;
-  --sales-surface: #ffffe3;
-  --sales-surface-low: #cbcbcb;
-  --sales-primary: #4a4a4a;
-  --sales-primary-container: #6d8196;
-  --sales-primary-soft: #ffffe3;
-  --sales-outline: #cbcbcb;
-  --sales-muted: #4a4a4a;
-  --sales-secondary: #6d8196;
-  background: #ffffe3;
-  color: #202020;
+  --sales-background: #ffea93;
+  --sales-surface: #ffea93;
+  --sales-surface-low: #8db355;
+  --sales-primary: #000000;
+  --sales-primary-container: #8db355;
+  --sales-primary-soft: #ffea93;
+  --sales-outline: rgba(0, 0, 0, .28);
+  --sales-muted: #000000;
+  --sales-secondary: #d90000;
+  background: #ffea93;
+  color: #000000;
 }
 
 .sales-shell.ps-shell .sidebar,
 .sales-shell.ps-shell .main-content,
 .sales-shell.ps-shell .page {
-  background: #ffffe3;
+  background: #ffea93;
 }
 
 .sales-shell.ps-shell .sidebar {
-  border-right-color: #cbcbcb;
+  border-right-color: #000000;
 }
 
 .sales-shell.ps-shell .brand,
@@ -265,20 +265,20 @@
 .sales-shell.ps-shell .sales-table td b,
 .sales-shell.ps-shell .sales-chart-card h2,
 .sales-shell.ps-shell .lead-pagination b {
-  color: #202020;
+  color: #000000;
 }
 
 .sales-shell.ps-shell .brand-mark,
 .sales-shell.ps-shell .button.primary {
-  background: #4a4a4a;
-  color: #ffffe3;
+  background: #d90000;
+  color: #ffea93;
 }
 
 .sales-shell.ps-shell .brand-word span,
 .sales-shell.ps-shell .sales-hero h1 span,
 .sales-shell.ps-shell .sales-topbar-mark,
 .sales-shell.ps-shell .user-card button {
-  color: #6d8196;
+  color: #d90000;
 }
 
 .sales-shell.ps-shell .workspace-label,
@@ -291,40 +291,40 @@
 .sales-shell.ps-shell .sales-metric small,
 .sales-shell.ps-shell .sales-table td,
 .sales-shell.ps-shell .lead-pagination {
-  color: #4a4a4a !important;
+  color: #000000 !important;
 }
 
 .sales-shell.ps-shell .topbar {
-  background: rgba(255, 255, 227, .92);
-  border-bottom-color: #cbcbcb;
+  background: rgba(255, 234, 147, .92);
+  border-bottom-color: #000000;
 }
 
 .sales-shell.ps-shell .nav-link:hover {
-  background: #cbcbcb;
-  color: #202020;
+  background: #8db355;
+  color: #000000;
 }
 
 .sales-shell.ps-shell .nav-link.active {
-  background: #6d8196;
-  color: #ffffe3;
+  background: #000000;
+  color: #ffea93;
 }
 
 .sales-shell.ps-shell .sales-hero-banner {
-  background: linear-gradient(110deg, #4a4a4a 0 52%, #6d8196 52% 100%);
-  color: #ffffe3;
+  background: linear-gradient(110deg, #000000 0 48%, #d90000 48% 74%, #8db355 74% 100%);
+  color: #ffea93;
 }
 
 .sales-shell.ps-shell .sales-hero-banner .eyebrow,
 .sales-shell.ps-shell .sales-hero-banner p:not(.eyebrow),
 .sales-shell.ps-shell .sales-hero-art span,
 .sales-shell.ps-shell .sales-hero-art i {
-  color: #ffffe3;
+  color: #ffea93;
 }
 
 .sales-shell.ps-shell .sales-hero-art,
 .sales-shell.ps-shell .sales-hero-art::before,
 .sales-shell.ps-shell .sales-hero-art::after {
-  border-color: rgba(255, 255, 227, .45);
+  border-color: rgba(255, 234, 147, .45);
 }
 
 .sales-shell.ps-shell .filter,
@@ -335,16 +335,16 @@
 .sales-shell.ps-shell .modal,
 .sales-shell.ps-shell .sales-search,
 .sales-shell.ps-shell .sales-filters select {
-  background: #ffffe3;
-  border-color: #cbcbcb;
-  color: #4a4a4a;
+  background: #ffea93;
+  border-color: #000000;
+  color: #000000;
 }
 
 .sales-shell.ps-shell .sales-table th,
 .sales-shell.ps-shell .sales-status-line > div,
 .sales-shell.ps-shell .sales-model-line > div > i {
-  background: #cbcbcb;
-  color: #4a4a4a;
+  background: #8db355;
+  color: #000000;
 }
 
 .sales-shell.ps-shell .sales-metric,
@@ -355,39 +355,39 @@
 .sales-shell.ps-shell .sales-metric.mint,
 .sales-shell.ps-shell .sales-metric.red,
 .sales-shell.ps-shell .sales-metric.violet {
-  background: #ffffe3 !important;
-  border-color: #cbcbcb;
-  color: #202020 !important;
+  background: #ffea93 !important;
+  border-color: #000000;
+  color: #000000 !important;
 }
 
 .sales-shell.ps-shell .sales-metric.blue,
 .sales-shell.ps-shell .sales-metric.green,
 .sales-shell.ps-shell .sales-metric.mint {
-  border-top-color: #6d8196;
+  border-top-color: #8db355;
 }
 
 .sales-shell.ps-shell .sales-metric.yellow,
 .sales-shell.ps-shell .sales-metric.orange,
 .sales-shell.ps-shell .sales-metric.red,
 .sales-shell.ps-shell .sales-metric.violet {
-  border-top-color: #4a4a4a;
+  border-top-color: #d90000;
 }
 
 .sales-shell.ps-shell .sales-metric strong {
-  color: #4a4a4a !important;
+  color: #000000 !important;
 }
 
 .sales-shell.ps-shell .sales-tabs button.active {
-  border-bottom-color: #6d8196;
-  color: #4a4a4a;
+  border-bottom-color: #d90000;
+  color: #000000;
 }
 
 .sales-shell.ps-shell .sales-bar {
-  background: #cbcbcb;
+  background: rgba(0, 0, 0, .16);
 }
 
 .sales-shell.ps-shell .sales-bar i,
 .sales-shell.ps-shell .sales-status-line > div i,
 .sales-shell.ps-shell .sales-model-line > div > i em {
-  background: #6d8196;
+  background: #d90000;
 }
