@@ -22,7 +22,7 @@ class LoginSerializer(serializers.Serializer):
         return attrs
 
 
-class SalesOfficerSerializer(serializers.ModelSerializer):
+class TeamMemberSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False, min_length=12)
 
     class Meta:
@@ -31,7 +31,7 @@ class SalesOfficerSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop("password")
-        return User.objects.create_user(role=User.Role.SALES_OFFICER, password=password, **validated_data)
+        return User.objects.create_user(role=self.context["role"], password=password, **validated_data)
 
     def update(self, instance, validated_data):
         password = validated_data.pop("password", None)
@@ -41,3 +41,6 @@ class SalesOfficerSerializer(serializers.ModelSerializer):
             instance.set_password(password)
         instance.save()
         return instance
+
+
+SalesOfficerSerializer = TeamMemberSerializer

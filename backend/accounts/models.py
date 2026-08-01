@@ -23,12 +23,13 @@ class UserManager(BaseUserManager):
 class User(AbstractUser):
     class Role(models.TextChoices):
         ADMIN = "ADMIN", "Admin"
-        SALES_OFFICER = "SO", "Sales Officer"
+        CRE = "CRE", "CRE"
+        SALES_OFFICER = "SO", "PS/SO"
 
     username = None
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=20, blank=True)
-    role = models.CharField(max_length=10, choices=Role.choices, default=Role.SALES_OFFICER)
+    role = models.CharField(max_length=10, choices=Role.choices, default=Role.CRE)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getLeadDetail, getMyDashboard, updateMyLead, type LeadDetail, type LeadQualification, type SalesDashboard } from "@/lib/crm";
+import { getCurrentUser, getLeadDetail, getMyDashboard, updateMyLead, type CurrentUser, type LeadDetail, type LeadQualification, type SalesDashboard } from "@/lib/crm";
 
 type Section = "fresh" | "followups" | "pending" | "qualified" | "walkin" | "won_lost";
 type FreshSubfilter = "untouched" | "called" | "scheduled";
@@ -22,7 +22,9 @@ const sections: { key: Section; label: string; count: keyof SalesDashboard["summ
 ];
 const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", SWITCHED_OFF: "Switch off", CALLBACK: "Callback", PENDING: "Pending", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
 const outcomeLabels: Record<string, string> = { QUALIFIED: "Qualified", LOST: "Lost", PENDING: "Pending" };
-const statusOptions: Record<string, string[]> = { QUALIFIED: ["QUALIFIED"], LOST: ["LOST"], PENDING: ["PENDING"] };
+const psOutcomeLabels: Record<string, string> = { BOOKED: "Booked Follow-up", RETAILED: "Retailed", LOST: "Lost" };
+const allOutcomeLabels: Record<string, string> = { ...outcomeLabels, ...psOutcomeLabels };
+const statusOptions: Record<string, string[]> = { QUALIFIED: ["QUALIFIED"], LOST: ["LOST"], PENDING: ["PENDING"], BOOKED: ["WALKIN"], RETAILED: ["WON"] };
 const sourceOptions = [{ value: "META", label: "Meta Ads" }, { value: "WEBSITE", label: "Website" }, { value: "CARWALE", label: "CarWale" }, { value: "WALKIN", label: "Walk-in" }, { value: "CAMPAIGN", label: "Campaign" }, { value: "OTHER", label: "Other" }, { value: "UNKNOWN", label: "Unknown" }];
 const modelOptions = ["R6 GT", "R7 City", "R8 Lite", "R8 Pro", "R9 Plus"];
 const variantOptions = ["R8 Pro", "R8 Lite", "R7 City", "R6 GT"];
@@ -97,46 +99,64 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   const [notice, setNotice] = useState("");
   const [editingLead, setEditingLead] = useState(false);
   const [leadFields, setLeadFields] = useState<LeadFields | null>(null);
+  const [user, setUser] = useState<CurrentUser | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const isPs = user?.role === "SO";
+  const activeOutcomeLabels = isPs ? psOutcomeLabels : outcomeLabels;
+
+  useEffect(() => {
+    void getCurrentUser().then(result => {
+      setUser(result.user);
+      if (result.user.role === "SO" && !followUpsOnly) setSection("qualified");
+    }).catch(() => setUser(null)).finally(() => setAuthChecked(true));
+  }, [followUpsOnly]);
 
   const loadDashboard = useCallback(async () => {
+    if (!user) return;
     setLoading(true); setError("");
     try { setDashboard(await getMyDashboard({ section, range, ...(section === "fresh" ? { subfilter: freshSubfilter } : {}), ...(category ? { category } : {}), ...(source ? { source } : {}), ...(query ? { q: query } : {}) })); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to load your leads."); }
     finally { setLoading(false); }
-  }, [category, freshSubfilter, query, range, section, source]);
+  }, [category, freshSubfilter, query, range, section, source, user]);
 
-  useEffect(() => { const timer = window.setTimeout(() => void loadDashboard(), query ? 250 : 0); return () => window.clearTimeout(timer); }, [loadDashboard, query]);
+  useEffect(() => { if (!authChecked || !user) return; const timer = window.setTimeout(() => void loadDashboard(), query ? 250 : 0); return () => window.clearTimeout(timer); }, [authChecked, loadDashboard, query, user]);
 
   const openLead = async (lead: { id: number }) => {
     setDetailLoading(true); setError("");
-    try { const fullLead = await getLeadDetail(lead.id); setDetail(fullLead); setDraft(draftFor(fullLead)); setLeadFields(leadFieldsFor(fullLead)); setEditingLead(false); }
+    try {
+      const fullLead = await getLeadDetail(lead.id);
+      const nextDraft = draftFor(fullLead);
+      if (isPs) nextDraft.call_outcome = fullLead.statusCode === "WALKIN" ? "BOOKED" : fullLead.statusCode === "WON" ? "RETAILED" : fullLead.statusCode === "LOST" ? "LOST" : "";
+      setDetail(fullLead); setDraft(nextDraft); setLeadFields(leadFieldsFor(fullLead)); setEditingLead(false);
+    }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to open this lead."); }
     finally { setDetailLoading(false); }
   };
 
   const save = async () => {
     if (!detail || !draft || saving) return;
-    if (!draft.call_outcome) return setNotice("Choose Qualified, Lost, or Pending.");
-    if (draft.call_outcome === "QUALIFIED" && (!draft.model_interest || !draft.qualification.variant || !draft.qualification.buying_timeline || !draft.qualification.finance_type || !draft.qualification.notes.trim())) return setNotice("Complete model, variant, buying plan, finance, and qualification notes.");
+    if (!draft.call_outcome) return setNotice(isPs ? "Choose Booked, Retailed, or Lost." : "Choose Qualified, Lost, or Pending.");
+    if (!isPs && draft.call_outcome === "QUALIFIED" && (!draft.model_interest || !draft.qualification.variant || !draft.qualification.buying_timeline || !draft.qualification.finance_type || !draft.qualification.notes.trim())) return setNotice("Complete model, variant, buying plan, finance, and qualification notes.");
     if (draft.call_outcome === "LOST" && (!draft.lost_reason || !draft.remarks.trim())) return setNotice("Choose a lost reason and add remarks.");
     if (draft.call_outcome === "PENDING" && (!draft.pending_reason || !draft.remarks.trim() || !draft.follow_up_at)) return setNotice("Choose a pending reason, add remarks, and set follow-up date.");
-    const followUpAt = draft.call_outcome === "PENDING" ? followUpIso(draft.follow_up_at) : null;
-    if (draft.call_outcome === "PENDING" && (!followUpAt || new Date(followUpAt).getTime() <= Date.now())) return setNotice("Choose a future follow-up date.");
+    if (draft.call_outcome === "BOOKED" && (!draft.remarks.trim() || !draft.follow_up_at)) return setNotice("Add remarks and set the booked follow-up date.");
+    const followUpAt = ["PENDING", "BOOKED"].includes(draft.call_outcome) ? followUpIso(draft.follow_up_at) : null;
+    if (["PENDING", "BOOKED"].includes(draft.call_outcome) && (!followUpAt || new Date(followUpAt).getTime() <= Date.now())) return setNotice("Choose a future follow-up date.");
 
     setSaving(true); setError("");
     try {
       const notes = ["Qualified lead", draft.profession && `Profession: ${draft.profession}`, (draft.city || draft.custom_location) && `Location: ${draft.custom_location || draft.city}`, draft.trade_in_note && `Trade in: ${draft.trade_in_note}`, draft.qualification.notes.trim()].filter(Boolean).join("\n");
-      const remarks = draft.call_outcome === "LOST" ? `Lost reason: ${draft.lost_reason}\n${draft.remarks}` : draft.call_outcome === "PENDING" ? `Pending reason: ${draft.pending_reason}\n${draft.remarks}` : draft.qualification.notes;
+      const remarks = draft.call_outcome === "LOST" ? `Lost reason: ${draft.lost_reason}\n${draft.remarks}` : draft.call_outcome === "PENDING" ? `Pending reason: ${draft.pending_reason}\n${draft.remarks}` : isPs ? draft.remarks : draft.qualification.notes;
       const updated = await updateMyLead(detail.id, {
-        call_outcome: draft.call_outcome,
+        call_outcome: ["PENDING", "QUALIFIED", "LOST"].includes(draft.call_outcome) ? draft.call_outcome : undefined,
         status: statusOptions[draft.call_outcome][0],
         category: draft.category,
-        sales_outcome: draft.call_outcome === "LOST" ? "LOST" : "PENDING",
+        sales_outcome: draft.call_outcome === "LOST" ? "LOST" : draft.call_outcome === "BOOKED" ? "BOOKED" : draft.call_outcome === "RETAILED" ? "RETAILED" : "PENDING",
         remarks,
         follow_up_at: followUpAt,
-        model_interest: draft.call_outcome === "QUALIFIED" ? draft.model_interest : undefined,
-        city: draft.call_outcome === "QUALIFIED" ? draft.custom_location || draft.city : undefined,
-        qualification: draft.call_outcome === "QUALIFIED" ? { ...draft.qualification, trade_in: draft.trade_in_note === "Yes" ? true : draft.trade_in_note ? false : null, notes } : undefined,
+        model_interest: !isPs && draft.call_outcome === "QUALIFIED" ? draft.model_interest : undefined,
+        city: !isPs && draft.call_outcome === "QUALIFIED" ? draft.custom_location || draft.city : undefined,
+        qualification: !isPs && draft.call_outcome === "QUALIFIED" ? { ...draft.qualification, trade_in: draft.trade_in_note === "Yes" ? true : draft.trade_in_note ? false : null, notes } : undefined,
       });
       setDetail(updated); setDraft(draftFor(updated)); setNotice("Lead updated and follow-up history saved."); await loadDashboard();
     } catch (requestError) { const message = requestError instanceof Error ? requestError.message : "Lead update could not be saved."; setError(message); setNotice(message); }
@@ -157,10 +177,10 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   const selectCallOutcome = (call_outcome: string) => setDraft(current => current ? { ...current, call_outcome, status: statusOptions[call_outcome]?.[0] || "", follow_up_at: "" } : current);
   const choose = <K extends keyof Draft>(field: K, value: Draft[K]) => setDraft(current => current ? { ...current, [field]: value } : current);
   const chooseQualification = (field: keyof LeadQualification, value: string | boolean | null) => setDraft(current => current ? { ...current, qualification: { ...current.qualification, [field]: value } } : current);
-  const submitLabel = draft?.call_outcome === "QUALIFIED" ? "Qualify Lead" : draft?.call_outcome === "LOST" ? "Mark as Lost" : draft?.call_outcome === "PENDING" ? "Mark as Pending" : "Save follow-up";
+  const submitLabel = draft?.call_outcome === "QUALIFIED" ? "Qualify Lead" : draft?.call_outcome === "LOST" ? "Mark as Lost" : draft?.call_outcome === "PENDING" ? "Mark as Pending" : draft?.call_outcome === "BOOKED" ? "Book Follow-up" : draft?.call_outcome === "RETAILED" ? "Mark Retailed" : "Save follow-up";
 
   return <section className="page sales-workspace">
-    <div className="sales-hero"><div><p className="eyebrow">MY WORKSPACE</p><h1>My queue</h1><p className="subtext">Today, {new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(new Date())}</p></div><div className="sales-hero-actions"><button className="filter" onClick={() => void loadDashboard()}>↻ Refresh</button><a className="button primary" href="/my-analytics">View analytics →</a></div></div>
+    <div className="sales-hero"><div><p className="eyebrow">{isPs ? "PS/SO WORKSPACE" : "CRE WORKSPACE"}</p><h1>My queue</h1><p className="subtext">Today, {new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(new Date())}</p></div><div className="sales-hero-actions"><button className="filter" onClick={() => void loadDashboard()}>↻ Refresh</button><a className="button primary" href="/my-analytics">View analytics →</a></div></div>
     <section className="sales-hero-banner"><div><p className="eyebrow">THE NEXT MOVE</p><h2>Every lead deserves a next move.</h2><p>Stay on top of your queue and guide every customer to their perfect ride.</p></div><div className="sales-hero-art" aria-hidden="true"><span>REVERA</span><i>↗</i></div></section>
     <section className="sales-metrics">{[{label:"Fresh leads", value:summary?.fresh ?? 0, tone:"blue"}, {label:"Follow-ups", value:summary?.followups ?? 0, tone:"yellow"}, {label:"Pending leads", value:summary?.pending ?? 0, tone:"orange"}, {label:"Qualified leads", value:summary?.qualified ?? 0, tone:"green"}, {label:"Won leads", value:summary?.won ?? 0, tone:"mint"}, {label:"Lost leads", value:summary?.lost ?? 0, tone:"red"}].map(metric => <article className={`sales-metric ${metric.tone}`} key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><small>Assigned to you</small></article>)}</section>
     <nav className="sales-tabs" aria-label="Lead status views">{sections.map(item => <button key={item.key} className={section === item.key ? "active" : ""} onClick={() => setSection(item.key)}><i>{item.icon}</i><span>{item.label}</span><b>{summary?.[item.count] ?? 0}</b></button>)}</nav>
@@ -174,9 +194,10 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
       <div className="sales-detail-scroll">
         {error && <p className="form-error" role="alert">{error}</p>}
         <section className="sales-info-card"><h3>Customer information <button type="button" className="row-action" onClick={() => { setLeadFields(leadFieldsFor(detail)); setEditingLead(true); }}>Edit fields</button></h3><div className="sales-info-grid"><span><small>Name</small><b>{detail.name}</b></span><span><small>Phone</small><b>{detail.phone}</b></span><span><small>Email</small><b>{detail.email || "—"}</b></span><span><small>Source</small><b>{detail.source}</b></span><span><small>Source detail</small><b>{detail.sourceLabel || "—"}</b></span><span><small>Model</small><b>{detail.model}</b></span><span><small>City</small><b>{detail.city || "—"}</b></span><span><small>Enquiry date</small><b>{detail.enquiredAt}</b></span><span><small>Campaign</small><b>{detail.campaign || "—"}</b></span><span><small>Branch</small><b>{detail.branch || "—"}</b></span></div><div className="sales-detail-meta"><span>Category <b className={`category-pill ${draft.category.toLowerCase()}`}>{draft.category}</b></span><span>Calls <b>{detail.callCount}</b></span></div></section>
-        <section className="sales-form-card sales-outcome-card"><h3>Lead Status Update</h3><div className="sales-stepper">{["F1", "F2", "F3", "F4", "F5"].map((step, index) => <span className={progressState(detail.callCount, index)} key={step}>{index < Math.min(detail.callCount, 4) ? "✓" : index === Math.min(detail.callCount, 4) ? "○" : "▣"} {step}</span>)}</div><div className="sales-choice-row sales-status-update">{Object.entries(outcomeLabels).map(([value, label]) => <button type="button" className={draft.call_outcome === value ? `chosen ${value.toLowerCase()}` : value.toLowerCase()} onClick={() => selectCallOutcome(value)} key={value}>{value === "QUALIFIED" ? "✓" : value === "LOST" ? "×" : "◷"} {label}</button>)}</div></section>
+        {detail.qualification && <section className="sales-info-card"><h3>CRE qualification</h3><div className="sales-info-grid"><span><small>Variant</small><b>{detail.qualification.variant || "—"}</b></span><span><small>Buying plan</small><b>{detail.qualification.buying_timeline || "—"}</b></span><span><small>Finance</small><b>{detail.qualification.finance_type || "—"}</b></span><span><small>Test drive</small><b>{detail.qualification.test_drive || "—"}</b></span><span><small>Trade-in</small><b>{detail.qualification.trade_in === true ? "Yes" : detail.qualification.trade_in === false ? "No" : "—"}</b></span><span><small>Notes</small><b>{detail.qualification.notes || "—"}</b></span></div></section>}
+        <section className="sales-form-card sales-outcome-card"><h3>Lead Status Update</h3><div className="sales-stepper">{["F1", "F2", "F3", "F4", "F5"].map((step, index) => <span className={progressState(detail.callCount, index)} key={step}>{index < Math.min(detail.callCount, 4) ? "✓" : index === Math.min(detail.callCount, 4) ? "○" : "▣"} {step}</span>)}</div><div className="sales-choice-row sales-status-update">{Object.entries(activeOutcomeLabels).map(([value, label]) => <button type="button" className={draft.call_outcome === value ? `chosen ${value.toLowerCase()}` : value.toLowerCase()} onClick={() => selectCallOutcome(value)} key={value}>{value === "QUALIFIED" || value === "RETAILED" ? "✓" : value === "LOST" ? "×" : "◷"} {label}</button>)}</div></section>
 
-        {draft.call_outcome === "QUALIFIED" && <section className="sales-outcome-grid">
+        {!isPs && draft.call_outcome === "QUALIFIED" && <section className="sales-outcome-grid">
           <article className="sales-branch-card"><h3>Model Interested</h3><label>Vehicle model *<select value={draft.model_interest} onChange={event => choose("model_interest", event.target.value)}><option value="">Select model</option>{modelOptions.map(model => <option value={model} key={model}>{model}</option>)}</select></label></article>
           <article className="sales-branch-card"><h3>Variant</h3><label>Variant *<select value={draft.qualification.variant} onChange={event => chooseQualification("variant", event.target.value)}><option value="">Select Variant</option>{variantOptions.map(option => <option value={option} key={option}>{option}</option>)}</select></label></article>
           <article className="sales-branch-card"><h3>Customer Details</h3><label>Profession</label><ChoiceRow options={professionOptions} value={draft.profession} onChange={value => choose("profession", value)} /><label>Location<select value={draft.city} onChange={event => choose("city", event.target.value)}><option value="">Select location</option>{locationOptions.map(option => <option value={option} key={option}>{option}</option>)}</select></label><input value={draft.custom_location} onChange={event => choose("custom_location", event.target.value)} placeholder="Or type a custom location" /></article>
@@ -195,7 +216,13 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
           <article className="sales-branch-card sales-single-branch"><h3>Follow Up Details</h3><label>Follow Up Date *<input type="date" min={minimumFollowUpDay()} value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} /></label><small>Lead will be moved to the correct follow-up section after update.</small></article>
         </section>}
 
-        <section className="sales-history"><h3>History</h3>{detail.callHistory.length ? detail.callHistory.map(call => <div className="sales-history-row" key={`call-${call.id}`}><span className="history-dot" /><div><b>{outcomeLabels[call.outcome] || statusLabels[call.status] || call.status}</b><small>{call.remarks || "No remarks"} · {call.so_name || "You"}</small></div><time>{formatFollowUp(call.created_at)}</time></div>) : <p className="subtext">No calls recorded yet.</p>}{detail.followUpHistory.length ? detail.followUpHistory.map(followUp => <div className="sales-history-row" key={`follow-${followUp.id}`}><span className="history-dot follow" /><div><b>Follow-up {followUp.resolved_at ? "completed" : "scheduled"}</b><small>{formatFollowUp(followUp.scheduled_for)}</small></div><time>{followUp.resolved_at ? "Resolved" : "Open"}</time></div>) : null}</section>
+        {draft.call_outcome === "BOOKED" && <section className="sales-outcome-grid">
+          <article className="sales-branch-card sales-single-branch"><h3>Booked Follow-up</h3><label>Follow Up Date *<input type="date" min={minimumFollowUpDay()} value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} /></label><label>Remarks *<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Add PS/SO follow-up notes" /></label></article>
+        </section>}
+
+        {draft.call_outcome === "RETAILED" && <section className="sales-branch-card sales-single-branch"><h3>Retail Details</h3><label>Remarks<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Add sale confirmation notes" /></label><p className="sales-warning">Lead will be marked as won and retailed after update.</p></section>}
+
+        <section className="sales-history"><h3>History</h3>{detail.callHistory.length ? detail.callHistory.map(call => <div className="sales-history-row" key={`call-${call.id}`}><span className="history-dot" /><div><b>{allOutcomeLabels[call.outcome] || statusLabels[call.status] || call.status}</b><small>{call.remarks || "No remarks"} · {call.so_name || "You"}</small></div><time>{formatFollowUp(call.created_at)}</time></div>) : <p className="subtext">No calls recorded yet.</p>}{detail.followUpHistory.length ? detail.followUpHistory.map(followUp => <div className="sales-history-row" key={`follow-${followUp.id}`}><span className="history-dot follow" /><div><b>Follow-up {followUp.resolved_at ? "completed" : "scheduled"}</b><small>{formatFollowUp(followUp.scheduled_for)}</small></div><time>{followUp.resolved_at ? "Resolved" : "Open"}</time></div>) : null}</section>
       </div>
       <footer className="sales-detail-footer"><button className="filter" onClick={() => setDetail(null)}>Close</button><button className={`button primary ${draft.call_outcome.toLowerCase()}`} disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : submitLabel}</button></footer>
     </section></div>}

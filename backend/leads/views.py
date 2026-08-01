@@ -14,7 +14,7 @@ from accounts.models import User
 from accounts.permissions import IsAdmin
 from notifications.models import Notification
 from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification
-from .serializers import CALL_OUTCOME_STATUS_OPTIONS, AssignmentSerializer, FollowUpSerializer, LeadDetailSerializer, LeadSerializer, LeadUpdateSerializer, SOLeadListSerializer, SOLeadUpdateSerializer
+from .serializers import CALL_OUTCOME_STATUS_OPTIONS, AssignmentSerializer, FollowUpSerializer, LeadDetailSerializer, LeadSerializer, LeadUpdateSerializer, PSAssignmentSerializer, SOLeadListSerializer, SOLeadUpdateSerializer
 
 FORWARD_TRANSITIONS = {
     Lead.Status.FRESH: {Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED, Lead.Status.LOST},
@@ -56,13 +56,19 @@ class LeadViewSet(viewsets.ModelViewSet):
     serializer_class = LeadSerializer
 
     def get_queryset(self):
-        queryset = Lead.objects.filter(deleted_at__isnull=True).select_related("assigned_so").annotate(_call_count=Count("call_logs", distinct=True)).prefetch_related("qualification")
-        if not self.request.user.is_admin:
+        queryset = Lead.objects.filter(deleted_at__isnull=True).select_related("assigned_so", "assigned_ps").annotate(_call_count=Count("call_logs", distinct=True)).prefetch_related("qualification")
+        if not self.request.user.is_admin and self.request.user.role == User.Role.CRE:
             queryset = queryset.filter(assigned_so=self.request.user)
+        elif not self.request.user.is_admin:
+            queryset = queryset.filter(assigned_ps=self.request.user)
         elif self.request.query_params.get("unassigned") == "true":
             queryset = queryset.filter(assigned_so__isnull=True)
+        elif self.request.query_params.get("ps_unassigned") == "true":
+            queryset = queryset.filter(status=Lead.Status.QUALIFIED, assigned_ps__isnull=True)
         if value := self.request.query_params.get("assigned_so"):
             queryset = queryset.filter(assigned_so=value)
+        if value := self.request.query_params.get("assigned_ps"):
+            queryset = queryset.filter(assigned_ps=value)
         queryset = apply_lead_filters(queryset, self.request.query_params)
         ordering = self.request.query_params.get("ordering", "-created_at")
         return queryset.prefetch_related(Prefetch("follow_ups", queryset=FollowUp.objects.filter(resolved_at__isnull=True).order_by("scheduled_for"), to_attr="_open_followups")).order_by(ordering if ordering.lstrip("-") in {"created_at", "enquiry_date", "status"} else "-created_at")
@@ -71,14 +77,15 @@ class LeadViewSet(viewsets.ModelViewSet):
         return Response(LeadDetailSerializer(self.get_object()).data)
 
     def get_permissions(self):
-        if self.action in {"assign", "bulk_assign", "auto_assign", "reopen", "create", "destroy"}:
+        if self.action in {"assign", "assign_ps", "bulk_assign", "bulk_assign_ps", "auto_assign", "reopen", "create", "destroy"}:
             return [IsAdmin()]
         return super().get_permissions()
 
     @action(detail=False, methods=["get"], url_path="my-dashboard")
     def my_dashboard(self, request):
         today = timezone.localdate()
-        queryset = Lead.objects.filter(assigned_so=request.user, deleted_at__isnull=True)
+        owner_filter = {"assigned_so": request.user} if request.user.role == User.Role.CRE else {"assigned_ps": request.user}
+        queryset = Lead.objects.filter(deleted_at__isnull=True, **owner_filter)
         open_followup = Q(follow_ups__id__isnull=False, follow_ups__resolved_at__isnull=True)
         date_range = request.query_params.get("range", "all")
         if date_range == "today":
@@ -136,7 +143,8 @@ class LeadViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["patch"], url_path="so-update")
     def so_update(self, request, pk=None):
         lead = self.get_object()
-        if not request.user.is_admin and lead.assigned_so_id != request.user.id:
+        user_field = "assigned_so_id" if request.user.role == User.Role.CRE else "assigned_ps_id"
+        if not request.user.is_admin and getattr(lead, user_field) != request.user.id:
             return Response({"detail": "This lead is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
         serializer = SOLeadUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -162,6 +170,8 @@ class LeadViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Only callbacks and walk-ins can have an appointment."}, status=status.HTTP_400_BAD_REQUEST)
         if not request.user.is_admin and next_status != lead.status and next_status not in FORWARD_TRANSITIONS.get(lead.status, set()):
             return Response({"detail": "This status transition is not allowed."}, status=status.HTTP_400_BAD_REQUEST)
+        if not request.user.is_admin and request.user.role == User.Role.SALES_OFFICER and data.get("qualification"):
+            return Response({"detail": "PS/SO users cannot edit CRE qualification details."}, status=status.HTTP_403_FORBIDDEN)
         editable_fields = ("name", "phone", "email", "source", "source_label", "campaign", "model_interest", "city", "branch", "enquiry_date")
         before = {field: audit_value(getattr(lead, field)) for field in ("status", "category", "sales_outcome", *editable_fields)}
         with transaction.atomic():
@@ -197,8 +207,26 @@ class LeadViewSet(viewsets.ModelViewSet):
                 return Response({"detail": "This lead is already assigned."}, status=status.HTTP_409_CONFLICT)
             lead.assigned_so = officer
             lead.save(update_fields=["assigned_so", "updated_at"])
-            LeadAudit.objects.create(lead=lead, actor=request.user, event="assigned", after={"assigned_so": officer.id})
+            LeadAudit.objects.create(lead=lead, actor=request.user, event="assigned_cre", after={"assigned_so": officer.id})
             Notification.objects.create(user=officer, lead=lead, kind=Notification.Kind.ASSIGNMENT, message=f"You have a new lead: {lead.name}.")
+        return Response(self.get_serializer(lead).data)
+
+    @action(detail=True, methods=["post"], url_path="assign-ps")
+    def assign_ps(self, request, pk=None):
+        lead = self.get_object()
+        serializer = PSAssignmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        officer = serializer.validated_data["sales_officer"]
+        with transaction.atomic():
+            lead = Lead.objects.select_for_update().get(pk=lead.pk)
+            if lead.status != Lead.Status.QUALIFIED:
+                return Response({"detail": "Only qualified leads can be assigned to PS/SO."}, status=status.HTTP_400_BAD_REQUEST)
+            if lead.assigned_ps_id:
+                return Response({"detail": "This lead is already assigned to PS/SO."}, status=status.HTTP_409_CONFLICT)
+            lead.assigned_ps = officer
+            lead.save(update_fields=["assigned_ps", "updated_at"])
+            LeadAudit.objects.create(lead=lead, actor=request.user, event="assigned_ps", after={"assigned_ps": officer.id})
+            Notification.objects.create(user=officer, lead=lead, kind=Notification.Kind.ASSIGNMENT, message=f"You have a qualified lead: {lead.name}.")
         return Response(self.get_serializer(lead).data)
 
     @action(detail=False, methods=["post"], url_path="bulk-assign")
@@ -216,9 +244,29 @@ class LeadViewSet(viewsets.ModelViewSet):
             for lead in leads:
                 lead.assigned_so = officer
                 lead.save(update_fields=["assigned_so", "updated_at"])
-            LeadAudit.objects.bulk_create([LeadAudit(lead=lead, actor=request.user, event="assigned", after={"assigned_so": officer.id}) for lead in leads])
+            LeadAudit.objects.bulk_create([LeadAudit(lead=lead, actor=request.user, event="assigned_cre", after={"assigned_so": officer.id}) for lead in leads])
             if leads:
                 Notification.objects.create(user=officer, kind=Notification.Kind.ASSIGNMENT, message=f"You have {len(leads)} new lead(s) assigned.")
+        return Response({"assigned": len(leads)})
+
+    @action(detail=False, methods=["post"], url_path="bulk-assign-ps")
+    def bulk_assign_ps(self, request):
+        serializer = PSAssignmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        filters = request.data.get("filters", {})
+        if not isinstance(filters, dict):
+            raise ValidationError({"filters": "Expected an object of filter values."})
+        officer = serializer.validated_data["sales_officer"]
+        leads = Lead.objects.filter(deleted_at__isnull=True, status=Lead.Status.QUALIFIED, assigned_ps__isnull=True)
+        leads = apply_lead_filters(leads, filters)
+        with transaction.atomic():
+            leads = list(leads.select_for_update().order_by("created_at"))
+            for lead in leads:
+                lead.assigned_ps = officer
+                lead.save(update_fields=["assigned_ps", "updated_at"])
+            LeadAudit.objects.bulk_create([LeadAudit(lead=lead, actor=request.user, event="assigned_ps", after={"assigned_ps": officer.id}) for lead in leads])
+            if leads:
+                Notification.objects.create(user=officer, kind=Notification.Kind.ASSIGNMENT, message=f"You have {len(leads)} qualified lead(s) assigned.")
         return Response({"assigned": len(leads)})
 
     @action(detail=False, methods=["post"], url_path="auto-assign")
@@ -229,9 +277,9 @@ class LeadViewSet(viewsets.ModelViewSet):
             if lead_ids:
                 leads = leads.filter(id__in=lead_ids)
             leads = list(leads.order_by("created_at"))
-            officers = list(User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True).annotate(load=Count("assigned_leads", filter=Q(assigned_leads__deleted_at__isnull=True))).order_by("load", "id"))
+            officers = list(User.objects.filter(role=User.Role.CRE, is_active=True).annotate(load=Count("assigned_leads", filter=Q(assigned_leads__deleted_at__isnull=True))).order_by("load", "id"))
             if not officers:
-                return Response({"detail": "No active sales officers."}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"detail": "No active CRE users."}, status=status.HTTP_400_BAD_REQUEST)
             if not leads:
                 return Response({"assigned": 0, "distribution": {}})
             distribution = defaultdict(int)
@@ -239,7 +287,7 @@ class LeadViewSet(viewsets.ModelViewSet):
                 officer = officers[index % len(officers)]
                 lead.assigned_so = officer
                 lead.save(update_fields=["assigned_so", "updated_at"])
-                LeadAudit.objects.create(lead=lead, actor=request.user, event="auto_assigned", after={"assigned_so": officer.id})
+                LeadAudit.objects.create(lead=lead, actor=request.user, event="auto_assigned_cre", after={"assigned_so": officer.id})
                 distribution[officer.get_full_name() or officer.email] += 1
             Notification.objects.bulk_create([Notification(user=officer, kind=Notification.Kind.ASSIGNMENT, message=f"You have {count} new lead(s) assigned.") for officer, count in ((officer, distribution.get(officer.get_full_name() or officer.email, 0)) for officer in officers) if count])
         return Response({"assigned": len(leads), "distribution": distribution})
@@ -248,7 +296,8 @@ class LeadViewSet(viewsets.ModelViewSet):
     def log_call(self, request, pk=None):
         with transaction.atomic():
             lead = get_object_or_404(self.get_queryset().select_for_update(), pk=pk)
-            if not request.user.is_admin and lead.assigned_so_id != request.user.id:
+            user_field = "assigned_so_id" if request.user.role == User.Role.CRE else "assigned_ps_id"
+            if not request.user.is_admin and getattr(lead, user_field) != request.user.id:
                 return Response({"detail": "This lead is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
             serializer = LeadUpdateSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
@@ -261,7 +310,7 @@ class LeadViewSet(viewsets.ModelViewSet):
             CallLog.objects.create(lead=lead, so=request.user, status=next_status, outcome=serializer.validated_data.get("call_outcome", ""), remarks=serializer.validated_data.get("remarks", ""))
             FollowUp.objects.filter(lead=lead, resolved_at__isnull=True).update(resolved_at=timezone.now())
             if follow_up_at := serializer.validated_data.get("follow_up_at"):
-                FollowUp.objects.create(lead=lead, so=lead.assigned_so or request.user, scheduled_for=follow_up_at)
+                FollowUp.objects.create(lead=lead, so=request.user, scheduled_for=follow_up_at)
             LeadAudit.objects.create(lead=lead, actor=request.user, event="status_changed", before={"status": previous}, after={"status": next_status})
         return Response(self.get_serializer(lead).data)
 

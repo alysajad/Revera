@@ -11,8 +11,9 @@ from .models import CallLog, FollowUp, Lead, LeadQualification
 class LeadAccessTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_user(email="manager@example.com", password="password-12345", role=User.Role.ADMIN)
-        self.first_so = User.objects.create_user(email="first@example.com", password="password-12345", role=User.Role.SALES_OFFICER)
-        self.second_so = User.objects.create_user(email="second@example.com", password="password-12345", role=User.Role.SALES_OFFICER)
+        self.first_so = User.objects.create_user(email="first@example.com", password="password-12345", role=User.Role.CRE)
+        self.second_so = User.objects.create_user(email="second@example.com", password="password-12345", role=User.Role.CRE)
+        self.ps_so = User.objects.create_user(email="ps@example.com", password="password-12345", role=User.Role.SALES_OFFICER)
         self.first_lead = Lead.objects.create(name="Aarav", phone="7305198421", assigned_so=self.first_so)
         self.second_lead = Lead.objects.create(name="Mehak", phone="9797210468", assigned_so=self.second_so)
         self.client = APIClient()
@@ -229,8 +230,8 @@ class LeadAccessTests(TestCase):
         response = self.client.get("/api/analytics/admin/")
 
         self.assertEqual(response.status_code, 200)
-        first_officer = next(item for item in response.data["officers"] if item["id"] == self.first_so.id)
-        second_officer = next(item for item in response.data["officers"] if item["id"] == self.second_so.id)
+        first_officer = next(item for item in response.data["cre"] if item["id"] == self.first_so.id)
+        second_officer = next(item for item in response.data["cre"] if item["id"] == self.second_so.id)
         self.assertEqual(first_officer["calls_today"], 1)
         self.assertEqual(second_officer["calls_today"], 0)
 
@@ -250,3 +251,43 @@ class LeadAccessTests(TestCase):
         self.client.force_authenticate(self.first_so)
         response = self.client.patch(f"/api/leads/{self.second_lead.id}/so-update/", {"category": Lead.Category.COLD}, format="json")
         self.assertEqual(response.status_code, 404)
+
+    def test_admin_assigns_qualified_lead_to_ps_so(self):
+        self.first_lead.status = Lead.Status.QUALIFIED
+        self.first_lead.save(update_fields=["status"])
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(f"/api/leads/{self.first_lead.id}/assign-ps/", {"sales_officer_id": self.ps_so.id}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        self.first_lead.refresh_from_db()
+        self.assertEqual(self.first_lead.assigned_ps, self.ps_so)
+
+    def test_ps_so_sees_assigned_qualified_lead_with_cre_qualification(self):
+        LeadQualification.objects.create(lead=self.first_lead, variant="R8 Pro", buying_timeline="Immediate", finance_type="Inhouse", notes="Ready")
+        self.first_lead.status = Lead.Status.QUALIFIED
+        self.first_lead.assigned_ps = self.ps_so
+        self.first_lead.save(update_fields=["status", "assigned_ps"])
+        self.client.force_authenticate(self.ps_so)
+
+        response = self.client.get("/api/leads/")
+        detail = self.client.get(f"/api/leads/{self.first_lead.id}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([lead["id"] for lead in response.data["results"]], [self.first_lead.id])
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.data["qualification"]["variant"], "R8 Pro")
+
+    def test_ps_so_can_retail_but_not_edit_cre_qualification(self):
+        self.first_lead.status = Lead.Status.QUALIFIED
+        self.first_lead.assigned_ps = self.ps_so
+        self.first_lead.save(update_fields=["status", "assigned_ps"])
+        self.client.force_authenticate(self.ps_so)
+
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"status": Lead.Status.WON, "sales_outcome": Lead.SalesOutcome.RETAILED, "remarks": "Sale done."}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.first_lead.refresh_from_db()
+        self.assertEqual(self.first_lead.status, Lead.Status.WON)
+
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"qualification": {"variant": "R9 Plus"}}, format="json")
+        self.assertEqual(response.status_code, 403)

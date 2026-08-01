@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .permissions import IsAdmin
-from .serializers import LoginSerializer, SalesOfficerSerializer, UserSerializer
+from .serializers import TeamMemberSerializer, UserSerializer, LoginSerializer
 
 
 def set_auth_cookies(response, refresh):
@@ -70,15 +70,30 @@ class CsrfView(APIView):
         return Response({"csrfToken": get_token(request)})
 
 
-class SalesOfficerViewSet(viewsets.ModelViewSet):
+class RoleUserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdmin]
-    serializer_class = SalesOfficerSerializer
-    queryset = get_user_model().objects.filter(role=get_user_model().Role.SALES_OFFICER).order_by("first_name", "email")
+    serializer_class = TeamMemberSerializer
+    role = None
+
+    def get_queryset(self):
+        return get_user_model().objects.filter(role=self.role).order_by("first_name", "email")
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), "role": self.role}
 
     def destroy(self, request, *args, **kwargs):
-        officer = self.get_object()
-        if officer.assigned_leads.filter(deleted_at__isnull=True).exists():
-            return Response({"detail": "Reassign this officer's active leads before deactivation."}, status=status.HTTP_400_BAD_REQUEST)
-        officer.is_active = False
-        officer.save(update_fields=["is_active"])
+        user = self.get_object()
+        active = user.assigned_leads if self.role == get_user_model().Role.CRE else user.ps_leads
+        if active.filter(deleted_at__isnull=True).exists():
+            return Response({"detail": "Reassign this user's active leads before deactivation."}, status=status.HTTP_400_BAD_REQUEST)
+        user.is_active = False
+        user.save(update_fields=["is_active"])
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CREViewSet(RoleUserViewSet):
+    role = get_user_model().Role.CRE
+
+
+class SalesOfficerViewSet(RoleUserViewSet):
+    role = get_user_model().Role.SALES_OFFICER

@@ -1,9 +1,10 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
-from .views import CsrfView, LoginView, LogoutView, MeView, RefreshView, SalesOfficerViewSet
+from .views import CREViewSet, CsrfView, LoginView, LogoutView, MeView, RefreshView, SalesOfficerViewSet
 
 router = DefaultRouter()
+router.register("cre-users", CREViewSet, basename="cre-user")
 router.register("sales-officers", SalesOfficerViewSet, basename="sales-officer")
 
 urlpatterns = [

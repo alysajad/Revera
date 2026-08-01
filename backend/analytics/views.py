@@ -18,31 +18,38 @@ def metrics(queryset):
     return {"total_assigned": total, "total_called": queryset.exclude(status=Lead.Status.FRESH).count(), **counts, "conversion_rate": round((counts["won"] / total) * 100, 1) if total else 0}
 
 
+def team_metrics(users, lead_relation):
+    today = timezone.localdate()
+    active_leads = Q(**{f"{lead_relation}__deleted_at__isnull": True})
+    rows = []
+    for user in users.annotate(
+        total_assigned=Count(lead_relation, filter=active_leads),
+        total_called=Count(lead_relation, filter=active_leads & ~Q(**{f"{lead_relation}__status": Lead.Status.FRESH})),
+        calls_today=Count("call_logs", filter=Q(call_logs__created_at__date=today, call_logs__lead__deleted_at__isnull=True)),
+        qualified=Count(lead_relation, filter=active_leads & Q(**{f"{lead_relation}__status": Lead.Status.QUALIFIED})),
+        walkins=Count(lead_relation, filter=active_leads & Q(**{f"{lead_relation}__status": Lead.Status.WALKIN})),
+        won=Count(lead_relation, filter=active_leads & Q(**{f"{lead_relation}__status": Lead.Status.WON})),
+        lost=Count(lead_relation, filter=active_leads & Q(**{f"{lead_relation}__status__in": [Lead.Status.LOST, Lead.Status.UNQUALIFIED]})),
+    ):
+        rows.append({"id": user.id, "name": user.get_full_name() or user.email, "total_assigned": user.total_assigned, "total_called": user.total_called, "calls_today": user.calls_today, "qualified": user.qualified, "walkins": user.walkins, "won": user.won, "lost": user.lost, "conversion_rate": round((user.won / user.total_assigned) * 100, 1) if user.total_assigned else 0})
+    return rows
+
+
 class AdminAnalyticsView(APIView):
     permission_classes = [IsAdmin]
 
     def get(self, request):
         queryset = Lead.objects.filter(deleted_at__isnull=True)
-        today = timezone.localdate()
         source = list(queryset.values("source").annotate(total=Count("id"), qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)), won=Count("id", filter=Q(status=Lead.Status.WON))).order_by("source"))
-        active_leads = Q(assigned_leads__deleted_at__isnull=True)
-        officers = []
-        for user in User.objects.filter(role=User.Role.SALES_OFFICER).annotate(
-            total_assigned=Count("assigned_leads", filter=active_leads),
-            total_called=Count("assigned_leads", filter=active_leads & ~Q(assigned_leads__status=Lead.Status.FRESH)),
-            calls_today=Count("call_logs", filter=Q(call_logs__created_at__date=today, call_logs__lead__deleted_at__isnull=True)),
-            qualified=Count("assigned_leads", filter=active_leads & Q(assigned_leads__status=Lead.Status.QUALIFIED)),
-            walkins=Count("assigned_leads", filter=active_leads & Q(assigned_leads__status=Lead.Status.WALKIN)),
-            won=Count("assigned_leads", filter=active_leads & Q(assigned_leads__status=Lead.Status.WON)),
-            lost=Count("assigned_leads", filter=active_leads & Q(assigned_leads__status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED])),
-        ):
-            officers.append({"id": user.id, "name": user.get_full_name() or user.email, "total_assigned": user.total_assigned, "total_called": user.total_called, "calls_today": user.calls_today, "qualified": user.qualified, "walkins": user.walkins, "won": user.won, "lost": user.lost, "conversion_rate": round((user.won / user.total_assigned) * 100, 1) if user.total_assigned else 0})
-        return Response({"summary": metrics(queryset), "source": source, "officers": officers, "generated_at": timezone.now()})
+        cre = team_metrics(User.objects.filter(role=User.Role.CRE), "assigned_leads")
+        officers = team_metrics(User.objects.filter(role=User.Role.SALES_OFFICER), "ps_leads")
+        return Response({"summary": metrics(queryset), "source": source, "cre": cre, "officers": officers, "generated_at": timezone.now()})
 
 
 class MyAnalyticsView(APIView):
     def get(self, request):
-        queryset = Lead.objects.filter(assigned_so=request.user, deleted_at__isnull=True)
+        owner_filter = {"assigned_so": request.user} if request.user.role == User.Role.CRE else {"assigned_ps": request.user}
+        queryset = Lead.objects.filter(deleted_at__isnull=True, **owner_filter)
         date_range = request.query_params.get("range", "mtd")
         today = timezone.localdate()
         if date_range == "today":
@@ -71,7 +78,8 @@ class MyAnalyticsView(APIView):
 
 class MyAnalyticsExportView(APIView):
     def get(self, request):
-        queryset = Lead.objects.filter(assigned_so=request.user, deleted_at__isnull=True).order_by("-enquiry_date")
+        owner_filter = {"assigned_so": request.user} if request.user.role == User.Role.CRE else {"assigned_ps": request.user}
+        queryset = Lead.objects.filter(deleted_at__isnull=True, **owner_filter).order_by("-enquiry_date")
         response = HttpResponse(content_type="text/csv")
         response["Content-Disposition"] = 'attachment; filename="revera-my-analytics.csv"'
         writer = csv.writer(response)
