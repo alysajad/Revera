@@ -263,6 +263,22 @@ class LeadAccessTests(TestCase):
         self.first_lead.refresh_from_db()
         self.assertEqual(self.first_lead.assigned_ps, self.ps_so)
 
+    def test_cre_has_read_only_access_after_ps_handoff(self):
+        self.first_lead.status = Lead.Status.QUALIFIED
+        self.first_lead.assigned_ps = self.ps_so
+        self.first_lead.save(update_fields=["status", "assigned_ps"])
+        self.client.force_authenticate(self.first_so)
+
+        detail = self.client.get(f"/api/leads/{self.first_lead.id}/")
+        dashboard = self.client.get("/api/leads/my-dashboard/?section=qualified")
+        update = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"category": Lead.Category.COLD}, format="json")
+        log_call = self.client.post(f"/api/leads/{self.first_lead.id}/log-call/", {"status": Lead.Status.WALKIN, "follow_up_at": (timezone.now() + timedelta(days=1)).isoformat()}, format="json")
+
+        self.assertEqual(detail.status_code, 200)
+        self.assertNotIn(self.first_lead.id, [lead["id"] for lead in dashboard.data["results"]])
+        self.assertEqual(update.status_code, 403)
+        self.assertEqual(log_call.status_code, 403)
+
     def test_ps_so_sees_assigned_qualified_lead_with_cre_qualification(self):
         LeadQualification.objects.create(lead=self.first_lead, variant="R8 Pro", buying_timeline="Immediate", finance_type="Inhouse", notes="Ready")
         self.first_lead.status = Lead.Status.QUALIFIED

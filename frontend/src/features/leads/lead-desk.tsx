@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assignFilteredLeads, assignFilteredPsLeads, assignLead, assignPsLead, autoAssignLeads, commitUpload, createLead, getAdminAnalytics, getCres, getLeadDetail, getLeadsPage, getOfficers, getUpload, logCall, resolveUploadDuplicates, sourceClass, statusName, toLead, toOfficer, updateMyLead, type CallHistory, type Lead, type LeadDetail, type LeadFilters, type LeadInput, type LeadQualification, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
 import { formatDate, parseDate } from "@/lib/dates";
 
-const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", SWITCHED_OFF: "Switch off", CALLBACK: "Callback", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
+const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", SWITCHED_OFF: "Switch off", CALLBACK: "Callback", PENDING: "Pending", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
 const outcomeLabels: Record<string, string> = { CONNECTED: "Connected", NO_RESPONSE: "No response", CALLBACK: "Callback", QUALIFIED: "Qualified", WRONG_NUMBER: "Wrong number" };
 
 function formatCallDate(value: string) {
@@ -266,7 +266,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const duplicateRows = upload?.rows?.filter(row => row.duplicate_of && row.resolution === "PENDING") || [];
   const importableRows = upload?.rows ? upload.rows.filter(row => !row.validation_error && row.resolution !== "SKIP").length : upload?.parsed_ok;
   const targetLabel = assignmentView === "fresh" ? "CRE" : "PS/SO";
-  const poolLabel = assignmentView === "fresh" ? "Fresh lead pool" : "Qualified lead pool";
+  const poolLabel = assignmentView === "fresh" ? "Fresh lead pool" : "Qualified handoff pool";
   const heading = followUpsOnly ? "Follow-ups" : officerMode ? "My queue" : "Assignment desk";
 
   return <section className="page">
