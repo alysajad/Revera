@@ -97,3 +97,16 @@ class CREViewSet(RoleUserViewSet):
 
 class SalesOfficerViewSet(RoleUserViewSet):
     role = get_user_model().Role.SALES_OFFICER
+
+    def get_permissions(self):
+        if self.action == "list":
+            return [permissions.IsAuthenticated()]
+        return super().get_permissions()
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if not self.request.user.is_admin:
+            queryset = queryset.filter(is_active=True)
+        if location := self.request.query_params.get("location"):
+            queryset = queryset.filter(location__iexact=location.strip())
+        return queryset

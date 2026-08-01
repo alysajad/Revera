@@ -117,6 +117,7 @@ class SOLeadUpdateSerializer(serializers.Serializer):
     call_outcome = serializers.ChoiceField(choices=[("QUALIFIED", "Qualified"), ("LOST", "Lost"), ("PENDING", "Pending")], required=False, allow_blank=True)
     follow_up_at = serializers.DateTimeField(required=False, allow_null=True)
     qualification = QualificationSerializer(required=False)
+    ps_officer_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True), source="ps_officer", required=False)
 
     def validate(self, attrs):
         enquiry_date = attrs.get("enquiry_date")

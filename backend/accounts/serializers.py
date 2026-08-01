@@ -7,7 +7,7 @@ from .models import User
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "first_name", "last_name", "email", "phone", "role", "is_active"]
+        fields = ["id", "first_name", "last_name", "email", "phone", "location", "role", "is_active"]
 
 
 class LoginSerializer(serializers.Serializer):
@@ -27,7 +27,7 @@ class TeamMemberSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "first_name", "last_name", "email", "phone", "is_active", "password"]
+        fields = ["id", "first_name", "last_name", "email", "phone", "location", "is_active", "password"]
 
     def create(self, validated_data):
         password = validated_data.pop("password")

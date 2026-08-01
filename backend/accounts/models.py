@@ -29,6 +29,7 @@ class User(AbstractUser):
     username = None
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=20, blank=True)
+    location = models.CharField(max_length=100, blank=True, db_index=True)
     role = models.CharField(max_length=10, choices=Role.choices, default=Role.CRE)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
