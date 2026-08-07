@@ -8,6 +8,9 @@ CALL_OUTCOME_STATUS_OPTIONS = {
     "PENDING": {Lead.Status.PENDING},
     "QUALIFIED": {Lead.Status.QUALIFIED},
     "LOST": {Lead.Status.LOST},
+    "RNR": {Lead.Status.RNR},
+    "SWITCHED_OFF": {Lead.Status.SWITCHED_OFF},
+    "CALLBACK": {Lead.Status.CALLBACK},
 }
 
 
@@ -114,7 +117,7 @@ class SOLeadUpdateSerializer(serializers.Serializer):
     branch = serializers.CharField(max_length=120, required=False, allow_blank=True)
     enquiry_date = serializers.DateField(required=False, allow_null=True)
     remarks = serializers.CharField(max_length=500, required=False, allow_blank=True)
-    call_outcome = serializers.ChoiceField(choices=[("QUALIFIED", "Qualified"), ("LOST", "Lost"), ("PENDING", "Pending")], required=False, allow_blank=True)
+    call_outcome = serializers.ChoiceField(choices=[("QUALIFIED", "Qualified"), ("LOST", "Lost"), ("PENDING", "Pending"), ("RNR", "RNR"), ("SWITCHED_OFF", "Switched off"), ("CALLBACK", "Callback")], required=False, allow_blank=True)
     follow_up_at = serializers.DateTimeField(required=False, allow_null=True)
     qualification = QualificationSerializer(required=False)
     ps_officer_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True), source="ps_officer", required=False)
@@ -123,7 +126,7 @@ class SOLeadUpdateSerializer(serializers.Serializer):
         enquiry_date = attrs.get("enquiry_date")
         if enquiry_date and enquiry_date > timezone.localdate():
             raise serializers.ValidationError({"enquiry_date": "Enquiry date cannot be in the future."})
-        next_status = attrs.get("status") or {"PENDING": Lead.Status.PENDING, "QUALIFIED": Lead.Status.QUALIFIED, "LOST": Lead.Status.LOST}.get(attrs.get("call_outcome"))
+        next_status = attrs.get("status") or {"PENDING": Lead.Status.PENDING, "QUALIFIED": Lead.Status.QUALIFIED, "LOST": Lead.Status.LOST, "RNR": Lead.Status.RNR, "SWITCHED_OFF": Lead.Status.SWITCHED_OFF, "CALLBACK": Lead.Status.CALLBACK}.get(attrs.get("call_outcome"))
         follow_up_at = attrs.get("follow_up_at")
         call_outcome = attrs.get("call_outcome")
         if call_outcome in CALL_OUTCOME_STATUS_OPTIONS:

@@ -53,8 +53,11 @@ const nextOutcomes: Record<string, { label: string; value: string }[]> = {
 };
 
 const adminOutcomeOptions = [
-  { label: "Retailed", value: "WON", callOutcome: "", salesOutcome: "RETAILED" },
+  { label: "RNR", value: "RNR", callOutcome: "RNR", salesOutcome: "PENDING" },
+  { label: "Switch off", value: "SWITCHED_OFF", callOutcome: "SWITCHED_OFF", salesOutcome: "PENDING" },
+  { label: "Call me back", value: "CALLBACK", callOutcome: "CALLBACK", salesOutcome: "PENDING" },
   { label: "Booked Follow-up", value: "PENDING", callOutcome: "PENDING", salesOutcome: "PENDING" },
+  { label: "Retailed", value: "WON", callOutcome: "", salesOutcome: "RETAILED" },
   { label: "Lost", value: "LOST", callOutcome: "LOST", salesOutcome: "LOST" },
 ];
 
