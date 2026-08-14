@@ -204,9 +204,9 @@ class LeadViewSet(viewsets.ModelViewSet):
                     setattr(record, field, value)
                 record.updated_by = request.user
                 record.save()
-            if any(field in data for field in ("status", "sales_outcome", "remarks", "call_outcome", "follow_up_at")):
+            if any(field in data for field in ("status", "sales_outcome", "remarks", "call_status", "call_outcome", "follow_up_at", "other_so_called")):
                 FollowUp.objects.filter(lead=lead, resolved_at__isnull=True).update(resolved_at=timezone.now())
-                CallLog.objects.create(lead=lead, so=request.user, status=next_status, outcome=data.get("call_outcome", ""), remarks=data.get("remarks", ""))
+                CallLog.objects.create(lead=lead, so=request.user, status=next_status, call_status=data.get("call_status", ""), outcome=data.get("call_outcome", ""), remarks=data.get("remarks", ""), other_so_called=data.get("other_so_called", ""))
                 if follow_up_at := data.get("follow_up_at"):
                     FollowUp.objects.create(lead=lead, so=request.user, scheduled_for=follow_up_at)
             after = {field: audit_value(getattr(lead, field)) for field in ("status", "category", "sales_outcome", *editable_fields)}
@@ -330,7 +330,7 @@ class LeadViewSet(viewsets.ModelViewSet):
             previous = lead.status
             lead.status = next_status
             lead.save(update_fields=["status", "updated_at"])
-            CallLog.objects.create(lead=lead, so=request.user, status=next_status, outcome=serializer.validated_data.get("call_outcome", ""), remarks=serializer.validated_data.get("remarks", ""))
+            CallLog.objects.create(lead=lead, so=request.user, status=next_status, call_status=serializer.validated_data.get("call_status", ""), outcome=serializer.validated_data.get("call_outcome", ""), remarks=serializer.validated_data.get("remarks", ""), other_so_called=serializer.validated_data.get("other_so_called", ""))
             FollowUp.objects.filter(lead=lead, resolved_at__isnull=True).update(resolved_at=timezone.now())
             if follow_up_at := serializer.validated_data.get("follow_up_at"):
                 FollowUp.objects.create(lead=lead, so=request.user, scheduled_for=follow_up_at)
