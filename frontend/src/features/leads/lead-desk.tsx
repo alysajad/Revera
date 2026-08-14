@@ -103,6 +103,9 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const [testDrive, setTestDrive] = useState("");
   const [callStatus, setCallStatus] = useState("Connected");
   const [otherSoCalled, setOtherSoCalled] = useState("");
+  const [editingCustomer, setEditingCustomer] = useState(false);
+  const [editDetails, setEditDetails] = useState({ name: "", phone: "", model: "", variant: "", buying_timeline: "", finance_type: "", trade_in: null as boolean | null, category: "" });
+  const [savingDetails, setSavingDetails] = useState(false);
   const [savingCall, setSavingCall] = useState(false);
   const [addingLead, setAddingLead] = useState(false);
   const [creatingLead, setCreatingLead] = useState(false);
@@ -205,13 +208,60 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
         await logCall(activeLead.id, { status: outcome, remarks, ...(normalizedFollowUpAt ? { follow_up_at: normalizedFollowUpAt } : {}) });
       }
       setNotice(`Call log saved for ${activeLead.name}.`); setActiveLead(null); setLeadDetail(null); setRemarks(""); setFollowUpAt(""); setTestDrive(""); setCallStatus("Connected"); setOtherSoCalled(""); await refresh();
-    } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Call log could not be saved."); }
-    finally { setSavingCall(false); }
+    } finally { setSavingCall(false); }
+  };
+
+  const startEditing = () => {
+    setEditDetails({
+      name: activeLead?.name || "",
+      phone: activeLead?.phone || "",
+      model: activeLead?.model || "",
+      variant: leadDetail?.qualification?.variant || "",
+      buying_timeline: leadDetail?.qualification?.buying_timeline || "",
+      finance_type: leadDetail?.qualification?.finance_type || "",
+      trade_in: leadDetail?.qualification?.trade_in ?? null,
+      category: activeLead?.category || "WARM"
+    });
+    setEditingCustomer(true);
+  };
+
+  const saveCustomerDetails = async () => {
+    if (!activeLead) return;
+    setSavingDetails(true);
+    try {
+      await updateMyLead(activeLead.id, {
+        name: editDetails.name,
+        phone: editDetails.phone,
+        model_interest: editDetails.model,
+        category: editDetails.category,
+        qualification: {
+          variant: editDetails.variant,
+          buying_timeline: editDetails.buying_timeline,
+          finance_type: editDetails.finance_type,
+          trade_in: editDetails.trade_in,
+          test_drive: leadDetail?.qualification?.test_drive || "",
+          notes: leadDetail?.qualification?.notes || ""
+        }
+      });
+      setNotice(`Customer details updated for ${editDetails.name}.`);
+      setActiveLead({ ...activeLead, name: editDetails.name, phone: editDetails.phone, model: editDetails.model, category: editDetails.category });
+      if (leadDetail) {
+        setLeadDetail({
+          ...leadDetail,
+          qualification: { ...leadDetail.qualification, variant: editDetails.variant, buying_timeline: editDetails.buying_timeline, finance_type: editDetails.finance_type, trade_in: editDetails.trade_in, test_drive: leadDetail.qualification?.test_drive || "", notes: leadDetail.qualification?.notes || "" }
+        });
+      }
+      setEditingCustomer(false);
+      const newPool = await getLeadsPage(leadQuery(officerMode, followUpsOnly, activeFilters, page, searchFilter, assignmentView));
+      setLeads(newPool.results);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Details could not be saved.");
+    } finally { setSavingDetails(false); }
   };
 
   const openLead = async (lead: Lead) => {
     const initialOutcome = officerMode ? nextOutcomes[lead.status]?.[0]?.value || "" : lead.statusCode === "WON" ? "WON" : ["LOST", "UNQUALIFIED"].includes(lead.statusCode) ? "LOST" : lead.statusCode === "PENDING" || lead.nextFollowUp ? "PENDING" : "";
-    setActiveLead(lead); setOutcome(initialOutcome); setRemarks(""); setFollowUpAt(localDateTimeValue(lead.nextFollowUp)); setTestDrive(""); setCallStatus("Connected"); setOtherSoCalled(""); setSavingCall(false); setError("");
+    setActiveLead(lead); setOutcome(initialOutcome); setRemarks(""); setFollowUpAt(localDateTimeValue(lead.nextFollowUp)); setTestDrive(""); setCallStatus("Connected"); setOtherSoCalled(""); setEditingCustomer(false); setSavingCall(false); setError("");
     if (!officerMode) {
       setDetailLoading(true);
       try { const detail = await getLeadDetail(lead.id); setLeadDetail(detail); setFollowUpAt(localDateTimeValue(detail.nextFollowUp)); setTestDrive(detail.qualification?.test_drive || ""); }
@@ -322,16 +372,35 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
       <div className="sales-detail-scroll">
         {error && <p className="form-error" role="alert">{error}</p>}
         <section className="sales-info-card admin-customer-card">
-          <h3>Customer information</h3>
-          <div className="sales-info-grid">
-            <span><small>Customer name</small><b>{activeLead.name}</b></span>
-            <span><small>Mobile</small><b>{activeLead.phone}</b></span>
-            <span><small>Model</small><b>{activeLead.model}</b></span>
-            <span><small>Variant</small><b>{leadDetail?.qualification?.variant || "—"}</b></span>
-            <span><small>Buying plan</small><b>{leadDetail?.qualification?.buying_timeline || "—"}</b></span>
-            <span><small>Finance</small><b>{leadDetail?.qualification?.finance_type || "—"}</b></span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3>Customer information</h3>
+            {!editingCustomer && <button type="button" className="filter" onClick={startEditing} style={{ padding: "0.25rem 0.75rem", fontSize: "0.875rem" }}>Edit details</button>}
           </div>
-          <div className="sales-detail-meta"><span>Trade-in <b>{leadDetail?.qualification?.trade_in === true ? "Yes" : leadDetail?.qualification?.trade_in === false ? "No" : "—"}</b></span><span>Category <b className={`category-pill ${activeLead.category?.toLowerCase() || "warm"}`}>{activeLead.category || "WARM"}</b></span></div>
+          {editingCustomer ? (
+            <div className="form-grid" style={{ marginTop: "1rem" }}>
+              <label>Customer name<input value={editDetails.name} onChange={e => setEditDetails({ ...editDetails, name: e.target.value })} maxLength={160} /></label>
+              <label>Mobile<input value={editDetails.phone} onChange={e => setEditDetails({ ...editDetails, phone: e.target.value.replace(/\D/g, "") })} maxLength={10} /></label>
+              <label>Model<input value={editDetails.model} onChange={e => setEditDetails({ ...editDetails, model: e.target.value })} maxLength={100} /></label>
+              <label>Variant<input value={editDetails.variant} onChange={e => setEditDetails({ ...editDetails, variant: e.target.value })} maxLength={100} /></label>
+              <label>Buying plan<input value={editDetails.buying_timeline} onChange={e => setEditDetails({ ...editDetails, buying_timeline: e.target.value })} maxLength={100} /></label>
+              <label>Finance<input value={editDetails.finance_type} onChange={e => setEditDetails({ ...editDetails, finance_type: e.target.value })} maxLength={100} /></label>
+              <label>Trade-in<select value={editDetails.trade_in === true ? "true" : editDetails.trade_in === false ? "false" : ""} onChange={e => setEditDetails({ ...editDetails, trade_in: e.target.value === "true" ? true : e.target.value === "false" ? false : null })}><option value="">—</option><option value="true">Yes</option><option value="false">No</option></select></label>
+              <label>Category<select value={editDetails.category} onChange={e => setEditDetails({ ...editDetails, category: e.target.value })}><option value="HOT">Hot</option><option value="WARM">Warm</option><option value="COLD">Cold</option></select></label>
+              <div style={{ gridColumn: "1 / -1", display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}><button type="button" className="filter" onClick={() => setEditingCustomer(false)}>Cancel</button><button type="button" className="button primary" disabled={savingDetails} onClick={() => void saveCustomerDetails()}>{savingDetails ? "Saving…" : "Save details"}</button></div>
+            </div>
+          ) : (
+            <>
+              <div className="sales-info-grid" style={{ marginTop: "1rem" }}>
+                <span><small>Customer name</small><b>{activeLead.name}</b></span>
+                <span><small>Mobile</small><b>{activeLead.phone}</b></span>
+                <span><small>Model</small><b>{activeLead.model}</b></span>
+                <span><small>Variant</small><b>{leadDetail?.qualification?.variant || "—"}</b></span>
+                <span><small>Buying plan</small><b>{leadDetail?.qualification?.buying_timeline || "—"}</b></span>
+                <span><small>Finance</small><b>{leadDetail?.qualification?.finance_type || "—"}</b></span>
+              </div>
+              <div className="sales-detail-meta"><span>Trade-in <b>{leadDetail?.qualification?.trade_in === true ? "Yes" : leadDetail?.qualification?.trade_in === false ? "No" : "—"}</b></span><span>Category <b className={`category-pill ${activeLead.category?.toLowerCase() || "warm"}`}>{activeLead.category || "WARM"}</b></span></div>
+            </>
+          )}
           {leadDetail?.previousConsultant && <div className="sales-consultant-alert" style={{ marginTop: "1rem", padding: "1rem", background: "#fff3cd", border: "1px solid #ffeeba", borderRadius: "8px" }}>
             <p style={{ margin: "0 0 0.5rem 0", fontWeight: "bold", color: "#856404" }}>⚠️ Sales consultant Info</p>
             <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "#856404" }}><li>Consultant:<br/><b>{leadDetail.previousConsultant.name}</b><br/>Phone no:<br/><a href={`tel:${leadDetail.previousConsultant.phone}`}>{leadDetail.previousConsultant.phone}</a></li></ul>
