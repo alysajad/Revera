@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getCurrentUser, getLeadDetail, getMyDashboard, getOfficers, toOfficer, updateMyLead, type CurrentUser, type LeadDetail, type LeadQualification, type Officer, type SalesDashboard } from "@/lib/crm";
+import { getCurrentUser, getLeadDetail, getMyDashboard, getOfficers, toOfficer, updateMyLead, type CurrentUser, type LeadDetail, type LeadQualification, type Officer, type SalesDashboard, type SalesLead } from "@/lib/crm";
 
 type Section = "fresh" | "followups" | "pending" | "qualified" | "walkin" | "won_lost";
 type FreshSubfilter = "untouched" | "called" | "scheduled";
