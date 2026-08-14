@@ -7,7 +7,7 @@ type Section = "fresh" | "followups" | "pending" | "qualified" | "walkin" | "won
 type FreshSubfilter = "untouched" | "called" | "scheduled";
 type Draft = {
   status: string; category: string; sales_outcome: string; call_outcome: string; call_status: string; other_so_called: string; remarks: string; follow_up_at: string;
-  model_interest: string; city: string; profession: string; custom_location: string; lost_reason: string; pending_reason: string; trade_in_note: string;
+  model_interest: string; city: string; profession: string; custom_location: string; ps_officer_id: string; lost_reason: string; pending_reason: string; trade_in_note: string;
   qualification: LeadQualification;
 };
 type LeadFields = { name: string; phone: string; email: string; source: string; source_label: string; campaign: string; model_interest: string; city: string; branch: string; enquiry_date: string | null };
@@ -102,7 +102,7 @@ function draftFor(lead: LeadDetail): Draft {
   const { updated_at: _updatedAt, ...qualification } = lead.qualification || emptyQualification();
   const latestOutcome = lead.callHistory[0]?.outcome;
   const call_outcome = ["PENDING", "QUALIFIED", "LOST"].includes(latestOutcome || "") ? latestOutcome : lead.statusCode === "PENDING" ? "PENDING" : lead.statusCode === "QUALIFIED" ? "QUALIFIED" : lead.statusCode === "LOST" ? "LOST" : "";
-  return { status: lead.statusCode, category: lead.category || "WARM", sales_outcome: lead.salesOutcome || "PENDING", call_outcome, call_status: "", other_so_called: "Select...", remarks: "", follow_up_at: "", model_interest: lead.model === "—" ? "" : lead.model, city: lead.city, profession: "", custom_location: "", lost_reason: "", pending_reason: "", trade_in_note: "", qualification };
+  return { status: lead.statusCode, category: lead.category || "WARM", sales_outcome: lead.salesOutcome || "PENDING", call_outcome, call_status: "", other_so_called: "Select...", remarks: "", follow_up_at: "", model_interest: lead.model === "—" ? "" : lead.model, city: lead.city, profession: "", custom_location: "", ps_officer_id: lead.assignedPsId ? String(lead.assignedPsId) : "", lost_reason: "", pending_reason: "", trade_in_note: "", qualification };
 }
 
 function leadFieldsFor(lead: LeadDetail): LeadFields {
@@ -137,7 +137,8 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   const [leadFields, setLeadFields] = useState<LeadFields | null>(null);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-
+  const [psOptions, setPsOptions] = useState<Officer[]>([]);
+  const [psLoading, setPsLoading] = useState(false);
   const isPs = user?.role === "SO";
   const activeOutcomeLabels = isPs ? psOutcomeLabels : outcomeLabels;
   const selectedLocation = draft ? (draft.custom_location || draft.city).trim() : "";
@@ -159,7 +160,20 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
 
   useEffect(() => { if (!authChecked || !user) return; const timer = window.setTimeout(() => void loadDashboard(), query ? 250 : 0); return () => window.clearTimeout(timer); }, [authChecked, loadDashboard, query, user]);
 
-
+  useEffect(() => {
+    if (isPs || draft?.call_outcome !== "QUALIFIED" || !selectedLocation) { setPsOptions([]); return; }
+    let cancelled = false;
+    setPsOptions([]);
+    setPsLoading(true);
+    void getOfficers(selectedLocation).then(records => {
+      if (!cancelled) setPsOptions(records.map(record => toOfficer(record)));
+    }).catch(() => {
+      if (!cancelled) setPsOptions([]);
+    }).finally(() => {
+      if (!cancelled) setPsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [draft?.call_outcome, isPs, selectedLocation]);
 
   const openLead = async (lead: { id: number }) => {
     setDetailLoading(true); setError("");
@@ -194,7 +208,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
       remarks = draft.call_status === "Connected" && draft.other_so_called !== "Select..." && draft.other_so_called !== "No" ? `Other SO called: ${draft.other_so_called}\n${draft.remarks}` : draft.remarks;
     } else {
       if (!draft.call_outcome) return setNotice("Choose Qualified, Lost, or Pending.");
-      if (draft.call_outcome === "QUALIFIED" && (!draft.model_interest || !selectedLocation || !draft.qualification.variant || !draft.qualification.buying_timeline || !draft.qualification.finance_type || !draft.qualification.notes.trim())) return setNotice("Complete model, location, buying plan, finance, and qualification notes.");
+      if (draft.call_outcome === "QUALIFIED" && (!draft.model_interest || !selectedLocation || !draft.ps_officer_id || !draft.qualification.variant || !draft.qualification.buying_timeline || !draft.qualification.finance_type || !draft.qualification.notes.trim())) return setNotice("Complete model, location, PS/SO, buying plan, finance, and qualification notes.");
       if (draft.call_outcome === "LOST" && (!draft.lost_reason || !draft.remarks.trim())) return setNotice("Choose a lost reason and add remarks.");
       if (draft.call_outcome === "PENDING" && (!draft.pending_reason || !draft.remarks.trim() || !draft.follow_up_at)) return setNotice("Choose a pending reason, add remarks, and set follow-up date.");
       if (draft.call_outcome === "BOOKED" && (!draft.remarks.trim() || !draft.follow_up_at)) return setNotice("Add remarks and set the booked follow-up date.");
@@ -215,7 +229,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
         follow_up_at: followUpAt,
         model_interest: !isPs && draft.call_outcome === "QUALIFIED" ? draft.model_interest : undefined,
         city: !isPs && draft.call_outcome === "QUALIFIED" ? selectedLocation : undefined,
-
+        ps_officer_id: !isPs && draft.call_outcome === "QUALIFIED" ? Number(draft.ps_officer_id) : undefined,
         qualification: !isPs && draft.call_outcome === "QUALIFIED" ? { ...draft.qualification, trade_in: draft.trade_in_note === "Yes" ? true : draft.trade_in_note ? false : null, notes } : undefined,
       });
       setDetail(updated); setDraft(draftFor(updated)); setNotice("Lead updated and follow-up history saved."); await loadDashboard();
@@ -353,7 +367,8 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
         {!readOnlyHandoff && !isPs && draft.call_outcome === "QUALIFIED" && <section className="sales-outcome-grid">
           <article className="sales-branch-card"><h3>Model Interested</h3><label>Vehicle model *<select value={draft.model_interest} onChange={event => choose("model_interest", event.target.value)}><option value="">Select model</option>{modelOptions.map(model => <option value={model} key={model}>{model}</option>)}</select></label></article>
           <article className="sales-branch-card"><h3>Variant</h3><label>Variant *<select value={draft.qualification.variant} onChange={event => chooseQualification("variant", event.target.value)}><option value="">Select Variant</option>{variantOptions.map(option => <option value={option} key={option}>{option}</option>)}</select></label></article>
-          <article className="sales-branch-card"><h3>Customer Details</h3><label>Profession</label><ChoiceRow options={professionOptions} value={draft.profession} onChange={value => choose("profession", value)} /><label>Location *<select value={draft.city} onChange={event => setDraft(current => current ? { ...current, city: event.target.value, custom_location: "" } : current)}><option value="">Select location</option>{locationOptions.map(option => <option value={option} key={option}>{option}</option>)}</select></label><input value={draft.custom_location} onChange={event => setDraft(current => current ? { ...current, custom_location: event.target.value } : current)} placeholder="Or type a custom location" /></article>
+          <article className="sales-branch-card"><h3>Customer Details</h3><label>Profession</label><ChoiceRow options={professionOptions} value={draft.profession} onChange={value => choose("profession", value)} /><label>Location *<select value={draft.city} onChange={event => setDraft(current => current ? { ...current, city: event.target.value, custom_location: "", ps_officer_id: "" } : current)}><option value="">Select location</option>{locationOptions.map(option => <option value={option} key={option}>{option}</option>)}</select></label><input value={draft.custom_location} onChange={event => setDraft(current => current ? { ...current, custom_location: event.target.value, ps_officer_id: "" } : current)} placeholder="Or type a custom location" /></article>
+          <article className="sales-branch-card"><h3>Assign PS/SO</h3><label>PS/SO for {selectedLocation || "selected location"} *<select value={draft.ps_officer_id} disabled={!selectedLocation || psLoading} onChange={event => choose("ps_officer_id", event.target.value)}><option value="">{psLoading ? "Loading PS/SO..." : selectedLocation ? "Select PS/SO" : "Select location first"}</option>{psOptions.map(officer => <option value={officer.id} key={officer.id}>{officer.name} - {officer.location}</option>)}</select></label>{selectedLocation && !psLoading && !psOptions.length && <small>No active PS/SO found for this location.</small>}</article>
           <article className="sales-branch-card"><h3>Purchase Planning</h3><label>Buying Plan *</label><ChoiceRow options={buyingPlanOptions} value={draft.qualification.buying_timeline} onChange={value => chooseQualification("buying_timeline", value)} /></article>
           <article className="sales-branch-card"><h3>Finance Options</h3><label>Finance Option *</label><ChoiceRow options={financeOptions} value={draft.qualification.finance_type} onChange={value => chooseQualification("finance_type", value)} /></article>
           <article className="sales-branch-card"><h3>Test Drive</h3><label>Test Drive Type</label><ChoiceRow options={testDriveOptions} value={draft.qualification.test_drive} onChange={value => chooseQualification("test_drive", value)} /></article>
