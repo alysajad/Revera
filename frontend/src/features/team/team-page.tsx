@@ -81,32 +81,32 @@ export function TeamPage() {
         <header className="panel-heading">
           <h2>Create user</h2>
         </header>
-        <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <div>
-            <label className="field-label">Full name *</label>
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <input name="firstName" required className="input-field" placeholder="First name" />
-              <input name="lastName" className="input-field" placeholder="Last name" />
-            </div>
+        <form onSubmit={onSubmit}>
+          <div className="form-grid">
+            <label>Full name *
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <input name="firstName" required placeholder="First name" style={{ flex: 1 }} />
+                <input name="lastName" placeholder="Last name" style={{ flex: 1 }} />
+              </div>
+            </label>
+            <label>Username *
+              <input type="email" name="email" required placeholder="Email address" />
+            </label>
           </div>
-          <div>
-            <label className="field-label">Username *</label>
-            <input type="email" name="email" required className="input-field" placeholder="Email address" />
+          <div className="form-grid" style={{ marginTop: "13px" }}>
+            <label>Password (min 6 characters)
+              <input type="password" name="password" required minLength={6} />
+            </label>
+            <label>Role *
+              <select name="role" required>
+                <option value="">Select...</option>
+                <option value="Admin">Admin</option>
+                <option value="Marketing">Marketing</option>
+                <option value="Sales Manager">Sales Manager</option>
+              </select>
+            </label>
           </div>
-          <div>
-            <label className="field-label">Password (min 6 characters)</label>
-            <input type="password" name="password" required minLength={6} className="input-field" />
-          </div>
-          <div>
-            <label className="field-label">Role *</label>
-            <select name="role" required className="input-field">
-              <option value="">Select...</option>
-              <option value="Admin">Admin</option>
-              <option value="Marketing">Marketing</option>
-              <option value="Sales Manager">Sales Manager</option>
-            </select>
-          </div>
-          <button type="submit" className="button primary" disabled={loading} style={{ width: "100%", marginTop: "1rem" }}>
+          <button type="submit" className="button primary" disabled={loading} style={{ width: "100%", marginTop: "20px" }}>
             {loading ? "Creating..." : "Create user"}
           </button>
         </form>
@@ -114,10 +114,10 @@ export function TeamPage() {
 
       <article className="panel">
         <header className="panel-heading">
-          <h2>Users ({users.filter(u => u.is_active).length})</h2>
+          <h2>Users ({(users || []).filter(u => u.is_active).length})</h2>
         </header>
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "1rem" }}>
-          {users.filter(u => u.is_active).map(user => (
+          {(users || []).filter(u => u.is_active).map(user => (
             <li key={user.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "1rem", borderBottom: "1px solid var(--border)" }}>
               <div>
                 <b style={{ display: "block" }}>{user.first_name} {user.last_name}</b>
