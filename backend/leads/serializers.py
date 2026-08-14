@@ -134,6 +134,7 @@ class SOLeadUpdateSerializer(serializers.Serializer):
     other_so_called = serializers.CharField(max_length=160, required=False, allow_blank=True)
     follow_up_at = serializers.DateTimeField(required=False, allow_null=True)
     qualification = QualificationSerializer(required=False)
+    ps_officer_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True), source="ps_officer", required=False)
     flagged_to_manager = serializers.BooleanField(required=False)
 
     def validate(self, attrs):
