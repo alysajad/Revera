@@ -91,14 +91,16 @@ class CallLogSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CallLog
-        fields = ["id", "status", "outcome", "remarks", "so_name", "created_at"]
+        fields = ["id", "status", "call_status", "outcome", "remarks", "so_name", "other_so_called", "created_at"]
         read_only_fields = ["id", "created_at"]
 
 
 class LeadUpdateSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=Lead.Status.choices)
     remarks = serializers.CharField(max_length=500, required=False, allow_blank=True)
-    call_outcome = serializers.CharField(max_length=30, required=False, allow_blank=True)
+    call_status = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    call_outcome = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    other_so_called = serializers.CharField(max_length=160, required=False, allow_blank=True)
     follow_up_at = serializers.DateTimeField(required=False)
 
     def validate(self, attrs):
@@ -127,7 +129,9 @@ class SOLeadUpdateSerializer(serializers.Serializer):
     branch = serializers.CharField(max_length=120, required=False, allow_blank=True)
     enquiry_date = serializers.DateField(required=False, allow_null=True)
     remarks = serializers.CharField(max_length=500, required=False, allow_blank=True)
-    call_outcome = serializers.ChoiceField(choices=[("QUALIFIED", "Qualified"), ("LOST", "Lost"), ("PENDING", "Pending"), ("RNR", "RNR"), ("SWITCHED_OFF", "Switched off"), ("CALLBACK", "Callback")], required=False, allow_blank=True)
+    call_status = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    call_outcome = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    other_so_called = serializers.CharField(max_length=160, required=False, allow_blank=True)
     follow_up_at = serializers.DateTimeField(required=False, allow_null=True)
     qualification = QualificationSerializer(required=False)
     ps_officer_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True), source="ps_officer", required=False)

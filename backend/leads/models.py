@@ -70,6 +70,7 @@ class CallLog(models.Model):
     call_status = models.CharField(max_length=20, blank=True)
     outcome = models.CharField(max_length=30, blank=True)
     remarks = models.CharField(max_length=500, blank=True)
+    other_so_called = models.CharField(max_length=160, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
 

@@ -52,14 +52,17 @@ const nextOutcomes: Record<string, { label: string; value: string }[]> = {
   "Walk-in": [{ label: "Won (Sold)", value: "WON" }, { label: "Lost", value: "LOST" }],
 };
 
-const adminOutcomeOptions = [
-  { label: "RNR", value: "RNR", callOutcome: "RNR", salesOutcome: "PENDING" },
-  { label: "Switch off", value: "SWITCHED_OFF", callOutcome: "SWITCHED_OFF", salesOutcome: "PENDING" },
-  { label: "Call me back", value: "CALLBACK", callOutcome: "CALLBACK", salesOutcome: "PENDING" },
-  { label: "Booked Follow-up", value: "PENDING", callOutcome: "PENDING", salesOutcome: "PENDING" },
-  { label: "Retailed", value: "WON", callOutcome: "", salesOutcome: "RETAILED" },
-  { label: "Lost", value: "LOST", callOutcome: "LOST", salesOutcome: "LOST" },
-];
+const connectedOutcomes = ["Need Test Drive", "Showroom Visit", "Exchange Issue", "Booking Done", "Retail Done", "Need time", "Need SO Call", "Need More Details", "Discount Issue", "Not Interested", "Already Booked", "Lost to Competition", "Finance Rejected", "Dropped", "Lost to co-dealer"];
+const notConnectedOutcomes = ["RNR", "Switch Off", "Call Me Back", "Call Forwarding", "Line Busy", "Invalid Number"];
+
+const resolveStatus = (outcome: string, currentStatus: string) => {
+  if (outcome === "Retail Done") return "WON";
+  if (["Not Interested", "Already Booked", "Lost to Competition", "Finance Rejected", "Dropped", "Lost to co-dealer", "Invalid Number"].includes(outcome)) return "LOST";
+  if (["RNR"].includes(outcome)) return "RNR";
+  if (["Switch Off"].includes(outcome)) return "SWITCHED_OFF";
+  if (["Call Me Back", "Call Forwarding", "Line Busy"].includes(outcome)) return "CALLBACK";
+  return "PENDING"; 
+};
 
 const sources = [["META", "Meta Ads"], ["WEBSITE", "Website"], ["CARWALE", "CarWale"], ["WALKIN", "Walk-in"], ["CAMPAIGN", "Campaign"], ["OTHER", "Other"], ["UNKNOWN", "Unknown"]];
 const models = ["R6 GT", "R7 City", "R8 Lite", "R8 Pro", "R9 Plus"];
@@ -98,6 +101,8 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const [remarks, setRemarks] = useState("");
   const [followUpAt, setFollowUpAt] = useState("");
   const [testDrive, setTestDrive] = useState("");
+  const [callStatus, setCallStatus] = useState("Connected");
+  const [otherSoCalled, setOtherSoCalled] = useState("");
   const [savingCall, setSavingCall] = useState(false);
   const [addingLead, setAddingLead] = useState(false);
   const [creatingLead, setCreatingLead] = useState(false);
@@ -152,7 +157,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   }, [officerMode]);
 
   const visible = useMemo(() => leads.filter(lead => `${lead.name} ${lead.phone}`.toLowerCase().includes(query.toLowerCase())), [leads, query]);
-  const needsAppointment = ["CALLBACK", "WALKIN", "PENDING"].includes(outcome);
+  const needsAppointment = officerMode ? ["CALLBACK", "WALKIN", "PENDING"].includes(outcome) : ["Call Me Back", "Need time", "Need SO Call"].includes(outcome);
 
   const assign = async (lead: Lead, officerId: number) => {
     const previousLeads = leads;
@@ -187,26 +192,26 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     try {
       const normalizedFollowUpAt = followUpAt ? new Date(followUpAt).toISOString() : "";
       if (!officerMode && leadDetail) {
-        const selectedOutcome = adminOutcomeOptions.find(item => item.value === outcome);
         await updateMyLead(activeLead.id, {
-          status: outcome,
+          status: resolveStatus(outcome, activeLead.status),
           remarks,
-          ...(selectedOutcome?.callOutcome ? { call_outcome: selectedOutcome.callOutcome } : {}),
-          ...(selectedOutcome?.salesOutcome ? { sales_outcome: selectedOutcome.salesOutcome } : {}),
+          call_status: callStatus,
+          call_outcome: outcome,
+          other_so_called: otherSoCalled,
           ...(normalizedFollowUpAt ? { follow_up_at: normalizedFollowUpAt } : {}),
           ...(testDrive ? { qualification: { variant: leadDetail.qualification?.variant || "", buying_timeline: leadDetail.qualification?.buying_timeline || "", finance_type: leadDetail.qualification?.finance_type || "", trade_in: leadDetail.qualification?.trade_in ?? null, test_drive: testDrive, notes: leadDetail.qualification?.notes || "" } } : {}),
         });
       } else {
         await logCall(activeLead.id, { status: outcome, remarks, ...(normalizedFollowUpAt ? { follow_up_at: normalizedFollowUpAt } : {}) });
       }
-      setNotice(`Call log saved for ${activeLead.name}.`); setActiveLead(null); setLeadDetail(null); setRemarks(""); setFollowUpAt(""); setTestDrive(""); await refresh();
+      setNotice(`Call log saved for ${activeLead.name}.`); setActiveLead(null); setLeadDetail(null); setRemarks(""); setFollowUpAt(""); setTestDrive(""); setCallStatus("Connected"); setOtherSoCalled(""); await refresh();
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Call log could not be saved."); }
     finally { setSavingCall(false); }
   };
 
   const openLead = async (lead: Lead) => {
     const initialOutcome = officerMode ? nextOutcomes[lead.status]?.[0]?.value || "" : lead.statusCode === "WON" ? "WON" : ["LOST", "UNQUALIFIED"].includes(lead.statusCode) ? "LOST" : lead.statusCode === "PENDING" || lead.nextFollowUp ? "PENDING" : "";
-    setActiveLead(lead); setOutcome(initialOutcome); setRemarks(""); setFollowUpAt(localDateTimeValue(lead.nextFollowUp)); setTestDrive(""); setSavingCall(false); setError("");
+    setActiveLead(lead); setOutcome(initialOutcome); setRemarks(""); setFollowUpAt(localDateTimeValue(lead.nextFollowUp)); setTestDrive(""); setCallStatus("Connected"); setOtherSoCalled(""); setSavingCall(false); setError("");
     if (!officerMode) {
       setDetailLoading(true);
       try { const detail = await getLeadDetail(lead.id); setLeadDetail(detail); setFollowUpAt(localDateTimeValue(detail.nextFollowUp)); setTestDrive(detail.qualification?.test_drive || ""); }
@@ -327,17 +332,23 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
             <span><small>Finance</small><b>{leadDetail?.qualification?.finance_type || "—"}</b></span>
           </div>
           <div className="sales-detail-meta"><span>Trade-in <b>{leadDetail?.qualification?.trade_in === true ? "Yes" : leadDetail?.qualification?.trade_in === false ? "No" : "—"}</b></span><span>Category <b className={`category-pill ${activeLead.category?.toLowerCase() || "warm"}`}>{activeLead.category || "WARM"}</b></span></div>
+          {leadDetail?.previousConsultant && <div className="sales-consultant-alert" style={{ marginTop: "1rem", padding: "1rem", background: "#fff3cd", border: "1px solid #ffeeba", borderRadius: "8px" }}>
+            <p style={{ margin: "0 0 0.5rem 0", fontWeight: "bold", color: "#856404" }}>⚠️ Sales consultant Info</p>
+            <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "#856404" }}><li>Consultant:<br/><b>{leadDetail.previousConsultant.name}</b><br/>Phone no:<br/><a href={`tel:${leadDetail.previousConsultant.phone}`}>{leadDetail.previousConsultant.phone}</a></li></ul>
+          </div>}
         </section>
         {(detailLoading || leadDetail?.callHistory.length) ? <section className="sales-form-card admin-call-history">
           <h3>Call history</h3>
-          {detailLoading ? <p className="subtext">Loading call history…</p> : <div className="admin-history-list">{leadDetail?.callHistory.map((call, index) => <div className="sales-history-row" key={`call-${call.id}`}><div><b>Call #{leadDetail.callHistory.length - index} · {call.so_name || "Admin"}</b><small>{call.remarks || "No remarks"}</small>{call.outcome && <span className="admin-history-outcome">{call.outcome}</span>}</div><time>{formatCallDate(call.created_at)}</time></div>)}</div>}
+          {detailLoading ? <p className="subtext">Loading call history…</p> : <div className="admin-history-list">{leadDetail?.callHistory.map((call, index) => <div className="sales-history-row" key={`call-${call.id}`}><div><b>Call #{leadDetail.callHistory.length - index} · {call.so_name || "Admin"}</b><small>{call.remarks || "No remarks"}</small><div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap", marginTop: "0.25rem" }}>{call.call_status && <span className="admin-history-outcome" style={{ background: "#e2e8f0", color: "#1e293b" }}>{call.call_status}</span>}{call.outcome && <span className="admin-history-outcome">{call.outcome}</span>}{call.other_so_called && <span className="admin-history-outcome" style={{ background: "#fff3cd", color: "#856404" }}>Other SO: {call.other_so_called}</span>}</div></div><time>{formatCallDate(call.created_at)}</time></div>)}</div>}
         </section> : null}
         <section className="sales-form-card admin-call-card">
-          <h3>Call remarks {leadDetail ? `(Call #${leadDetail.callHistory.length + 1})` : ""}</h3>
-          <label className="sales-full-label"><textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Enter your call remarks…" /></label>
+          <h3>Log follow-up F{leadDetail ? leadDetail.callHistory.length + 1 : 1}</h3>
           <div className="admin-follow-up-grid">
-            <div><h4>Call outcome</h4><div className="sales-choice-row admin-outcome-row">{adminOutcomeOptions.map(item => <button type="button" className={outcome === item.value ? "chosen" : ""} onClick={() => { setOutcome(item.value); if (!["CALLBACK", "WALKIN", "PENDING"].includes(item.value)) setFollowUpAt(""); }} key={item.value}>{item.label}</button>)}</div></div>
-            <label className="admin-follow-up-date"><span><b>Next follow-up date</b>{needsAppointment ? " *" : ""}</span><input type="datetime-local" required={needsAppointment} min={localDateTimeValue(new Date().toISOString())} value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>
+            <div style={{ gridColumn: "1 / -1" }}><h4>Call status *</h4><div className="sales-choice-row admin-outcome-row" style={{ display: "flex", gap: "0.5rem" }}><button type="button" className={callStatus === "Connected" ? "chosen" : ""} onClick={() => { setCallStatus("Connected"); setOutcome(""); }}>Connected</button><button type="button" className={callStatus === "Not Connected" ? "chosen" : ""} onClick={() => { setCallStatus("Not Connected"); setOutcome(""); }}>Not Connected</button></div></div>
+            <div style={{ gridColumn: "1 / -1" }}><h4>Outcome *</h4><div className="sales-choice-row admin-outcome-row" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>{(callStatus === "Connected" ? connectedOutcomes : notConnectedOutcomes).map(item => <button type="button" className={outcome === item ? "chosen" : ""} onClick={() => { setOutcome(item); if (!["Call Me Back", "Need time", "Need SO Call"].includes(item)) setFollowUpAt(""); }} key={item}>{item}</button>)}</div></div>
+            {callStatus === "Connected" && <label style={{ gridColumn: "1 / -1" }}>Did any other SO call the customer?<select value={otherSoCalled} onChange={event => setOtherSoCalled(event.target.value)}><option value="">Select...</option><option value="Yes">Yes</option><option value="No">No</option></select></label>}
+            <label className="sales-full-label" style={{ gridColumn: "1 / -1" }}>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Enter your call remarks…" /></label>
+            {needsAppointment && <label className="admin-follow-up-date"><span><b>Next follow-up date</b> *</span><input type="datetime-local" required min={localDateTimeValue(new Date().toISOString())} value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>}
             <div><h4>Test drive</h4><label className="admin-checkbox-card"><input type="checkbox" checked={testDrive === "Completed"} onChange={event => setTestDrive(event.target.checked ? "Completed" : "")} /> <span>Mark test drive as done</span></label></div>
           </div>
         </section>
