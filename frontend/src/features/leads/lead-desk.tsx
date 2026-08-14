@@ -277,24 +277,28 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   return <section className="page">
     <div className="page-heading compact"><div><p className="eyebrow">{heading.toUpperCase()}</p><h1>{officerMode ? <>Keep the <span>promise.</span></> : <>All <span>leads.</span></>}</h1><p className="subtext">{officerMode ? "Your assigned conversations and follow-ups." : "Manage and assign all leads in the CRM."}</p></div>{!officerMode && assignmentView === "fresh" && <button className="button primary" onClick={autoAssign} disabled={!leads.length}>↻ Auto assign {leads.length} leads</button>}</div>
     {!officerMode && analytics?.summary && (
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
-        <div style={{ background: "#2e5bbf", color: "white", padding: "1rem", borderRadius: "8px", textAlign: "center" }}>
-          <b style={{ fontSize: "1.5rem", display: "block" }}>{analytics.summary.total_assigned || 0}</b>
-          <small>ALL LEADS</small>
-        </div>
-        <div style={{ background: "#2ecc71", color: "white", padding: "1rem", borderRadius: "8px", textAlign: "center" }}>
-          <b style={{ fontSize: "1.5rem", display: "block" }}>{analytics.summary.walkins || 0}</b>
-          <small>BOOKED</small>
-        </div>
-        <div style={{ background: "#27ae60", color: "white", padding: "1rem", borderRadius: "8px", textAlign: "center" }}>
-          <b style={{ fontSize: "1.5rem", display: "block" }}>{analytics.summary.won || 0}</b>
-          <small>RETAILED</small>
-        </div>
-        <div style={{ background: "#e74c3c", color: "white", padding: "1rem", borderRadius: "8px", textAlign: "center" }}>
-          <b style={{ fontSize: "1.5rem", display: "block" }}>{analytics.summary.lost || 0}</b>
-          <small>LOST</small>
-        </div>
-      </div>
+      <section className="sales-metrics" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
+        <article className="sales-metric blue">
+          <span>ALL LEADS</span>
+          <strong>{analytics.summary.total_assigned || 0}</strong>
+          <small>Total managed leads</small>
+        </article>
+        <article className="sales-metric mint">
+          <span>BOOKED</span>
+          <strong>{analytics.summary.walkins || 0}</strong>
+          <small>Appointments scheduled</small>
+        </article>
+        <article className="sales-metric green">
+          <span>RETAILED</span>
+          <strong>{analytics.summary.won || 0}</strong>
+          <small>Successfully closed</small>
+        </article>
+        <article className="sales-metric red">
+          <span>LOST</span>
+          <strong>{analytics.summary.lost || 0}</strong>
+          <small>Dropped leads</small>
+        </article>
+      </section>
     )}
     <section className="lead-toolbar"><label className="search" style={{ flex: 1 }}><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search by name or mobile..." /></label>{!officerMode && <><label className="button filter" style={{ color: "#2e5bbf", borderColor: "#2e5bbf", background: "rgba(46,91,191,0.1)" }}>{uploading ? "Uploading…" : "Bulk Upload"}<input hidden type="file" accept=".xlsx,.csv" onChange={event => void selectFile(event.target.files?.[0])} /></label><button className="button primary" onClick={() => { setError(""); setAddingLead(true); }}>＋ Add lead</button></>}</section>
     {!officerMode && <section className="panel lead-filters"><div className="lead-filters-grid"><label>Source<select value={filters.source || ""} onChange={event => setFilters(current => ({ ...current, source: event.target.value || undefined }))}><option value="">All sources</option>{sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Model<input value={filters.model || ""} onChange={event => setFilters(current => ({ ...current, model: event.target.value || undefined }))} placeholder="Any model" /></label><label>City<input value={filters.city || ""} onChange={event => setFilters(current => ({ ...current, city: event.target.value || undefined }))} placeholder="Any city" /></label><label>Source detail<input value={filters.source_label || ""} onChange={event => setFilters(current => ({ ...current, source_label: event.target.value || undefined }))} placeholder="Google, OEM, or campaign" /></label><label>From<input type="date" value={filters.date_from || ""} onChange={event => setFilters(current => ({ ...current, date_from: event.target.value || undefined }))} /></label><label>To<input type="date" value={filters.date_to || ""} onChange={event => setFilters(current => ({ ...current, date_to: event.target.value || undefined }))} /></label></div><footer className="lead-filters-actions"><span>{Object.values(activeFilters).filter(Boolean).length ? `Filtered ${poolLabel.toLowerCase()}` : `All ${poolLabel.toLowerCase()}`}</span><div><button className="filter" onClick={() => { setFilters({}); setActiveFilters({}); }}>Clear</button><button className="filter" onClick={() => setActiveFilters({ ...filters })}>Apply filters</button><select className="filter" aria-label={`Assign filtered leads to ${targetLabel}`} value={bulkOfficerId} onChange={event => setBulkOfficerId(event.target.value)}><option value="">Assign to {targetLabel}…</option>{assignmentUsers.map(officer => <option key={officer.id} value={officer.id}>{officer.name}</option>)}</select><button className="button primary" onClick={() => void bulkAssign()} disabled={!bulkOfficerId || !leads.length || bulkAssigning}>{bulkAssigning ? "Assigning…" : "Assign matching leads"}</button></div></footer></section>}
