@@ -90,6 +90,8 @@ export function TeamPage() {
                 <input name="lastName" placeholder="Last name" style={{ flex: 1 }} />
               </div>
             </label>
+          </div>
+          <div className="form-grid" style={{ marginTop: "13px" }}>
             <label>Username *
               <input type="email" name="email" required placeholder="Email address" />
             </label>
@@ -124,7 +126,7 @@ export function TeamPage() {
                 <b style={{ display: "block" }}>{user.first_name} {user.last_name}</b>
                 <small style={{ color: "var(--text-dim)" }}>@{user.email.split("@")[0]} · {displayRole(user.role)}</small>
               </div>
-              <button className="button" style={{ color: "var(--red)" }} onClick={() => handleDisable(user.id)}>Disable</button>
+              <button className="button" onClick={() => handleDisable(user.id)}>Disable</button>
             </li>
           ))}
         </ul>
