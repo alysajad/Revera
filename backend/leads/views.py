@@ -89,7 +89,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         queryset = Lead.objects.filter(deleted_at__isnull=True, **owner_filter)
         if request.user.role == User.Role.CRE:
             queryset = queryset.filter(assigned_ps__isnull=True)
-        open_followup = Q(follow_ups__id__isnull=False, follow_ups__resolved_at__isnull=True)
+        open_followup = Q(follow_ups__id__isnull=False, follow_ups__resolved_at__isnull=True, follow_ups__scheduled_for__date__lte=today)
         date_range = request.query_params.get("range", "all")
         if date_range == "today":
             queryset = queryset.filter(enquiry_date=today)
@@ -173,15 +173,17 @@ class LeadViewSet(viewsets.ModelViewSet):
             next_status = Lead.Status.CALLBACK
         if data.get("follow_up_at") and next_status not in {Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.WALKIN}:
             return Response({"detail": "Only callbacks and walk-ins can have an appointment."}, status=status.HTTP_400_BAD_REQUEST)
-        ps_officer = data.get("ps_officer")
+        ps_officer = None
         if not request.user.is_admin and request.user.role == User.Role.CRE and next_status == Lead.Status.QUALIFIED:
             location = (data.get("city") or lead.city or "").strip()
             if not location:
                 return Response({"city": "Select customer location before qualifying this lead."}, status=status.HTTP_400_BAD_REQUEST)
-            if not ps_officer:
-                return Response({"ps_officer_id": "Choose the PS/SO for this customer location."}, status=status.HTTP_400_BAD_REQUEST)
-            if ps_officer.location.strip().lower() != location.lower():
-                return Response({"ps_officer_id": "Choose a PS/SO assigned to this customer location."}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Find the SO with the lowest total all-time leads assigned for this location (round-robin)
+            available_sos = list(User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True, location__iexact=location).annotate(load=Count("ps_leads")).order_by("load", "id"))
+            if not available_sos:
+                return Response({"detail": f"No active Sales Officers found for the {location} branch."}, status=status.HTTP_400_BAD_REQUEST)
+            ps_officer = available_sos[0]
         if not request.user.is_admin and next_status != lead.status and next_status not in FORWARD_TRANSITIONS.get(lead.status, set()):
             return Response({"detail": "This status transition is not allowed."}, status=status.HTTP_400_BAD_REQUEST)
         if not request.user.is_admin and request.user.role == User.Role.SALES_OFFICER and data.get("qualification"):
