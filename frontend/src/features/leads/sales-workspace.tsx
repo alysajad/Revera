@@ -6,11 +6,38 @@ import { getCurrentUser, getLeadDetail, getMyDashboard, getOfficers, toOfficer, 
 type Section = "fresh" | "followups" | "pending" | "qualified" | "walkin" | "won_lost";
 type FreshSubfilter = "untouched" | "called" | "scheduled";
 type Draft = {
-  status: string; category: string; sales_outcome: string; call_outcome: string; remarks: string; follow_up_at: string;
+  status: string; category: string; sales_outcome: string; call_outcome: string; call_status: string; other_so_called: string; remarks: string; follow_up_at: string;
   model_interest: string; city: string; profession: string; custom_location: string; ps_officer_id: string; lost_reason: string; pending_reason: string; trade_in_note: string;
   qualification: LeadQualification;
 };
 type LeadFields = { name: string; phone: string; email: string; source: string; source_label: string; campaign: string; model_interest: string; city: string; branch: string; enquiry_date: string | null };
+
+const soConnectedOutcomes = [
+  { label: "Need Test Drive", tone: "blue", status: "PENDING" },
+  { label: "Showroom Visit", tone: "blue", status: "PENDING" },
+  { label: "Exchange Issue", tone: "blue", status: "PENDING" },
+  { label: "Booking Done", tone: "green", status: "WALKIN" },
+  { label: "Retail Done", tone: "green", status: "WON" },
+  { label: "Need time", tone: "blue", status: "PENDING" },
+  { label: "Need SO Call", tone: "blue", status: "PENDING" },
+  { label: "Need More Details", tone: "blue", status: "PENDING" },
+  { label: "Discount Issue", tone: "blue", status: "PENDING" },
+  { label: "Not Interested", tone: "red", status: "LOST" },
+  { label: "Already Booked", tone: "red", status: "LOST" },
+  { label: "Lost to Competition", tone: "red", status: "LOST" },
+  { label: "Finance Rejected", tone: "red", status: "LOST" },
+  { label: "Dropped", tone: "red", status: "LOST" },
+  { label: "Lost to co-dealer", tone: "red", status: "LOST" }
+];
+const soNotConnectedOutcomes = [
+  { label: "RNR", tone: "blue", status: "RNR" },
+  { label: "Switch Off", tone: "blue", status: "SWITCHED_OFF" },
+  { label: "Call Me Back", tone: "blue", status: "CALLBACK" },
+  { label: "Call Forwarding", tone: "blue", status: "PENDING" },
+  { label: "Line Busy", tone: "blue", status: "PENDING" },
+  { label: "Invalid Number", tone: "blue", status: "PENDING" }
+];
+const soOutcomes = [...soConnectedOutcomes, ...soNotConnectedOutcomes];
 
 const sections: { key: Section; label: string; count: keyof SalesDashboard["summary"]; icon: string }[] = [
   { key: "fresh", label: "Fresh leads", count: "fresh", icon: "✦" },
@@ -24,7 +51,10 @@ const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", SWITC
 const outcomeLabels: Record<string, string> = { QUALIFIED: "Qualified", LOST: "Lost", PENDING: "Pending" };
 const psOutcomeLabels: Record<string, string> = { BOOKED: "Booked Follow-up", RETAILED: "Retailed", LOST: "Lost" };
 const allOutcomeLabels: Record<string, string> = { ...outcomeLabels, ...psOutcomeLabels };
+soOutcomes.forEach(o => { allOutcomeLabels[o.label] = o.label; });
+
 const statusOptions: Record<string, string[]> = { QUALIFIED: ["QUALIFIED"], LOST: ["LOST"], PENDING: ["PENDING"], BOOKED: ["WALKIN"], RETAILED: ["WON"] };
+soOutcomes.forEach(o => { statusOptions[o.label] = [o.status]; });
 const sourceOptions = [{ value: "META", label: "Meta Ads" }, { value: "WEBSITE", label: "Website" }, { value: "CARWALE", label: "CarWale" }, { value: "WALKIN", label: "Walk-in" }, { value: "CAMPAIGN", label: "Campaign" }, { value: "OTHER", label: "Other" }, { value: "UNKNOWN", label: "Unknown" }];
 const modelOptions = ["R6 GT", "R7 City", "R8 Lite", "R8 Pro", "R9 Plus"];
 const variantOptions = ["R8 Pro", "R8 Lite", "R7 City", "R6 GT"];
@@ -55,6 +85,12 @@ const minimumFollowUpDay = () => {
   return localDateTimeValue(date).slice(0, 10);
 };
 
+const maximumFollowUpDay = () => {
+  const date = new Date();
+  date.setDate(date.getDate() + 3);
+  return localDateTimeValue(date).slice(0, 10);
+};
+
 const followUpIso = (value: string) => value ? new Date(`${value}T09:00:00`).toISOString() : null;
 
 function progressState(callCount: number, index: number) {
@@ -66,7 +102,7 @@ function draftFor(lead: LeadDetail): Draft {
   const { updated_at: _updatedAt, ...qualification } = lead.qualification || emptyQualification();
   const latestOutcome = lead.callHistory[0]?.outcome;
   const call_outcome = ["PENDING", "QUALIFIED", "LOST"].includes(latestOutcome || "") ? latestOutcome : lead.statusCode === "PENDING" ? "PENDING" : lead.statusCode === "QUALIFIED" ? "QUALIFIED" : lead.statusCode === "LOST" ? "LOST" : "";
-  return { status: lead.statusCode, category: lead.category || "WARM", sales_outcome: lead.salesOutcome || "PENDING", call_outcome, remarks: "", follow_up_at: "", model_interest: lead.model === "—" ? "" : lead.model, city: lead.city, profession: "", custom_location: "", ps_officer_id: lead.assignedPsId ? String(lead.assignedPsId) : "", lost_reason: "", pending_reason: "", trade_in_note: "", qualification };
+  return { status: lead.statusCode, category: lead.category || "WARM", sales_outcome: lead.salesOutcome || "PENDING", call_outcome, call_status: "", other_so_called: "Select...", remarks: "", follow_up_at: "", model_interest: lead.model === "—" ? "" : lead.model, city: lead.city, profession: "", custom_location: "", ps_officer_id: lead.assignedPsId ? String(lead.assignedPsId) : "", lost_reason: "", pending_reason: "", trade_in_note: "", qualification };
 }
 
 function leadFieldsFor(lead: LeadDetail): LeadFields {
@@ -154,23 +190,41 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   const save = async () => {
     if (!detail || !draft || saving) return;
     if (!isPs && detail.assignedPsId) return setNotice("This lead has been handed to PS/SO.");
-    if (!draft.call_outcome) return setNotice(isPs ? "Choose Booked, Retailed, or Lost." : "Choose Qualified, Lost, or Pending.");
-    if (!isPs && draft.call_outcome === "QUALIFIED" && (!draft.model_interest || !selectedLocation || !draft.ps_officer_id || !draft.qualification.variant || !draft.qualification.buying_timeline || !draft.qualification.finance_type || !draft.qualification.notes.trim())) return setNotice("Complete model, location, PS/SO, buying plan, finance, and qualification notes.");
-    if (draft.call_outcome === "LOST" && (!draft.lost_reason || !draft.remarks.trim())) return setNotice("Choose a lost reason and add remarks.");
-    if (draft.call_outcome === "PENDING" && (!draft.pending_reason || !draft.remarks.trim() || !draft.follow_up_at)) return setNotice("Choose a pending reason, add remarks, and set follow-up date.");
-    if (draft.call_outcome === "BOOKED" && (!draft.remarks.trim() || !draft.follow_up_at)) return setNotice("Add remarks and set the booked follow-up date.");
-    const followUpAt = ["PENDING", "BOOKED"].includes(draft.call_outcome) ? followUpIso(draft.follow_up_at) : null;
-    if (["PENDING", "BOOKED"].includes(draft.call_outcome) && (!followUpAt || new Date(followUpAt).getTime() <= Date.now())) return setNotice("Choose a future follow-up date.");
+    
+    let followUpAt: string | null = null;
+    let remarks = "";
+    
+    if (isPs) {
+      if (!draft.call_status) return setNotice("Choose Connected or Not Connected.");
+      if (!draft.call_outcome) return setNotice("Choose a call outcome.");
+      if (draft.call_status === "Connected" && draft.other_so_called === "Select...") return setNotice("Select whether any other SO called the customer.");
+      if (!draft.remarks.trim()) return setNotice("Remarks are required.");
+      const nextStatus = statusOptions[draft.call_outcome]?.[0] || "";
+      if (["PENDING", "WALKIN", "CALLBACK"].includes(nextStatus)) {
+        if (!draft.follow_up_at) return setNotice("Choose a follow-up date for this outcome.");
+        followUpAt = followUpIso(draft.follow_up_at);
+        if (!followUpAt || new Date(followUpAt).getTime() <= Date.now()) return setNotice("Choose a future follow-up date.");
+      }
+      remarks = draft.call_status === "Connected" && draft.other_so_called !== "Select..." && draft.other_so_called !== "No" ? `Other SO called: ${draft.other_so_called}\n${draft.remarks}` : draft.remarks;
+    } else {
+      if (!draft.call_outcome) return setNotice("Choose Qualified, Lost, or Pending.");
+      if (draft.call_outcome === "QUALIFIED" && (!draft.model_interest || !selectedLocation || !draft.ps_officer_id || !draft.qualification.variant || !draft.qualification.buying_timeline || !draft.qualification.finance_type || !draft.qualification.notes.trim())) return setNotice("Complete model, location, PS/SO, buying plan, finance, and qualification notes.");
+      if (draft.call_outcome === "LOST" && (!draft.lost_reason || !draft.remarks.trim())) return setNotice("Choose a lost reason and add remarks.");
+      if (draft.call_outcome === "PENDING" && (!draft.pending_reason || !draft.remarks.trim() || !draft.follow_up_at)) return setNotice("Choose a pending reason, add remarks, and set follow-up date.");
+      if (draft.call_outcome === "BOOKED" && (!draft.remarks.trim() || !draft.follow_up_at)) return setNotice("Add remarks and set the booked follow-up date.");
+      followUpAt = ["PENDING", "BOOKED"].includes(draft.call_outcome) ? followUpIso(draft.follow_up_at) : null;
+      if (["PENDING", "BOOKED"].includes(draft.call_outcome) && (!followUpAt || new Date(followUpAt).getTime() <= Date.now())) return setNotice("Choose a future follow-up date.");
+      remarks = draft.call_outcome === "LOST" ? `Lost reason: ${draft.lost_reason}\n${draft.remarks}` : draft.call_outcome === "PENDING" ? `Pending reason: ${draft.pending_reason}\n${draft.remarks}` : draft.qualification.notes;
+    }
 
     setSaving(true); setError("");
     try {
       const notes = ["Qualified lead", draft.profession && `Profession: ${draft.profession}`, (draft.city || draft.custom_location) && `Location: ${draft.custom_location || draft.city}`, draft.trade_in_note && `Trade in: ${draft.trade_in_note}`, draft.qualification.notes.trim()].filter(Boolean).join("\n");
-      const remarks = draft.call_outcome === "LOST" ? `Lost reason: ${draft.lost_reason}\n${draft.remarks}` : draft.call_outcome === "PENDING" ? `Pending reason: ${draft.pending_reason}\n${draft.remarks}` : isPs ? draft.remarks : draft.qualification.notes;
       const updated = await updateMyLead(detail.id, {
-        call_outcome: ["PENDING", "QUALIFIED", "LOST"].includes(draft.call_outcome) ? draft.call_outcome : undefined,
-        status: statusOptions[draft.call_outcome][0],
+        call_outcome: draft.call_outcome,
+        status: statusOptions[draft.call_outcome]?.[0] || detail.statusCode,
         category: draft.category,
-        sales_outcome: draft.call_outcome === "LOST" ? "LOST" : draft.call_outcome === "BOOKED" ? "BOOKED" : draft.call_outcome === "RETAILED" ? "RETAILED" : "PENDING",
+        sales_outcome: draft.call_outcome === "Retail Done" ? "RETAILED" : draft.call_outcome === "Booking Done" ? "BOOKED" : ["Not Interested", "Already Booked", "Lost to Competition", "Finance Rejected", "Dropped", "Lost to co-dealer"].includes(draft.call_outcome) ? "LOST" : isPs ? "PENDING" : draft.call_outcome === "LOST" ? "LOST" : draft.call_outcome === "BOOKED" ? "BOOKED" : draft.call_outcome === "RETAILED" ? "RETAILED" : "PENDING",
         remarks,
         follow_up_at: followUpAt,
         model_interest: !isPs && draft.call_outcome === "QUALIFIED" ? draft.model_interest : undefined,
@@ -201,16 +255,56 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   const submitLabel = draft?.call_outcome === "QUALIFIED" ? "Qualify Lead" : draft?.call_outcome === "LOST" ? "Mark as Lost" : draft?.call_outcome === "PENDING" ? "Mark as Pending" : draft?.call_outcome === "BOOKED" ? "Book Follow-up" : draft?.call_outcome === "RETAILED" ? "Mark Retailed" : "Save follow-up";
   const readOnlyHandoff = !isPs && Boolean(detail?.assignedPsId);
   const visibleSections = isPs ? sections.filter(item => !["fresh", "pending"].includes(item.key)) : sections;
+  const toggleFlag = async (lead: SalesLead) => {
+    try {
+      await updateMyLead(lead.id, { flagged_to_manager: !lead.flagged_to_manager });
+      setDashboard(current => current ? { ...current, results: current.results.map(l => l.id === lead.id ? { ...l, flagged_to_manager: !l.flagged_to_manager } : l) } : current);
+      setNotice(`Lead ${lead.flagged_to_manager ? "unflagged" : "flagged"} successfully.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to flag lead.");
+    }
+  };
+
   const metrics = isPs
-    ? [{label:"Follow-ups", value:summary?.followups ?? 0, tone:"yellow"}, {label:"Qualified leads", value:summary?.qualified ?? 0, tone:"green"}, {label:"Walk-in leads", value:summary?.walkin ?? 0, tone:"blue"}, {label:"Won leads", value:summary?.won ?? 0, tone:"mint"}, {label:"Lost leads", value:summary?.lost ?? 0, tone:"red"}]
+    ? [{label: followUpsOnly ? "TODAY'S FOLLOW-UPS" : "FRESH LEADS", value: followUpsOnly ? summary?.followups ?? 0 : summary?.fresh ?? 0, tone:"blue"}, {label:"BOOKED", value:summary?.walkin ?? 0, tone:"green"}, {label:"RETAILED", value:summary?.won ?? 0, tone:"green"}, {label:"LOST", value:summary?.lost ?? 0, tone:"red"}]
     : [{label:"Fresh leads", value:summary?.fresh ?? 0, tone:"blue"}, {label:"Follow-ups", value:summary?.followups ?? 0, tone:"yellow"}, {label:"Pending leads", value:summary?.pending ?? 0, tone:"orange"}, {label:"Qualified leads", value:summary?.qualified ?? 0, tone:"green"}, {label:"Won leads", value:summary?.won ?? 0, tone:"mint"}, {label:"Lost leads", value:summary?.lost ?? 0, tone:"red"}];
 
   return <section className="page sales-workspace">
     <div className="sales-hero"><div><p className="eyebrow">{isPs ? "PS/SO WORKSPACE" : "CRE WORKSPACE"}</p><h1>My queue</h1><p className="subtext">Today, {new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(new Date())}</p></div><div className="sales-hero-actions"><button className="filter" onClick={() => void loadDashboard()}>↻ Refresh</button><a className="button primary" href="/my-analytics">View analytics →</a></div></div>
-    <section className="sales-hero-banner"><div><p className="eyebrow">THE NEXT MOVE</p><h2>Every lead deserves a next move.</h2><p>Stay on top of your queue and guide every customer to their perfect ride.</p></div><div className="sales-hero-art" aria-hidden="true"><span>REVERA</span><i>↗</i></div></section>
+    {!isPs && <section className="sales-hero-banner"><div><p className="eyebrow">THE NEXT MOVE</p><h2>Every lead deserves a next move.</h2><p>Stay on top of your queue and guide every customer to their perfect ride.</p></div><div className="sales-hero-art" aria-hidden="true"><span>REVERA</span><i>↗</i></div></section>}
     <section className="sales-metrics">{metrics.map(metric => <article className={`sales-metric ${metric.tone}`} key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><small>Assigned to you</small></article>)}</section>
-    <nav className="sales-tabs" aria-label="Lead status views">{visibleSections.map(item => <button key={item.key} className={section === item.key ? "active" : ""} onClick={() => setSection(item.key)}><i>{item.icon}</i><span>{item.label}</span><b>{summary?.[item.count] ?? 0}</b></button>)}</nav>
-    <section className="panel sales-table-panel"><header className="sales-table-heading"><div><p className="eyebrow">{sections.find(item => item.key === section)?.label.toUpperCase()}</p><h2>{loading ? "Loading your pipeline…" : `${dashboard?.results.length ?? 0} leads in this view`}</h2></div><div className="sales-filters"><select aria-label="Date range" value={range} onChange={event => setRange(event.target.value)}><option value="all">All time</option><option value="today">Today</option><option value="mtd">Month to date</option></select><select aria-label="Lead category" value={category} onChange={event => setCategory(event.target.value)}><option value="">All categories</option><option value="HOT">Hot</option><option value="WARM">Warm</option><option value="COLD">Cold</option></select><select aria-label="Lead source" value={source} onChange={event => setSource(event.target.value)}><option value="">All sources</option><option value="META">Meta Ads</option><option value="WEBSITE">Website</option><option value="CARWALE">CarWale</option><option value="CAMPAIGN">Campaign</option><option value="OTHER">Other</option></select><label className="sales-search">⌕<input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search name, phone, model" /></label></div></header><div className="sales-subfilters">{!isPs && section === "fresh" ? <><button className={freshSubfilter === "untouched" ? "selected" : ""} onClick={() => setFreshSubfilter("untouched")}>✦ Untouched <b>{summary?.untouched ?? 0}</b></button><button className={freshSubfilter === "called" ? "selected" : ""} onClick={() => setFreshSubfilter("called")}>☎ Called <b>{summary?.called ?? 0}</b></button><button className={freshSubfilter === "scheduled" ? "selected" : ""} onClick={() => setFreshSubfilter("scheduled")}>◷ Follow-up <b>{summary?.scheduled ?? 0}</b></button></> : !isPs && section === "pending" ? <><span>Lead category</span><button className={!category ? "selected" : ""} onClick={() => setCategory("")}>All</button><button className={category === "HOT" ? "selected hot" : "hot"} onClick={() => setCategory("HOT")}>Hot</button><button className={category === "WARM" ? "selected warm" : "warm"} onClick={() => setCategory("WARM")}>Warm</button><button className={category === "COLD" ? "selected cold" : "cold"} onClick={() => setCategory("COLD")}>Cold</button></> : <span>{summary?.total ?? 0} assigned leads in your workspace</span>}</div><div className="sales-table-scroll"><table className="sales-table"><thead><tr><th>Action</th><th>Status</th><th>Customer name</th><th>Mobile no.</th><th>Source</th></tr></thead><tbody>{loading ? <tr><td colSpan={5} className="sales-empty">Loading…</td></tr> : dashboard?.results.length ? dashboard.results.map(lead => <tr key={lead.id} onClick={() => void openLead(lead)}><td><button className="sales-row-action" onClick={event => { event.stopPropagation(); void openLead(lead); }}>↗ Open</button></td><td><span className={`sales-status ${lead.statusCode.toLowerCase()}`}>{lead.status}</span></td><td><b>{lead.name}</b><small>#{String(lead.id).padStart(6, "0")}</small></td><td>{lead.phone}</td><td>{lead.source}</td></tr>) : <tr><td colSpan={5} className="sales-empty"><strong>No leads in this view.</strong><span>New assignments and follow-ups will appear here automatically.</span></td></tr>}</tbody></table></div></section>
+    
+    {isPs ? (
+      <section className="panel sales-table-panel" style={{ background: "transparent", border: "none", boxShadow: "none", padding: 0 }}>
+        <div className="sales-filters" style={{ marginBottom: "1rem" }}>
+          <label className="sales-search" style={{ width: "100%", background: "#fff" }}>⌕<input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search by name or mobile..." /></label>
+        </div>
+        <div className="so-card-list" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          {loading ? <div className="sales-empty">Loading…</div> : dashboard?.results.length ? dashboard.results.map(lead => (
+            <div key={lead.id} onClick={() => void openLead(lead)} style={{ background: "#fff", padding: "1.25rem", borderRadius: "12px", border: "1px solid var(--border)", cursor: "pointer", display: "flex", flexDirection: "column", gap: "0.75rem", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                 <div style={{ display: "flex", flexDirection: "column" }}>
+                   <b style={{ fontSize: "1.1rem", marginBottom: "0.25rem" }}>{lead.name}</b>
+                   <span style={{ color: "var(--text-light)", fontSize: "0.9rem" }}>{lead.phone} · {lead.sourceCode}</span>
+                   <span style={{ color: "var(--text-light)", fontSize: "0.85rem" }}>{lead.source} · {lead.status}</span>
+                 </div>
+                 <span className={`sales-status ${lead.statusCode.toLowerCase()}`}>{lead.status}</span>
+               </div>
+               <div style={{ alignSelf: "flex-start", marginTop: "0.25rem" }}>
+                 <button onClick={(e) => { e.stopPropagation(); void toggleFlag(lead); }} style={{ background: "transparent", border: "1px solid var(--orange)", color: "var(--orange)", padding: "0.35rem 0.75rem", borderRadius: "20px", fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.25rem", fontWeight: 600 }}>
+                   {lead.flagged_to_manager ? "⚑ Flagged to SM/TL" : "⚐ Flag to SM/TL"}
+                 </button>
+               </div>
+            </div>
+          )) : <div className="sales-empty"><strong>No leads in this view.</strong><span>New assignments and follow-ups will appear here automatically.</span></div>}
+        </div>
+      </section>
+    ) : (
+      <>
+        <nav className="sales-tabs" aria-label="Lead status views">{visibleSections.map(item => <button key={item.key} className={section === item.key ? "active" : ""} onClick={() => setSection(item.key)}><i>{item.icon}</i><span>{item.label}</span><b>{summary?.[item.count] ?? 0}</b></button>)}</nav>
+        <section className="panel sales-table-panel"><header className="sales-table-heading"><div><p className="eyebrow">{sections.find(item => item.key === section)?.label.toUpperCase()}</p><h2>{loading ? "Loading your pipeline…" : `${dashboard?.results.length ?? 0} leads in this view`}</h2></div><div className="sales-filters"><select aria-label="Date range" value={range} onChange={event => setRange(event.target.value)}><option value="all">All time</option><option value="today">Today</option><option value="mtd">Month to date</option></select><select aria-label="Lead category" value={category} onChange={event => setCategory(event.target.value)}><option value="">All categories</option><option value="HOT">Hot</option><option value="WARM">Warm</option><option value="COLD">Cold</option></select><select aria-label="Lead source" value={source} onChange={event => setSource(event.target.value)}><option value="">All sources</option><option value="META">Meta Ads</option><option value="WEBSITE">Website</option><option value="CARWALE">CarWale</option><option value="CAMPAIGN">Campaign</option><option value="OTHER">Other</option></select><label className="sales-search">⌕<input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search name, phone, model" /></label></div></header><div className="sales-subfilters">{!isPs && section === "fresh" ? <><button className={freshSubfilter === "untouched" ? "selected" : ""} onClick={() => setFreshSubfilter("untouched")}>✦ Untouched <b>{summary?.untouched ?? 0}</b></button><button className={freshSubfilter === "called" ? "selected" : ""} onClick={() => setFreshSubfilter("called")}>☎ Called <b>{summary?.called ?? 0}</b></button><button className={freshSubfilter === "scheduled" ? "selected" : ""} onClick={() => setFreshSubfilter("scheduled")}>◷ Follow-up <b>{summary?.scheduled ?? 0}</b></button></> : !isPs && section === "pending" ? <><span>Lead category</span><button className={!category ? "selected" : ""} onClick={() => setCategory("")}>All</button><button className={category === "HOT" ? "selected hot" : "hot"} onClick={() => setCategory("HOT")}>Hot</button><button className={category === "WARM" ? "selected warm" : "warm"} onClick={() => setCategory("WARM")}>Warm</button><button className={category === "COLD" ? "selected cold" : "cold"} onClick={() => setCategory("COLD")}>Cold</button></> : <span>{summary?.total ?? 0} assigned leads in your workspace</span>}</div><div className="sales-table-scroll"><table className="sales-table"><thead><tr><th>Action</th><th>Status</th><th>Customer name</th><th>Mobile no.</th><th>Source</th></tr></thead><tbody>{loading ? <tr><td colSpan={5} className="sales-empty">Loading…</td></tr> : dashboard?.results.length ? dashboard.results.map(lead => <tr key={lead.id} onClick={() => void openLead(lead)}><td><button className="sales-row-action" onClick={event => { event.stopPropagation(); void openLead(lead); }}>↗ Open</button></td><td><span className={`sales-status ${lead.statusCode.toLowerCase()}`}>{lead.status}</span></td><td><b>{lead.name}</b><small>#{String(lead.id).padStart(6, "0")}</small></td><td>{lead.phone}</td><td>{lead.source}</td></tr>) : <tr><td colSpan={5} className="sales-empty"><strong>No leads in this view.</strong><span>New assignments and follow-ups will appear here automatically.</span></td></tr>}</tbody></table></div></section>
+      </>
+    )}
 
     {editingLead && leadFields && <LeadEditPanel fields={leadFields} onChange={setLeadFields} onClose={() => setEditingLead(false)} onSave={() => void saveLeadFields()} saving={saving} />}
     {notice && <div className="toast" role="status">{notice}<button aria-label="Dismiss" onClick={() => setNotice("")}>×</button></div>}
@@ -219,9 +313,56 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
       <header className="sales-detail-header"><div><p className="eyebrow">LEAD DETAIL · #{String(detail.id).padStart(6, "0")}</p><h2 id="sales-detail-title">Update {detail.name}</h2><p className="subtext">Customer information and call history.</p></div><button className="modal-close" onClick={() => setDetail(null)} aria-label="Close">×</button></header>
       <div className="sales-detail-scroll">
         {error && <p className="form-error" role="alert">{error}</p>}
+        {isPs && detail.previousConsultant && <div style={{ background: "#fff7e6", padding: "1rem", borderRadius: "8px", border: "1px solid #ffd591", marginBottom: "1rem" }}><h4 style={{ color: "#d46b08", display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", fontWeight: 600 }}>⚠️ Sales consultant info</h4><div style={{ fontSize: "0.9rem" }}><strong>Consultant:</strong> {detail.previousConsultant.name}<br /><strong>Phone no:</strong> <a href={`tel:${detail.previousConsultant.phone}`} style={{ color: "var(--blue)" }}>{detail.previousConsultant.phone}</a></div></div>}
         <section className="sales-info-card"><h3>Customer information {!readOnlyHandoff && <button type="button" className="row-action" onClick={() => { setLeadFields(leadFieldsFor(detail)); setEditingLead(true); }}>Edit fields</button>}</h3><div className="sales-info-grid"><span><small>Name</small><b>{detail.name}</b></span><span><small>Phone</small><b>{detail.phone}</b></span><span><small>Email</small><b>{detail.email || "—"}</b></span><span><small>Source</small><b>{detail.source}</b></span><span><small>Source detail</small><b>{detail.sourceLabel || "—"}</b></span><span><small>Model</small><b>{detail.model}</b></span><span><small>City</small><b>{detail.city || "—"}</b></span><span><small>Enquiry date</small><b>{detail.enquiredAt}</b></span><span><small>Campaign</small><b>{detail.campaign || "—"}</b></span><span><small>Branch</small><b>{detail.branch || "—"}</b></span></div><div className="sales-detail-meta"><span>Category <b className={`category-pill ${draft.category.toLowerCase()}`}>{draft.category}</b></span><span>Calls <b>{detail.callCount}</b></span></div></section>
         {detail.qualification && <section className="sales-info-card"><h3>CRE qualification</h3><div className="sales-info-grid"><span><small>Variant</small><b>{detail.qualification.variant || "—"}</b></span><span><small>Buying plan</small><b>{detail.qualification.buying_timeline || "—"}</b></span><span><small>Finance</small><b>{detail.qualification.finance_type || "—"}</b></span><span><small>Test drive</small><b>{detail.qualification.test_drive || "—"}</b></span><span><small>Trade-in</small><b>{detail.qualification.trade_in === true ? "Yes" : detail.qualification.trade_in === false ? "No" : "—"}</b></span><span><small>Notes</small><b>{detail.qualification.notes || "—"}</b></span></div></section>}
-        {readOnlyHandoff ? <section className="sales-form-card sales-outcome-card"><h3>Handed to PS/SO</h3><p className="subtext">This qualified lead is now owned by PS/SO. CRE details stay visible for reference.</p></section> : <section className="sales-form-card sales-outcome-card"><h3>Lead Status Update</h3><div className="sales-stepper">{["F1", "F2", "F3", "F4", "F5"].map((step, index) => <span className={progressState(detail.callCount, index)} key={step}>{index < Math.min(detail.callCount, 4) ? "✓" : index === Math.min(detail.callCount, 4) ? "○" : "▣"} {step}</span>)}</div><div className="sales-choice-row sales-status-update">{Object.entries(activeOutcomeLabels).map(([value, label]) => <button type="button" className={draft.call_outcome === value ? `chosen ${value.toLowerCase()}` : value.toLowerCase()} onClick={() => selectCallOutcome(value)} key={value}>{value === "QUALIFIED" || value === "RETAILED" ? "✓" : value === "LOST" ? "×" : "◷"} {label}</button>)}</div></section>}
+        {readOnlyHandoff ? <section className="sales-form-card sales-outcome-card"><h3>Handed to PS/SO</h3><p className="subtext">This qualified lead is now owned by PS/SO. CRE details stay visible for reference.</p></section> : <section className="sales-form-card sales-outcome-card"><h3>Lead Status Update</h3><div className="sales-stepper">{["F1", "F2", "F3", "F4", "F5"].map((step, index) => <span className={progressState(detail.callCount, index)} key={step}>{index < Math.min(detail.callCount, 4) ? "✓" : index === Math.min(detail.callCount, 4) ? "○" : "▣"} {step}</span>)}</div>
+          {isPs ? (
+             <div style={{ marginTop: "1rem" }}>
+               <h4 style={{ fontSize: "0.85rem", color: "var(--text-light)", marginBottom: "0.5rem" }}>Call status *</h4>
+               <div className="sales-choice-row sales-status-update">
+                 <button type="button" className={draft.call_status === "Connected" ? "chosen" : ""} onClick={() => { choose("call_status", "Connected"); choose("call_outcome", ""); }}>Connected</button>
+                 <button type="button" className={draft.call_status === "Not Connected" ? "chosen" : ""} onClick={() => { choose("call_status", "Not Connected"); choose("call_outcome", ""); }}>Not Connected</button>
+               </div>
+               
+               {draft.call_status && (
+                 <div style={{ marginTop: "1.5rem" }}>
+                   <h4 style={{ fontSize: "0.85rem", color: "var(--text-light)", marginBottom: "0.5rem" }}>Outcome *</h4>
+                   <div className="sales-choice-row sales-status-update" style={{ flexWrap: "wrap", justifyContent: "flex-start", gap: "0.5rem" }}>
+                     {(draft.call_status === "Connected" ? soConnectedOutcomes : soNotConnectedOutcomes).map(o => (
+                       <button type="button" key={o.label} className={`${draft.call_outcome === o.label ? "chosen " + o.tone : ""}`} onClick={() => choose("call_outcome", o.label)} style={{ padding: "0.4rem 1rem", borderRadius: "20px", fontSize: "0.85rem", flex: "none", whiteSpace: "nowrap" }}>{o.label}</button>
+                     ))}
+                   </div>
+                 </div>
+               )}
+               
+               {draft.call_status === "Connected" && (
+                 <div style={{ marginTop: "1.5rem" }}>
+                   <h4 style={{ fontSize: "0.85rem", color: "var(--text-light)", marginBottom: "0.5rem" }}>Did any other SO call the customer?</h4>
+                   <select value={draft.other_so_called} onChange={e => choose("other_so_called", e.target.value)} style={{ width: "100%", padding: "0.75rem", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--field-bg)", fontSize: "1rem" }}>
+                     <option value="Select...">Select...</option>
+                     <option value="Yes">Yes</option>
+                     <option value="No">No</option>
+                   </select>
+                 </div>
+               )}
+
+               {draft.call_outcome && ["PENDING", "WALKIN", "CALLBACK"].includes(statusOptions[draft.call_outcome]?.[0] || "") && (
+                 <div style={{ marginTop: "1.5rem" }}>
+                   <h4 style={{ fontSize: "0.85rem", color: "var(--text-light)", marginBottom: "0.5rem" }}>Follow Up Date *</h4>
+                   <input type="date" min={minimumFollowUpDay()} max={maximumFollowUpDay()} value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} style={{ width: "100%", padding: "0.75rem", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--field-bg)", fontSize: "1rem" }} />
+                 </div>
+               )}
+
+               <div style={{ marginTop: "1.5rem" }}>
+                 <h4 style={{ fontSize: "0.85rem", color: "var(--text-light)", marginBottom: "0.5rem" }}>Remarks *</h4>
+                 <textarea value={draft.remarks} onChange={e => choose("remarks", e.target.value)} style={{ width: "100%", padding: "0.75rem", borderRadius: "8px", border: "1px solid var(--border)", minHeight: "100px", resize: "vertical", background: "var(--field-bg)", fontSize: "1rem" }} />
+               </div>
+             </div>
+          ) : (
+             <div className="sales-choice-row sales-status-update">{Object.entries(activeOutcomeLabels).map(([value, label]) => <button type="button" className={draft.call_outcome === value ? `chosen ${value.toLowerCase()}` : value.toLowerCase()} onClick={() => selectCallOutcome(value)} key={value}>{value === "QUALIFIED" || value === "RETAILED" ? "✓" : value === "LOST" ? "×" : "◷"} {label}</button>)}</div>
+          )}
+        </section>}
 
         {!readOnlyHandoff && !isPs && draft.call_outcome === "QUALIFIED" && <section className="sales-outcome-grid">
           <article className="sales-branch-card"><h3>Model Interested</h3><label>Vehicle model *<select value={draft.model_interest} onChange={event => choose("model_interest", event.target.value)}><option value="">Select model</option>{modelOptions.map(model => <option value={model} key={model}>{model}</option>)}</select></label></article>

@@ -27,11 +27,12 @@ class TeamMemberSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "first_name", "last_name", "email", "phone", "location", "is_active", "password"]
+        fields = ["id", "first_name", "last_name", "email", "phone", "location", "role", "is_active", "password"]
 
     def create(self, validated_data):
         password = validated_data.pop("password")
-        return User.objects.create_user(role=self.context["role"], password=password, **validated_data)
+        role = validated_data.get("role") or self.context.get("role") or User.Role.CRE
+        return User.objects.create_user(password=password, **validated_data)
 
     def update(self, instance, validated_data):
         password = validated_data.pop("password", None)

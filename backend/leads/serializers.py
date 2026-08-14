@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.utils import timezone
 
 from accounts.models import User
-from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification
+from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification, SystemConfig
 
 CALL_OUTCOME_STATUS_OPTIONS = {
     "PENDING": {Lead.Status.PENDING},
@@ -41,14 +41,14 @@ class LeadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lead
-        fields = ["id", "uid", "name", "phone", "email", "source", "source_label", "campaign", "model_interest", "city", "branch", "enquiry_date", "status", "category", "sales_outcome", "assigned_so", "assigned_so_name", "assigned_ps", "assigned_ps_name", "next_follow_up", "call_count", "qualification", "created_at", "updated_at"]
+        fields = ["id", "uid", "name", "phone", "email", "source", "source_label", "campaign", "model_interest", "city", "branch", "enquiry_date", "status", "category", "sales_outcome", "assigned_so", "assigned_so_name", "assigned_ps", "assigned_ps_name", "next_follow_up", "call_count", "qualification", "flagged_to_manager", "created_at", "updated_at"]
         read_only_fields = ["uid", "assigned_so", "assigned_ps", "created_at", "updated_at"]
 
 
 class SOLeadListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lead
-        fields = ["id", "status", "name", "phone", "source"]
+        fields = ["id", "status", "name", "phone", "source", "flagged_to_manager"]
 
 
 class QualificationSerializer(serializers.ModelSerializer):
@@ -62,6 +62,16 @@ class LeadDetailSerializer(LeadSerializer):
     call_history = serializers.SerializerMethodField()
     follow_up_history = serializers.SerializerMethodField()
     audit_history = serializers.SerializerMethodField()
+    previous_consultant = serializers.SerializerMethodField()
+
+    def get_previous_consultant(self, obj):
+        previous_lead = Lead.objects.filter(phone=obj.phone).exclude(id=obj.id).exclude(assigned_so__isnull=True).order_by('-created_at').first()
+        if previous_lead and previous_lead.assigned_so:
+            return {
+                "name": f"{previous_lead.assigned_so.first_name} {previous_lead.assigned_so.last_name}".strip() or previous_lead.assigned_so.email,
+                "phone": previous_lead.assigned_so.phone
+            }
+        return None
 
     def get_call_history(self, obj):
         return CallLogSerializer(obj.call_logs.select_related("so").order_by("-created_at"), many=True).data
@@ -73,7 +83,7 @@ class LeadDetailSerializer(LeadSerializer):
         return [{"event": event.event, "before": event.before, "after": event.after, "actor": event.actor.get_full_name() if event.actor else "System", "created_at": event.created_at} for event in obj.audit_events.select_related("actor").order_by("-created_at")[:30]]
 
     class Meta(LeadSerializer.Meta):
-        fields = LeadSerializer.Meta.fields + ["call_history", "follow_up_history", "audit_history"]
+        fields = LeadSerializer.Meta.fields + ["call_history", "follow_up_history", "audit_history", "previous_consultant"]
 
 
 class CallLogSerializer(serializers.ModelSerializer):
@@ -121,6 +131,7 @@ class SOLeadUpdateSerializer(serializers.Serializer):
     follow_up_at = serializers.DateTimeField(required=False, allow_null=True)
     qualification = QualificationSerializer(required=False)
     ps_officer_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True), source="ps_officer", required=False)
+    flagged_to_manager = serializers.BooleanField(required=False)
 
     def validate(self, attrs):
         enquiry_date = attrs.get("enquiry_date")
@@ -132,8 +143,12 @@ class SOLeadUpdateSerializer(serializers.Serializer):
         if call_outcome in CALL_OUTCOME_STATUS_OPTIONS:
             if next_status not in CALL_OUTCOME_STATUS_OPTIONS[call_outcome]:
                 raise serializers.ValidationError({"status": "Choose a lead status that matches the call outcome."})
-        if follow_up_at and follow_up_at <= timezone.now():
-            raise serializers.ValidationError({"follow_up_at": "Choose a future appointment time."})
+        if follow_up_at:
+            if follow_up_at <= timezone.now():
+                raise serializers.ValidationError({"follow_up_at": "Choose a future appointment time."})
+            from datetime import timedelta
+            if follow_up_at > timezone.now() + timedelta(days=3):
+                raise serializers.ValidationError({"follow_up_at": "Follow-up cannot be scheduled more than 3 days in advance."})
         if next_status in [Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.WALKIN] and not follow_up_at:
             raise serializers.ValidationError({"follow_up_at": "This status requires a follow-up time."})
         if follow_up_at and next_status not in [None, Lead.Status.FRESH, Lead.Status.RNR, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.WALKIN]:
@@ -155,3 +170,9 @@ class FollowUpSerializer(serializers.ModelSerializer):
     class Meta:
         model = FollowUp
         fields = ["id", "lead", "customer", "scheduled_for", "resolved_at", "notified_at"]
+
+class SystemConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SystemConfig
+        fields = ["lists", "updated_at"]
+

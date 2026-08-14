@@ -9,10 +9,10 @@ import { formatDate } from "@/lib/dates";
 type AppShellProps = { children: ReactNode; role: "Admin" | "Sales officer" };
 
 const adminLinks = [
-  ["/dashboard", "Overview", "⌁"],
-  ["/leads", "Lead pool", "◫"],
-  ["/team", "Team", "◎"],
-  ["/analytics", "Insights", "◔"],
+  ["/analytics", "Analytics", "📊"],
+  ["/team", "Users", "👤"],
+  ["/lists", "Lists", "📋"],
+  ["/leads", "All leads", "📋"],
 ] as const;
 const officerLinks = [
   ["/my-leads", "My queue", "◫"],

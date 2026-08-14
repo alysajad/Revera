@@ -54,6 +54,7 @@ class Lead(models.Model):
     assigned_so = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="assigned_leads")
     assigned_ps = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="ps_leads")
     duplicate_flag = models.BooleanField(default=False)
+    flagged_to_manager = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -66,6 +67,7 @@ class CallLog(models.Model):
     lead = models.ForeignKey(Lead, on_delete=models.PROTECT, related_name="call_logs")
     so = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="call_logs")
     status = models.CharField(max_length=20, choices=Lead.Status.choices)
+    call_status = models.CharField(max_length=20, blank=True)
     outcome = models.CharField(max_length=30, blank=True)
     remarks = models.CharField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -99,3 +101,8 @@ class LeadAudit(models.Model):
     before = models.JSONField(default=dict, blank=True)
     after = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+class SystemConfig(models.Model):
+    lists = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
