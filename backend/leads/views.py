@@ -262,9 +262,12 @@ class LeadViewSet(viewsets.ModelViewSet):
         leads = apply_lead_filters(leads, filters)
         with transaction.atomic():
             leads = list(leads.select_for_update().order_by("created_at"))
+            now = timezone.now()
             for lead in leads:
                 lead.assigned_so = officer
-                lead.save(update_fields=["assigned_so", "updated_at"])
+                lead.updated_at = now
+            if leads:
+                Lead.objects.bulk_update(leads, fields=["assigned_so", "updated_at"], batch_size=1000)
             LeadAudit.objects.bulk_create([LeadAudit(lead=lead, actor=request.user, event="assigned_cre", after={"assigned_so": officer.id}) for lead in leads])
             if leads:
                 Notification.objects.create(user=officer, kind=Notification.Kind.ASSIGNMENT, message=f"You have {len(leads)} new lead(s) assigned.")
@@ -282,9 +285,12 @@ class LeadViewSet(viewsets.ModelViewSet):
         leads = apply_lead_filters(leads, filters)
         with transaction.atomic():
             leads = list(leads.select_for_update().order_by("created_at"))
+            now = timezone.now()
             for lead in leads:
                 lead.assigned_ps = officer
-                lead.save(update_fields=["assigned_ps", "updated_at"])
+                lead.updated_at = now
+            if leads:
+                Lead.objects.bulk_update(leads, fields=["assigned_ps", "updated_at"], batch_size=1000)
             LeadAudit.objects.bulk_create([LeadAudit(lead=lead, actor=request.user, event="assigned_ps", after={"assigned_ps": officer.id}) for lead in leads])
             if leads:
                 Notification.objects.create(user=officer, kind=Notification.Kind.ASSIGNMENT, message=f"You have {len(leads)} qualified lead(s) assigned.")
@@ -304,12 +310,17 @@ class LeadViewSet(viewsets.ModelViewSet):
             if not leads:
                 return Response({"assigned": 0, "distribution": {}})
             distribution = defaultdict(int)
+            audits = []
+            now = timezone.now()
             for index, lead in enumerate(leads):
                 officer = officers[index % len(officers)]
                 lead.assigned_so = officer
-                lead.save(update_fields=["assigned_so", "updated_at"])
-                LeadAudit.objects.create(lead=lead, actor=request.user, event="auto_assigned_cre", after={"assigned_so": officer.id})
+                lead.updated_at = now
+                audits.append(LeadAudit(lead=lead, actor=request.user, event="auto_assigned_cre", after={"assigned_so": officer.id}))
                 distribution[officer.get_full_name() or officer.email] += 1
+            if leads:
+                Lead.objects.bulk_update(leads, fields=["assigned_so", "updated_at"], batch_size=1000)
+                LeadAudit.objects.bulk_create(audits)
             Notification.objects.bulk_create([Notification(user=officer, kind=Notification.Kind.ASSIGNMENT, message=f"You have {count} new lead(s) assigned.") for officer, count in ((officer, distribution.get(officer.get_full_name() or officer.email, 0)) for officer in officers) if count])
         return Response({"assigned": len(leads), "distribution": distribution})
 
