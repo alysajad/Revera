@@ -89,6 +89,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [analytics, setAnalytics] = useState<any>(null);
   const [assignmentView, setAssignmentView] = useState<"fresh" | "qualified">("fresh");
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [leadDetail, setLeadDetail] = useState<LeadDetail | null>(null);
@@ -125,10 +126,11 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
       if (officerMode) { const result = await getLeadsPage(queryString); setLeads(result.results); setTotalLeads(result.count); }
       else {
         if (!supportLoaded.current) {
-          const [pool, creRecords, psRecords, analytics] = await Promise.all([getLeadsPage(queryString), getCres(), getOfficers(), getAdminAnalytics()]);
+          const [pool, creRecords, psRecords, analyticsResult] = await Promise.all([getLeadsPage(queryString), getCres(), getOfficers(), getAdminAnalytics()]);
           setLeads(pool.results); setTotalLeads(pool.count);
-          setCreUsers(creRecords.map(officer => toOfficer(officer, analytics.cre.find(item => item.id === officer.id))));
-          setPsUsers(psRecords.map(officer => toOfficer(officer, analytics.officers.find(item => item.id === officer.id))));
+          setCreUsers(creRecords.map(officer => toOfficer(officer, analyticsResult.cre.find(item => item.id === officer.id))));
+          setPsUsers(psRecords.map(officer => toOfficer(officer, analyticsResult.officers.find(item => item.id === officer.id))));
+          setAnalytics(analyticsResult);
           supportLoaded.current = true;
         } else {
           const pool = await getLeadsPage(queryString);
@@ -272,9 +274,29 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const poolLabel = assignmentView === "fresh" ? "Fresh lead pool" : "Qualified handoff pool";
   const heading = followUpsOnly ? "Follow-ups" : officerMode ? "My queue" : "Assignment desk";
 
-  return <section className="page">
-    <div className="page-heading compact"><div><p className="eyebrow">{heading.toUpperCase()}</p><h1>{officerMode ? <>Keep the <span>promise.</span></> : <>Move leads to the <span>right rider.</span></>}</h1><p className="subtext">{officerMode ? "Your assigned conversations and follow-ups." : "Assign fresh leads to CRE. CRE will choose PS/SO after qualification."}</p></div>{!officerMode && assignmentView === "fresh" && <button className="button primary" onClick={autoAssign} disabled={!leads.length}>↻ Auto assign {leads.length} leads</button>}</div>
-    <section className="lead-toolbar"><label className="search"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search name or phone" /></label>{!officerMode && <><button className="button primary" onClick={() => { setError(""); setAddingLead(true); }}>＋ Add lead</button><label className="button filter">{uploading ? "Uploading…" : "Upload Excel"}<input hidden type="file" accept=".xlsx,.csv" onChange={event => void selectFile(event.target.files?.[0])} /></label></>}<button className="filter" onClick={() => void refresh()}>Refresh</button></section>
+  return <section className="page" style={officerMode ? {} : { maxWidth: "600px", margin: "0 auto", paddingBottom: "4rem" }}>
+    <div className="page-heading compact"><div><p className="eyebrow">{heading.toUpperCase()}</p><h1>{officerMode ? <>Keep the <span>promise.</span></> : <>All <span>leads.</span></>}</h1><p className="subtext">{officerMode ? "Your assigned conversations and follow-ups." : "Manage and assign all leads in the CRM."}</p></div>{!officerMode && assignmentView === "fresh" && <button className="button primary" onClick={autoAssign} disabled={!leads.length}>↻ Auto assign {leads.length} leads</button>}</div>
+    {!officerMode && analytics?.summary && (
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
+        <div style={{ background: "#2e5bbf", color: "white", padding: "1rem", borderRadius: "8px", textAlign: "center" }}>
+          <b style={{ fontSize: "1.5rem", display: "block" }}>{analytics.summary.total_assigned || 0}</b>
+          <small>ALL LEADS</small>
+        </div>
+        <div style={{ background: "#2ecc71", color: "white", padding: "1rem", borderRadius: "8px", textAlign: "center" }}>
+          <b style={{ fontSize: "1.5rem", display: "block" }}>{analytics.summary.walkins || 0}</b>
+          <small>BOOKED</small>
+        </div>
+        <div style={{ background: "#27ae60", color: "white", padding: "1rem", borderRadius: "8px", textAlign: "center" }}>
+          <b style={{ fontSize: "1.5rem", display: "block" }}>{analytics.summary.won || 0}</b>
+          <small>RETAILED</small>
+        </div>
+        <div style={{ background: "#e74c3c", color: "white", padding: "1rem", borderRadius: "8px", textAlign: "center" }}>
+          <b style={{ fontSize: "1.5rem", display: "block" }}>{analytics.summary.lost || 0}</b>
+          <small>LOST</small>
+        </div>
+      </div>
+    )}
+    <section className="lead-toolbar"><label className="search" style={{ flex: 1 }}><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search by name or mobile..." /></label>{!officerMode && <><label className="button filter" style={{ color: "#2e5bbf", borderColor: "#2e5bbf", background: "rgba(46,91,191,0.1)" }}>{uploading ? "Uploading…" : "Bulk Upload"}<input hidden type="file" accept=".xlsx,.csv" onChange={event => void selectFile(event.target.files?.[0])} /></label><button className="button primary" onClick={() => { setError(""); setAddingLead(true); }}>＋ Add lead</button></>}</section>
     {!officerMode && <section className="panel lead-filters"><div className="lead-filters-grid"><label>Source<select value={filters.source || ""} onChange={event => setFilters(current => ({ ...current, source: event.target.value || undefined }))}><option value="">All sources</option>{sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Model<input value={filters.model || ""} onChange={event => setFilters(current => ({ ...current, model: event.target.value || undefined }))} placeholder="Any model" /></label><label>City<input value={filters.city || ""} onChange={event => setFilters(current => ({ ...current, city: event.target.value || undefined }))} placeholder="Any city" /></label><label>Source detail<input value={filters.source_label || ""} onChange={event => setFilters(current => ({ ...current, source_label: event.target.value || undefined }))} placeholder="Google, OEM, or campaign" /></label><label>From<input type="date" value={filters.date_from || ""} onChange={event => setFilters(current => ({ ...current, date_from: event.target.value || undefined }))} /></label><label>To<input type="date" value={filters.date_to || ""} onChange={event => setFilters(current => ({ ...current, date_to: event.target.value || undefined }))} /></label></div><footer className="lead-filters-actions"><span>{Object.values(activeFilters).filter(Boolean).length ? `Filtered ${poolLabel.toLowerCase()}` : `All ${poolLabel.toLowerCase()}`}</span><div><button className="filter" onClick={() => { setFilters({}); setActiveFilters({}); }}>Clear</button><button className="filter" onClick={() => setActiveFilters({ ...filters })}>Apply filters</button><select className="filter" aria-label={`Assign filtered leads to ${targetLabel}`} value={bulkOfficerId} onChange={event => setBulkOfficerId(event.target.value)}><option value="">Assign to {targetLabel}…</option>{assignmentUsers.map(officer => <option key={officer.id} value={officer.id}>{officer.name}</option>)}</select><button className="button primary" onClick={() => void bulkAssign()} disabled={!bulkOfficerId || !leads.length || bulkAssigning}>{bulkAssigning ? "Assigning…" : "Assign matching leads"}</button></div></footer></section>}
     {upload && <section className="panel" style={{ padding: "1rem", marginBottom: "1rem" }}><b>Import: {upload.status === "PARSING" ? "Checking file…" : upload.status}</b><span> · {importableRows}/{upload.total_rows} rows ready to import</span>{upload.duplicates_found > 0 && <span> · {upload.duplicates_found} duplicates need review</span>}<div style={{ display: "inline-flex", gap: ".5rem", marginLeft: "1rem" }}><button className="filter" disabled={checkingUpload || uploading} onClick={() => void checkUpload()}>{checkingUpload ? "Checking…" : "Check import"}</button>{upload.status === "READY" && !duplicateRows.length && upload.duplicates_found === 0 && <button className="button primary" disabled={importingUpload} onClick={() => void importUpload()}>{importingUpload ? "Importing…" : "Import leads"}</button>}</div>{duplicateRows.length > 0 && <div style={{ marginTop: "1rem" }}><p className="subtext">Duplicates already exist in the CRM. Remove them from this import to keep the existing lead.</p><button className="filter" onClick={() => void removeDuplicates(duplicateRows.map(row => row.id))}>Remove all duplicates</button><div style={{ display: "grid", gap: ".5rem", marginTop: ".75rem" }}>{duplicateRows.map(row => <div key={row.id} className="lead-summary"><b>Row {row.row_number} · {row.data.name || "Unnamed lead"}</b><span>Matches {row.existing_name || "existing lead"}</span><small>{row.normalized_phone} · Current status: {row.existing_status}</small><button className="row-action" onClick={() => void removeDuplicates([row.id])}>Remove duplicate</button></div>)}</div></div>}{upload.error_message && <p className="subtext">{upload.error_message}</p>}</section>}
     {error && <div className="empty-state">{error}</div>}

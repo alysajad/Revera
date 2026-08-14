@@ -1,20 +1,133 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getAdminAnalytics, getCres, getOfficers, toOfficer, type Officer } from "@/lib/crm";
+import { useEffect, useState, FormEvent } from "react";
+import { getUsers, createUser, disableUser, type CurrentUser } from "@/lib/crm";
 
 export function TeamPage() {
-  const [cres, setCres] = useState<Officer[]>([]);
-  const [officers, setOfficers] = useState<Officer[]>([]);
+  const [users, setUsers] = useState<CurrentUser[]>([]);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
   useEffect(() => {
-    void Promise.all([getCres(), getOfficers(), getAdminAnalytics()])
-      .then(([creRecords, officerRecords, analytics]) => {
-        setCres(creRecords.map(record => toOfficer(record, analytics.cre.find(item => item.id === record.id))));
-        setOfficers(officerRecords.map(record => toOfficer(record, analytics.officers.find(item => item.id === record.id))));
-      })
-      .catch(requestError => setError(requestError instanceof Error ? requestError.message : "Unable to load team."));
+    loadUsers();
   }, []);
-  const card = (officer: Officer, role: string) => <article className="team-card" key={`${role}-${officer.id}`}><header><span className={`avatar ${officer.color}`}>{officer.initials}</span><div><h2>{officer.name}</h2><small>{role}</small></div><em>ACTIVE</em></header><div className="team-numbers"><span>ASSIGNED<b>{officer.assigned}</b></span><span>CALLED<b>{officer.calls}</b></span><span>WON<b>{officer.won}</b></span></div></article>;
-  return <section className="page"><div className="page-heading compact"><div><p className="eyebrow">YOUR CREW</p><h1>Team <span>on the road.</span></h1><p className="subtext">Live workload and conversion activity for CRE and PS/SO users.</p></div></div>{error && <div className="empty-state">{error}</div>}<p className="eyebrow">CRE</p><section className="team-grid">{cres.length ? cres.map(officer => card(officer, "CRE")) : !error && <div className="empty-state">No active CRE users yet.</div>}</section><p className="eyebrow" style={{ marginTop: "1.5rem" }}>PS/SO</p><section className="team-grid">{officers.length ? officers.map(officer => card(officer, "PS/SO")) : !error && <div className="empty-state">No active PS/SO users yet.</div>}</section></section>;
+
+  const loadUsers = () => {
+    getUsers()
+      .then(setUsers)
+      .catch(err => setError(err instanceof Error ? err.message : "Failed to load users."));
+  };
+
+  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+    
+    // Map UI roles to Backend roles
+    const uiRole = formData.get("role") as string;
+    let backendRole = "ADMIN";
+    if (uiRole === "Marketing") backendRole = "CRE";
+    if (uiRole === "Sales Manager") backendRole = "SO";
+
+    const payload = {
+      first_name: formData.get("firstName"),
+      last_name: formData.get("lastName"),
+      email: formData.get("email"),
+      password: formData.get("password"),
+      role: backendRole,
+      is_active: true
+    };
+
+    try {
+      await createUser(payload);
+      form.reset();
+      loadUsers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create user.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDisable = async (id: number) => {
+    if (!confirm("Disable this user?")) return;
+    try {
+      await disableUser(id);
+      loadUsers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to disable user.");
+    }
+  };
+
+  const displayRole = (role: string) => {
+    if (role === "CRE") return "Marketing";
+    if (role === "SO") return "Sales Manager";
+    return "Administrator";
+  };
+
+  return (
+    <section className="page" style={{ maxWidth: "600px", margin: "0 auto", paddingBottom: "4rem" }}>
+      <div className="page-heading compact">
+        <div>
+          <h1>Users <span>Administrator</span></h1>
+        </div>
+      </div>
+      
+      {error && <div className="empty-state">{error}</div>}
+
+      <article className="panel" style={{ marginBottom: "2rem" }}>
+        <header className="panel-heading">
+          <h2>Create user</h2>
+        </header>
+        <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div>
+            <label className="field-label">Full name *</label>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <input name="firstName" required className="input-field" placeholder="First name" />
+              <input name="lastName" className="input-field" placeholder="Last name" />
+            </div>
+          </div>
+          <div>
+            <label className="field-label">Username *</label>
+            <input type="email" name="email" required className="input-field" placeholder="Email address" />
+          </div>
+          <div>
+            <label className="field-label">Password (min 6 characters)</label>
+            <input type="password" name="password" required minLength={6} className="input-field" />
+          </div>
+          <div>
+            <label className="field-label">Role *</label>
+            <select name="role" required className="input-field">
+              <option value="">Select...</option>
+              <option value="Admin">Admin</option>
+              <option value="Marketing">Marketing</option>
+              <option value="Sales Manager">Sales Manager</option>
+            </select>
+          </div>
+          <button type="submit" className="button primary" disabled={loading} style={{ width: "100%", marginTop: "1rem" }}>
+            {loading ? "Creating..." : "Create user"}
+          </button>
+        </form>
+      </article>
+
+      <article className="panel">
+        <header className="panel-heading">
+          <h2>Users ({users.filter(u => u.is_active).length})</h2>
+        </header>
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "1rem" }}>
+          {users.filter(u => u.is_active).map(user => (
+            <li key={user.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "1rem", borderBottom: "1px solid var(--border)" }}>
+              <div>
+                <b style={{ display: "block" }}>{user.first_name} {user.last_name}</b>
+                <small style={{ color: "var(--text-dim)" }}>@{user.email.split("@")[0]} · {displayRole(user.role)}</small>
+              </div>
+              <button className="button" style={{ color: "var(--red)" }} onClick={() => handleDisable(user.id)}>Disable</button>
+            </li>
+          ))}
+        </ul>
+      </article>
+    </section>
+  );
 }

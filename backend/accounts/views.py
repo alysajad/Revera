@@ -110,3 +110,18 @@ class SalesOfficerViewSet(RoleUserViewSet):
         if location := self.request.query_params.get("location"):
             queryset = queryset.filter(location__iexact=location.strip())
         return queryset
+
+class UserViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAdmin]
+    serializer_class = TeamMemberSerializer
+    queryset = get_user_model().objects.all().order_by("first_name", "email")
+
+    def destroy(self, request, *args, **kwargs):
+        user = self.get_object()
+        active = user.assigned_leads.all() | user.ps_leads.all()
+        if active.filter(deleted_at__isnull=True).exists():
+            return Response({"detail": "Reassign this user's active leads before deactivation."}, status=status.HTTP_400_BAD_REQUEST)
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+

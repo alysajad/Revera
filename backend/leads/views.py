@@ -9,12 +9,13 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from accounts.models import User
 from accounts.permissions import IsAdmin
 from notifications.models import Notification
-from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification
-from .serializers import CALL_OUTCOME_STATUS_OPTIONS, AssignmentSerializer, FollowUpSerializer, LeadDetailSerializer, LeadSerializer, LeadUpdateSerializer, PSAssignmentSerializer, SOLeadListSerializer, SOLeadUpdateSerializer
+from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification, SystemConfig
+from .serializers import CALL_OUTCOME_STATUS_OPTIONS, AssignmentSerializer, FollowUpSerializer, LeadDetailSerializer, LeadSerializer, LeadUpdateSerializer, PSAssignmentSerializer, SOLeadListSerializer, SOLeadUpdateSerializer, SystemConfigSerializer
 
 FORWARD_TRANSITIONS = {
     Lead.Status.FRESH: {Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED, Lead.Status.LOST},
@@ -139,7 +140,7 @@ class LeadViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(source=value.upper())
         if value := request.query_params.get("q"):
             queryset = queryset.filter(Q(name__icontains=value) | Q(phone__icontains=value) | Q(campaign__icontains=value) | Q(model_interest__icontains=value) | Q(branch__icontains=value))
-        leads = queryset.distinct().order_by("-enquiry_date", "-created_at").only("id", "status", "name", "phone", "source")
+        leads = queryset.distinct().order_by("-enquiry_date", "-created_at").only("id", "status", "name", "phone", "source", "flagged_to_manager")
         return Response({"summary": summary, "section": section, "results": SOLeadListSerializer(leads, many=True).data})
 
     @action(detail=True, methods=["patch"], url_path="so-update")
@@ -185,7 +186,7 @@ class LeadViewSet(viewsets.ModelViewSet):
             return Response({"detail": "This status transition is not allowed."}, status=status.HTTP_400_BAD_REQUEST)
         if not request.user.is_admin and request.user.role == User.Role.SALES_OFFICER and data.get("qualification"):
             return Response({"detail": "PS/SO users cannot edit CRE qualification details."}, status=status.HTTP_403_FORBIDDEN)
-        editable_fields = ("name", "phone", "email", "source", "source_label", "campaign", "model_interest", "city", "branch", "enquiry_date")
+        editable_fields = ("name", "phone", "email", "source", "source_label", "campaign", "model_interest", "city", "branch", "enquiry_date", "flagged_to_manager")
         before = {field: audit_value(getattr(lead, field)) for field in ("status", "category", "sales_outcome", *editable_fields)}
         with transaction.atomic():
             lead.status = next_status
@@ -356,3 +357,17 @@ class FollowUpViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         if not self.request.user.is_admin:
             queryset = queryset.filter(so=self.request.user)
         return queryset.order_by("scheduled_for")
+
+class SystemConfigView(APIView):
+    def get(self, request):
+        config, _ = SystemConfig.objects.get_or_create(id=1)
+        return Response(SystemConfigSerializer(config).data)
+
+    def put(self, request):
+        if not request.user.is_admin:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        config, _ = SystemConfig.objects.get_or_create(id=1)
+        serializer = SystemConfigSerializer(config, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
