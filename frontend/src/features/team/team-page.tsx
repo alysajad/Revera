@@ -4,7 +4,8 @@ import { useEffect, useState, FormEvent } from "react";
 import { getUsers, createUser, disableUser, type CurrentUser } from "@/lib/crm";
 
 export function TeamPage() {
-  const [users, setUsers] = useState<CurrentUser[]>([]);
+  const [usersRaw, setUsers] = useState<CurrentUser[]>([]);
+  const users = Array.isArray(usersRaw) ? usersRaw : ((usersRaw as any).results || []) as CurrentUser[];
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -114,10 +115,10 @@ export function TeamPage() {
 
       <article className="panel">
         <header className="panel-heading">
-          <h2>Users ({(users || []).filter(u => u.is_active).length})</h2>
+          <h2>Users ({users.filter(u => u.is_active).length})</h2>
         </header>
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "1rem" }}>
-          {(users || []).filter(u => u.is_active).map(user => (
+          {users.filter(u => u.is_active).map(user => (
             <li key={user.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "1rem", borderBottom: "1px solid var(--border)" }}>
               <div>
                 <b style={{ display: "block" }}>{user.first_name} {user.last_name}</b>
