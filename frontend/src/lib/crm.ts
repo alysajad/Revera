@@ -104,6 +104,6 @@ export type UploadBatch = { id: number; status: "PARSING" | "READY" | "COMMITTED
 export type SystemConfig = { lists: { branches?: string[]; sources?: string[]; activities?: string[]; models?: string[] }; updated_at?: string };
 export const getSystemConfig = () => api<SystemConfig>("/api/leads/system-config/");
 export const updateSystemConfig = (lists: SystemConfig["lists"]) => api<SystemConfig>("/api/leads/system-config/", { method: "PUT", body: JSON.stringify({ lists }) });
-export const getUsers = () => api<CurrentUser[]>("/api/auth/users/");
+export const getUsers = async () => { const data = await api<any>("/api/auth/users/"); return (data.results || data) as CurrentUser[]; };
 export const createUser = (payload: any) => api<CurrentUser>("/api/auth/users/", { method: "POST", body: JSON.stringify(payload) });
 export const disableUser = (userId: number) => api<void>(`/api/auth/users/${userId}/`, { method: "DELETE" });

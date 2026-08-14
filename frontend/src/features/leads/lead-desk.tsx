@@ -274,7 +274,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const poolLabel = assignmentView === "fresh" ? "Fresh lead pool" : "Qualified handoff pool";
   const heading = followUpsOnly ? "Follow-ups" : officerMode ? "My queue" : "Assignment desk";
 
-  return <section className="page" style={officerMode ? {} : { maxWidth: "600px", margin: "0 auto", paddingBottom: "4rem" }}>
+  return <section className="page">
     <div className="page-heading compact"><div><p className="eyebrow">{heading.toUpperCase()}</p><h1>{officerMode ? <>Keep the <span>promise.</span></> : <>All <span>leads.</span></>}</h1><p className="subtext">{officerMode ? "Your assigned conversations and follow-ups." : "Manage and assign all leads in the CRM."}</p></div>{!officerMode && assignmentView === "fresh" && <button className="button primary" onClick={autoAssign} disabled={!leads.length}>↻ Auto assign {leads.length} leads</button>}</div>
     {!officerMode && analytics?.summary && (
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
