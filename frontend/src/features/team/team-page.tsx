@@ -31,6 +31,7 @@ export function TeamPage() {
     let backendRole = "ADMIN";
     if (uiRole === "Marketing") backendRole = "CRE";
     if (uiRole === "Sales Manager") backendRole = "SO";
+    if (uiRole === "Receptionist") backendRole = "RECEPTIONIST";
 
     const payload = {
       first_name: formData.get("firstName"),
@@ -65,6 +66,7 @@ export function TeamPage() {
   const displayRole = (role: string) => {
     if (role === "CRE") return "Marketing";
     if (role === "SO") return "Sales Manager";
+    if (role === "RECEPTIONIST") return "Receptionist";
     return "Administrator";
   };
 
@@ -106,6 +108,7 @@ export function TeamPage() {
                 <option value="Admin">Admin</option>
                 <option value="Marketing">Marketing</option>
                 <option value="Sales Manager">Sales Manager</option>
+                <option value="Receptionist">Receptionist</option>
               </select>
             </label>
           </div>
