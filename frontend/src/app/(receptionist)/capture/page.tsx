@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { createLead, getSystemConfig, getOfficers, toOfficer, type Officer, type SystemConfig } from "@/lib/crm";
 import { formatDate } from "@/lib/dates";
 
+const RIVER_MODELS = {
+  "Indie": ["Standard", "Pro", "Custom"]
+};
+
 export default function CaptureLeadPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -34,7 +38,12 @@ export default function CaptureLeadPage() {
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData(prev => {
+      const next = { ...prev, [name]: value };
+      if (name === "model_interest") next.variant = ""; // reset variant when model changes
+      return next;
+    });
   };
 
   const handleClear = () => {
@@ -71,15 +80,11 @@ export default function CaptureLeadPage() {
         }
       };
       
-      // Force initial status to WALKIN for walk-ins, otherwise FRESH. (This is handled by backend default FRESH, but we can pass status=WALKIN)
-      // Actually backend defaults to FRESH if not provided. Let's pass status.
       const finalPayload = {
         ...payload,
         status: sourceType === "Walk-in" ? "WALKIN" : "FRESH"
       };
 
-      // Since createLead type in crm.ts doesn't explicitly list `status` in LeadInput but it accepts it if we cheat or update LeadInput.
-      // Wait, let's just pass it in.
       await createLead(finalPayload as any);
       setSuccess(true);
       setTimeout(() => {
@@ -92,114 +97,118 @@ export default function CaptureLeadPage() {
     }
   };
 
+  const availableVariants = formData.model_interest ? RIVER_MODELS[formData.model_interest as keyof typeof RIVER_MODELS] || [] : [];
+
   return (
-    <div className="page" style={{ padding: "2rem", maxWidth: "800px", margin: "0 auto" }}>
-      <div className="page-heading">
-        <div>
-          <h1>Capture New Lead</h1>
+    <div style={{ minHeight: "100vh", backgroundColor: "#F5F5DC", padding: "3rem 1rem", color: "#A0522D" }}>
+      <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+        <div style={{ marginBottom: "2rem", textAlign: "center" }}>
+          <h1 style={{ fontSize: "2.5rem", fontWeight: "bold", color: "#A0522D", marginBottom: "0.5rem" }}>Capture New Lead</h1>
+          <p style={{ color: "#E35336", fontSize: "1.1rem" }}>Register a new customer enquiry</p>
         </div>
-      </div>
-      
-      <form className="panel" style={{ padding: "2rem" }} onSubmit={submit}>
-        {error && <div className="badge red" style={{ marginBottom: "1rem", display: "block", padding: "0.5rem" }}>{error}</div>}
-        {success && <div className="badge green" style={{ marginBottom: "1rem", display: "block", padding: "0.5rem" }}>Lead successfully captured!</div>}
+        
+        <form onSubmit={submit} style={{ backgroundColor: "#ffffff", padding: "2.5rem", borderRadius: "12px", boxShadow: "0 10px 30px rgba(160, 82, 45, 0.1)", border: "1px solid #F4A460" }}>
+          {error && <div style={{ backgroundColor: "#ffeeee", color: "#E35336", padding: "1rem", borderRadius: "8px", marginBottom: "1.5rem", fontWeight: "500", border: "1px solid #E35336" }}>{error}</div>}
+          {success && <div style={{ backgroundColor: "#e6fffa", color: "#2c7a7b", padding: "1rem", borderRadius: "8px", marginBottom: "1.5rem", fontWeight: "500", border: "1px solid #319795" }}>Lead successfully captured!</div>}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "1.5rem" }}>
-          <label>
-            Customer Name *
-            <input type="text" name="name" value={formData.name} onChange={handleChange} required placeholder="Enter customer name" />
-          </label>
-          <label>
-            Mobile Number *
-            <input type="tel" name="phone" value={formData.phone} onChange={handleChange} required pattern="\d{10}" placeholder="10-digit mobile number" />
-          </label>
-        </div>
-
-        <div style={{ marginBottom: "1.5rem" }}>
-          <label>
-            Lead Creation Date & Time (Optional)
-            <input type="date" name="enquiry_date" value={formData.enquiry_date} onChange={handleChange} />
-            <small style={{ display: "block", color: "var(--text-secondary)", marginTop: "0.25rem" }}>Leave empty to use current date and time</small>
-          </label>
-        </div>
-
-        <div style={{ marginBottom: "1.5rem" }}>
-          <label>
-            Profession
-            <input type="text" name="profession" value={formData.profession} onChange={handleChange} placeholder="Enter profession (optional)" />
-          </label>
-        </div>
-
-        <div style={{ marginBottom: "1.5rem" }}>
-          <label style={{ display: "block", marginBottom: "0.5rem" }}>Source *</label>
-          <div style={{ display: "flex", gap: "1rem" }}>
-            <label style={{ flex: 1, padding: "1rem", border: `1px solid ${sourceType === "Walk-in" ? "var(--orange-500)" : "var(--border-color)"}`, borderRadius: "var(--radius)", background: sourceType === "Walk-in" ? "var(--orange-50)" : "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <input type="radio" checked={sourceType === "Walk-in"} onChange={() => setSourceType("Walk-in")} style={{ margin: 0 }} />
-              Walk-in
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem", marginBottom: "2rem" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", fontWeight: "600", color: "#A0522D" }}>
+              Customer Full Name *
+              <input type="text" name="name" value={formData.name} onChange={handleChange} required placeholder="Enter customer name" style={{ padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC" }} />
             </label>
-            <label style={{ flex: 1, padding: "1rem", border: `1px solid ${sourceType === "Digital" ? "var(--orange-500)" : "var(--border-color)"}`, borderRadius: "var(--radius)", background: sourceType === "Digital" ? "var(--orange-50)" : "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <input type="radio" checked={sourceType === "Digital"} onChange={() => setSourceType("Digital")} style={{ margin: 0 }} />
-              Digital
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", fontWeight: "600", color: "#A0522D" }}>
+              Mobile Number *
+              <input type="tel" name="phone" value={formData.phone} onChange={handleChange} required pattern="\d{10}" placeholder="10-digit mobile number" style={{ padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC" }} />
             </label>
           </div>
-          {sourceType === "Digital" && (
-            <div style={{ marginTop: "1rem" }}>
-              <select value={digitalSource} onChange={e => setDigitalSource(e.target.value)} required>
-                {config?.lists?.sources?.filter(s => s !== "WALKIN").map(s => (
-                  <option key={s} value={s}>{s}</option>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem", marginBottom: "2rem" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", fontWeight: "600", color: "#A0522D" }}>
+              Lead Creation Date & Time (Optional)
+              <input type="date" name="enquiry_date" value={formData.enquiry_date} onChange={handleChange} style={{ padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC" }} />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", fontWeight: "600", color: "#A0522D" }}>
+              Profession
+              <input type="text" name="profession" value={formData.profession} onChange={handleChange} placeholder="Enter profession (optional)" style={{ padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC" }} />
+            </label>
+          </div>
+
+          <div style={{ marginBottom: "2rem" }}>
+            <label style={{ display: "block", marginBottom: "0.75rem", fontWeight: "600", color: "#A0522D" }}>Source *</label>
+            <div style={{ display: "flex", gap: "1.5rem" }}>
+              <label style={{ flex: 1, padding: "1rem", border: `2px solid ${sourceType === "Walk-in" ? "#E35336" : "#F4A460"}`, borderRadius: "8px", background: sourceType === "Walk-in" ? "#F5F5DC" : "#ffffff", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.75rem", fontWeight: "600", color: "#A0522D", transition: "all 0.2s" }}>
+                <input type="radio" checked={sourceType === "Walk-in"} onChange={() => setSourceType("Walk-in")} style={{ width: "1.2rem", height: "1.2rem", accentColor: "#E35336" }} />
+                Walk-in
+              </label>
+              <label style={{ flex: 1, padding: "1rem", border: `2px solid ${sourceType === "Digital" ? "#E35336" : "#F4A460"}`, borderRadius: "8px", background: sourceType === "Digital" ? "#F5F5DC" : "#ffffff", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.75rem", fontWeight: "600", color: "#A0522D", transition: "all 0.2s" }}>
+                <input type="radio" checked={sourceType === "Digital"} onChange={() => setSourceType("Digital")} style={{ width: "1.2rem", height: "1.2rem", accentColor: "#E35336" }} />
+                Digital
+              </label>
+            </div>
+            {sourceType === "Digital" && (
+              <div style={{ marginTop: "1rem" }}>
+                <select value={digitalSource} onChange={e => setDigitalSource(e.target.value)} required style={{ width: "100%", padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC", color: "#A0522D", fontWeight: "500" }}>
+                  {config?.lists?.sources?.filter(s => s !== "WALKIN").map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem", marginBottom: "2rem" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", fontWeight: "600", color: "#A0522D" }}>
+              River Model Interested *
+              <select name="model_interest" value={formData.model_interest} onChange={handleChange} required style={{ padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC", color: "#A0522D" }}>
+                <option value="">Select model</option>
+                {Object.keys(RIVER_MODELS).map(m => (
+                  <option key={m} value={m}>{m}</option>
                 ))}
               </select>
-            </div>
-          )}
-        </div>
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", fontWeight: "600", color: "#A0522D" }}>
+              Variant *
+              <select name="variant" value={formData.variant} onChange={handleChange} required disabled={!formData.model_interest} style={{ padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: !formData.model_interest ? "#f0f0f0" : "#F5F5DC", color: "#A0522D" }}>
+                <option value="">Select variant</option>
+                {availableVariants.map(v => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </label>
+          </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "1.5rem" }}>
-          <label>
-            Model Interested *
-            <select name="model_interest" value={formData.model_interest} onChange={handleChange} required>
-              <option value="">Select model</option>
-              {config?.lists?.models?.map(m => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Variant *
-            <input type="text" name="variant" value={formData.variant} onChange={handleChange} required placeholder="Select variant" />
-          </label>
-        </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem", marginBottom: "2rem" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", fontWeight: "600", color: "#A0522D" }}>
+              Purchase Timeline *
+              <select name="buying_timeline" value={formData.buying_timeline} onChange={handleChange} required style={{ padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC", color: "#A0522D" }}>
+                <option value="">Select timeline</option>
+                <option value="Immediate">Immediate (0-15 days)</option>
+                <option value="Short Term">Short Term (1-2 months)</option>
+                <option value="Long Term">Long Term (2+ months)</option>
+              </select>
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", fontWeight: "600", color: "#A0522D" }}>
+              Assign to Sales Executive (PS) *
+              <select name="assigned_ps_id" value={formData.assigned_ps_id} onChange={handleChange} required style={{ padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC", color: "#A0522D" }}>
+                <option value="">Select Executive</option>
+                {officers.map(o => (
+                  <option key={o.id} value={o.id}>{o.name} ({o.location})</option>
+                ))}
+              </select>
+            </label>
+          </div>
 
-        <div style={{ marginBottom: "1.5rem" }}>
-          <label>
-            Purchase Timeline *
-            <select name="buying_timeline" value={formData.buying_timeline} onChange={handleChange} required>
-              <option value="">Select timeline</option>
-              <option value="Immediate">Immediate (0-15 days)</option>
-              <option value="Short Term">Short Term (1-2 months)</option>
-              <option value="Long Term">Long Term (2+ months)</option>
-            </select>
-          </label>
-        </div>
-
-        <div style={{ marginBottom: "2rem" }}>
-          <label>
-            Assign to PS *
-            <select name="assigned_ps_id" value={formData.assigned_ps_id} onChange={handleChange} required>
-              <option value="">Select PS</option>
-              {officers.map(o => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "1rem" }}>
-          <button type="button" className="button" onClick={handleClear} disabled={loading}>Clear</button>
-          <button type="submit" className="button primary" disabled={loading} style={{ background: "var(--green-500)", borderColor: "var(--green-500)", color: "white" }}>
-            {loading ? "Submitting..." : "Submit Lead"}
-          </button>
-        </div>
-      </form>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "1.5rem", marginTop: "3rem", borderTop: "1px solid #F5F5DC", paddingTop: "2rem" }}>
+            <button type="button" onClick={handleClear} disabled={loading} style={{ padding: "0.75rem 2rem", borderRadius: "8px", border: "2px solid #F4A460", backgroundColor: "transparent", color: "#A0522D", fontWeight: "bold", fontSize: "1rem", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => (e.currentTarget.style.backgroundColor = "#F5F5DC")} onMouseOut={e => (e.currentTarget.style.backgroundColor = "transparent")}>
+              Clear Form
+            </button>
+            <button type="submit" disabled={loading} style={{ padding: "0.75rem 2rem", borderRadius: "8px", border: "none", backgroundColor: "#E35336", color: "#ffffff", fontWeight: "bold", fontSize: "1.1rem", cursor: "pointer", transition: "all 0.2s", boxShadow: "0 4px 12px rgba(227, 83, 54, 0.3)" }} onMouseOver={e => (e.currentTarget.style.backgroundColor = "#c6452b")} onMouseOut={e => (e.currentTarget.style.backgroundColor = "#E35336")}>
+              {loading ? "Submitting..." : "Submit Lead"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
+
