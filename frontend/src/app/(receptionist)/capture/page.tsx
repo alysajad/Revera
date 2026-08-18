@@ -2,7 +2,7 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { createLead, getSystemConfig, getOfficers, type Officer, type SystemConfig } from "@/lib/crm";
+import { createLead, getSystemConfig, getOfficers, toOfficer, type Officer, type SystemConfig } from "@/lib/crm";
 import { formatDate } from "@/lib/dates";
 
 export default function CaptureLeadPage() {
@@ -30,7 +30,7 @@ export default function CaptureLeadPage() {
 
   useEffect(() => {
     getSystemConfig().then(setConfig).catch(console.error);
-    getOfficers().then(setOfficers).catch(console.error);
+    getOfficers().then(apiOfficers => setOfficers(apiOfficers.map(o => toOfficer(o)))).catch(console.error);
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
