@@ -2,7 +2,7 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { createLead, getSystemConfig, getOfficers, toOfficer, type Officer, type SystemConfig } from "@/lib/crm";
+import { createLead, getSystemConfig, getOfficers, toOfficer, sourceName, type Officer, type SystemConfig } from "@/lib/crm";
 import { formatDate } from "@/lib/dates";
 
 const RIVER_MODELS = {
@@ -125,7 +125,7 @@ export default function CaptureLeadPage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem", marginBottom: "2rem" }}>
             <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", fontWeight: "600", color: "#A0522D" }}>
               Lead Creation Date & Time (Optional)
-              <input type="date" name="enquiry_date" value={formData.enquiry_date} onChange={handleChange} style={{ padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC" }} />
+              <input type="date" name="enquiry_date" value={formData.enquiry_date} min={new Date().toISOString().split("T")[0]} onChange={handleChange} style={{ padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC" }} />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", fontWeight: "600", color: "#A0522D" }}>
               Profession
@@ -148,8 +148,8 @@ export default function CaptureLeadPage() {
             {sourceType === "Digital" && (
               <div style={{ marginTop: "1rem" }}>
                 <select value={digitalSource} onChange={e => setDigitalSource(e.target.value)} required style={{ width: "100%", padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC", color: "#A0522D", fontWeight: "500" }}>
-                  {config?.lists?.sources?.filter(s => s !== "WALKIN").map(s => (
-                    <option key={s} value={s}>{s}</option>
+                  {(config?.lists?.sources?.length ? config.lists.sources.filter(s => s !== "WALKIN") : ["META", "WEBSITE", "CARWALE", "CAMPAIGN", "OTHER"]).map(s => (
+                    <option key={s} value={s}>{sourceName(s)}</option>
                   ))}
                 </select>
               </div>
