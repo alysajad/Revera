@@ -99,8 +99,8 @@ export function TeamPage() {
             </label>
           </div>
           <div className="form-grid" style={{ marginTop: "13px" }}>
-            <label>Password (min 6 characters)
-              <input type="password" name="password" required minLength={6} />
+            <label>Password (min 12 characters)
+              <input type="password" name="password" required minLength={12} />
             </label>
             <label>Role *
               <select name="role" required>
