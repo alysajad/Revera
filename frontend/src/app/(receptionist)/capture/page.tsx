@@ -24,6 +24,7 @@ export default function CaptureLeadPage() {
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
+    email: "",
     enquiry_date: "",
     profession: "",
     model_interest: "",
@@ -48,7 +49,7 @@ export default function CaptureLeadPage() {
 
   const handleClear = () => {
     setFormData({
-      name: "", phone: "", enquiry_date: "", profession: "",
+      name: "", phone: "", email: "", enquiry_date: "", profession: "",
       model_interest: "", variant: "", buying_timeline: "", assigned_ps_id: ""
     });
     setSourceType("Walk-in");
@@ -66,6 +67,7 @@ export default function CaptureLeadPage() {
       const payload = {
         name: formData.name,
         phone: formData.phone,
+        email: formData.email || undefined,
         enquiry_date: formData.enquiry_date || undefined,
         profession: formData.profession,
         source: sourceType === "Walk-in" ? "WALKIN" : digitalSource,
@@ -118,19 +120,26 @@ export default function CaptureLeadPage() {
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", fontWeight: "600", color: "#A0522D" }}>
               Mobile Number *
-              <input type="tel" name="phone" value={formData.phone} onChange={handleChange} required pattern="\d{10}" placeholder="10-digit mobile number" style={{ padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC" }} />
+              <input type="tel" name="phone" value={formData.phone} onChange={handleChange} onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/\D/g, '').slice(0, 10); handleChange(e as any); }} required pattern="\d{10}" minLength={10} maxLength={10} placeholder="10-digit mobile number" style={{ padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC" }} />
             </label>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem", marginBottom: "2rem" }}>
             <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", fontWeight: "600", color: "#A0522D" }}>
-              Lead Creation Date & Time (Optional)
-              <input type="date" name="enquiry_date" value={formData.enquiry_date} min={new Date().toISOString().split("T")[0]} onChange={handleChange} style={{ padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC" }} />
+              Email Address (Optional)
+              <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="customer@example.com" style={{ padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC" }} />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", fontWeight: "600", color: "#A0522D" }}>
               Profession
               <input type="text" name="profession" value={formData.profession} onChange={handleChange} placeholder="Enter profession (optional)" style={{ padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC" }} />
             </label>
+          </div>
+
+          <div style={{ marginBottom: "2rem" }}>
+            <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "600", color: "#A0522D" }}>
+              Lead Creation Date & Time (Optional)
+            </label>
+            <input type="date" name="enquiry_date" value={formData.enquiry_date} min={new Date().toISOString().split("T")[0]} onChange={handleChange} style={{ width: "100%", padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC" }} />
           </div>
 
           <div style={{ marginBottom: "2rem" }}>
