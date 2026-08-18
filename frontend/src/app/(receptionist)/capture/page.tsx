@@ -25,7 +25,6 @@ export default function CaptureLeadPage() {
     name: "",
     phone: "",
     email: "",
-    enquiry_date: "",
     profession: "",
     model_interest: "",
     variant: "",
@@ -49,7 +48,7 @@ export default function CaptureLeadPage() {
 
   const handleClear = () => {
     setFormData({
-      name: "", phone: "", email: "", enquiry_date: "", profession: "",
+      name: "", phone: "", email: "", profession: "",
       model_interest: "", variant: "", buying_timeline: "", assigned_ps_id: ""
     });
     setSourceType("Walk-in");
@@ -68,7 +67,6 @@ export default function CaptureLeadPage() {
         name: formData.name,
         phone: formData.phone,
         email: formData.email || undefined,
-        enquiry_date: formData.enquiry_date || undefined,
         profession: formData.profession,
         source: sourceType === "Walk-in" ? "WALKIN" : digitalSource,
         model_interest: formData.model_interest,
@@ -135,12 +133,6 @@ export default function CaptureLeadPage() {
             </label>
           </div>
 
-          <div style={{ marginBottom: "2rem" }}>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "600", color: "#A0522D" }}>
-              Lead Creation Date & Time (Optional)
-            </label>
-            <input type="date" name="enquiry_date" value={formData.enquiry_date} min={new Date().toISOString().split("T")[0]} onChange={handleChange} style={{ width: "100%", padding: "0.75rem", borderRadius: "8px", border: "1px solid #F4A460", outline: "none", fontSize: "1rem", backgroundColor: "#F5F5DC" }} />
-          </div>
 
           <div style={{ marginBottom: "2rem" }}>
             <label style={{ display: "block", marginBottom: "0.75rem", fontWeight: "600", color: "#A0522D" }}>Source *</label>
