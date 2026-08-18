@@ -1,4 +1,4 @@
-# Revera CRM API
+# River CRM API
 
 Run locally:
 

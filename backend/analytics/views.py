@@ -81,7 +81,7 @@ class MyAnalyticsExportView(APIView):
         owner_filter = {"assigned_so": request.user} if request.user.role == User.Role.CRE else {"assigned_ps": request.user}
         queryset = Lead.objects.filter(deleted_at__isnull=True, **owner_filter).order_by("-enquiry_date")
         response = HttpResponse(content_type="text/csv")
-        response["Content-Disposition"] = 'attachment; filename="revera-my-analytics.csv"'
+        response["Content-Disposition"] = 'attachment; filename="river-my-analytics.csv"'
         writer = csv.writer(response)
         writer.writerow(["Lead", "Phone", "Source", "Model", "Status", "Sales outcome", "Enquiry date", "Branch"])
         writer.writerows(queryset.values_list("name", "phone", "source", "model_interest", "status", "sales_outcome", "enquiry_date", "branch"))

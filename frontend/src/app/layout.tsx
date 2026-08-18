@@ -8,8 +8,8 @@ import "./call-outcome.css";
 import "./responsive.css";
 
 export const metadata: Metadata = {
-  title: "Revera Lead Control",
-  description: "Operations CRM for Revera Scooter",
+  title: "River Lead Control",
+  description: "Operations CRM for River Scooter",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

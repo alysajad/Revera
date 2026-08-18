@@ -13,7 +13,7 @@ class CookieJWTAuthentication(JWTAuthentication):
 
     def authenticate(self, request):
         header = self.get_header(request)
-        raw_token = self.get_raw_token(header) if header else request.COOKIES.get("revera_access")
+        raw_token = self.get_raw_token(header) if header else request.COOKIES.get("river_access")
         if raw_token is None:
             return None
         validated_token = self.get_validated_token(raw_token)

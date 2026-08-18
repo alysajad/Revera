@@ -12,8 +12,8 @@ from .serializers import TeamMemberSerializer, UserSerializer, LoginSerializer
 
 def set_auth_cookies(response, refresh):
     cookie_settings = {"httponly": True, "secure": not settings.DEBUG, "samesite": "Lax" if settings.DEBUG else "None"}
-    response.set_cookie("revera_access", str(refresh.access_token), max_age=900, **cookie_settings)
-    response.set_cookie("revera_refresh", str(refresh), max_age=604800, **cookie_settings)
+    response.set_cookie("river_access", str(refresh.access_token), max_age=900, **cookie_settings)
+    response.set_cookie("river_refresh", str(refresh), max_age=604800, **cookie_settings)
 
 
 class LoginView(APIView):
@@ -34,7 +34,7 @@ class RefreshView(APIView):
     authentication_classes = []
 
     def post(self, request):
-        token = request.COOKIES.get("revera_refresh")
+        token = request.COOKIES.get("river_refresh")
         if not token:
             return Response({"detail": "Refresh token missing."}, status=status.HTTP_401_UNAUTHORIZED)
         try:
@@ -52,8 +52,8 @@ class RefreshView(APIView):
 class LogoutView(APIView):
     def post(self, request):
         response = Response(status=status.HTTP_204_NO_CONTENT)
-        response.delete_cookie("revera_access")
-        response.delete_cookie("revera_refresh")
+        response.delete_cookie("river_access")
+        response.delete_cookie("river_refresh")
         return response
 
 
