@@ -14,7 +14,7 @@ export type Lead = {
   branch: string; campaign: string; category: string; salesOutcome: string; nextFollowUp: string | null; callCount: number; statusCode: string; status: string; assignedSoId: number | null; assignedSoName: string; assignedPsId: number | null; assignedPsName: string;
 };
 export type SalesLead = { id: number; status: string; statusCode: string; name: string; phone: string; source: string; sourceCode: string; flagged_to_manager: boolean };
-export type LeadInput = { name: string; phone: string; email?: string; source: string; source_label?: string; campaign?: string; model_interest?: string; city?: string; enquiry_date?: string };
+export type LeadInput = { name: string; phone: string; email?: string; source: string; source_label?: string; campaign?: string; model_interest?: string; city?: string; enquiry_date?: string; profession?: string; assigned_ps_id?: number; qualification?: LeadQualification };
 export type LeadFilters = { source?: string; model?: string; city?: string; source_label?: string; date_from?: string; date_to?: string };
 export type LeadQualification = { variant: string; buying_timeline: string; finance_type: string; trade_in: boolean | null; test_drive: string; notes: string; updated_at?: string };
 export type CallHistory = { id: number; status: string; outcome: string; remarks: string; so_name: string; created_at: string; other_so_called?: string; call_status?: string };
@@ -25,7 +25,7 @@ export type PersonalAnalytics = { range: string; summary: { total: number; assig
 export type Officer = { id: number; name: string; initials: string; color: "blue" | "green" | "violet" | "orange"; location: string; assigned: number; calls: number; qualified: number; won: number };
 export type Metrics = { total_assigned: number; total_called: number; calls_today?: number; qualified: number; walkins: number; won: number; lost: number; conversion_rate: number };
 export type Analytics = { summary: Metrics; source: { source: string; total: number; qualified: number; won: number }[]; cre: (Metrics & { id: number; name: string })[]; officers: (Metrics & { id: number; name: string })[] };
-export type CurrentUser = { id: number; first_name: string; last_name: string; email: string; role: "ADMIN" | "CRE" | "SO"; is_active?: boolean };
+export type CurrentUser = { id: number; first_name: string; last_name: string; email: string; role: "ADMIN" | "CRE" | "SO" | "RECEPTIONIST"; is_active?: boolean };
 
 let csrfToken = "";
 
@@ -107,3 +107,6 @@ export const updateSystemConfig = (lists: SystemConfig["lists"]) => api<SystemCo
 export const getUsers = async () => { const data = await api<any>("/api/auth/users/"); return (data.results || data) as CurrentUser[]; };
 export const createUser = (payload: any) => api<CurrentUser>("/api/auth/users/", { method: "POST", body: JSON.stringify(payload) });
 export const disableUser = (userId: number) => api<void>(`/api/auth/users/${userId}/`, { method: "DELETE" });
+
+export type ReceptionistAnalytics = { summary: { total: number; walkin: number; digital: number }; so_breakdown: { name: string; count: number }[] };
+export const getReceptionistAnalytics = () => api<ReceptionistAnalytics>("/api/analytics/receptionist/");

@@ -20,6 +20,7 @@ class LeadSerializer(serializers.ModelSerializer):
     next_follow_up = serializers.SerializerMethodField()
     call_count = serializers.SerializerMethodField()
     qualification = serializers.SerializerMethodField()
+    qualification_input = QualificationSerializer(required=False, write_only=True)
 
     def get_next_follow_up(self, obj):
         follow_ups = getattr(obj, "_open_followups", None)
@@ -39,10 +40,19 @@ class LeadSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Enquiry date cannot be in the future.")
         return value
 
+    ps_officer_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True), source="assigned_ps", required=False, write_only=True)
+
     class Meta:
         model = Lead
-        fields = ["id", "uid", "name", "phone", "email", "source", "source_label", "campaign", "model_interest", "city", "branch", "enquiry_date", "status", "category", "sales_outcome", "assigned_so", "assigned_so_name", "assigned_ps", "assigned_ps_name", "next_follow_up", "call_count", "qualification", "flagged_to_manager", "created_at", "updated_at"]
+        fields = ["id", "uid", "name", "phone", "email", "source", "source_label", "campaign", "model_interest", "city", "branch", "enquiry_date", "status", "category", "sales_outcome", "assigned_so", "assigned_so_name", "assigned_ps", "assigned_ps_name", "ps_officer_id", "next_follow_up", "call_count", "qualification", "qualification_input", "flagged_to_manager", "profession", "created_at", "updated_at"]
         read_only_fields = ["uid", "assigned_so", "assigned_ps", "created_at", "updated_at"]
+
+    def create(self, validated_data):
+        qualification_data = validated_data.pop("qualification_input", None)
+        lead = super().create(validated_data)
+        if qualification_data:
+            LeadQualification.objects.create(lead=lead, **qualification_data)
+        return lead
 
 
 class SOLeadListSerializer(serializers.ModelSerializer):

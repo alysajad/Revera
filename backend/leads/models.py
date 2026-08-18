@@ -46,6 +46,7 @@ class Lead(models.Model):
     campaign = models.CharField(max_length=160, blank=True)
     model_interest = models.CharField(max_length=100, blank=True)
     city = models.CharField(max_length=100, blank=True)
+    profession = models.CharField(max_length=100, blank=True)
     branch = models.CharField(max_length=120, blank=True)
     enquiry_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.FRESH, db_index=True)

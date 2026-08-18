@@ -86,3 +86,34 @@ class MyAnalyticsExportView(APIView):
         writer.writerow(["Lead", "Phone", "Source", "Model", "Status", "Sales outcome", "Enquiry date", "Branch"])
         writer.writerows(queryset.values_list("name", "phone", "source", "model_interest", "status", "sales_outcome", "enquiry_date", "branch"))
         return response
+
+
+class ReceptionistAnalyticsView(APIView):
+    def get(self, request):
+        if getattr(request.user, "role", None) != "RECEPTIONIST":
+            return Response(status=403)
+        today = timezone.localdate()
+        # Find leads created by this receptionist today
+        created_lead_ids = LeadAudit.objects.filter(actor=request.user, event="created", created_at__date=today).values_list("lead_id", flat=True)
+        queryset = Lead.objects.filter(id__in=created_lead_ids, deleted_at__isnull=True)
+        total = queryset.count()
+        walkins = queryset.filter(source=Lead.Source.WALKIN).count()
+        digital = total - walkins
+        # Breakdown by SO assignment
+        so_breakdown = list(queryset.values("assigned_ps__first_name", "assigned_ps__last_name", "assigned_ps__email").annotate(count=Count("id")).order_by("-count"))
+        formatted_so_breakdown = [
+            {
+                "name": f"{so['assigned_ps__first_name'] or ''} {so['assigned_ps__last_name'] or ''}".strip() or so["assigned_ps__email"] or "Unassigned",
+                "count": so["count"]
+            }
+            for so in so_breakdown
+        ]
+        return Response({
+            "summary": {
+                "total": total,
+                "walkin": walkins,
+                "digital": digital
+            },
+            "so_breakdown": formatted_so_breakdown,
+            "generated_at": timezone.now()
+        })
