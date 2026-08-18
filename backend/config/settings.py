@@ -43,8 +43,7 @@ SPECTACULAR_SETTINGS = {"TITLE": "River CRM API", "VERSION": "1.0.0", "SERVE_INC
 
 CORS_ALLOWED_ORIGINS = [value for value in os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",") if value] + ["https://frontend-alysajads-projects.vercel.app"]
 CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://frontend-[a-z0-9-]+\.vercel\.app$",
-    r"^https://frontend(?:-[a-z0-9-]+)?-alysajads-projects\.vercel\.app$",
+    r"^https://.*\.vercel\.app$",
 ]
 CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = [value for value in os.environ.get("CSRF_TRUSTED_ORIGINS", "http://localhost:3000").split(",") if value] + ["https://frontend-alysajads-projects.vercel.app", "https://*.vercel.app"]
