@@ -12,6 +12,11 @@ CALL_OUTCOME_STATUS_OPTIONS = {
     "SWITCHED_OFF": {Lead.Status.SWITCHED_OFF},
     "CALLBACK": {Lead.Status.CALLBACK},
 }
+class QualificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LeadQualification
+        fields = ["variant", "buying_timeline", "finance_type", "trade_in", "test_drive", "notes", "updated_at"]
+        read_only_fields = ["updated_at"]
 
 
 class LeadSerializer(serializers.ModelSerializer):
@@ -59,13 +64,6 @@ class SOLeadListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lead
         fields = ["id", "status", "name", "phone", "source", "flagged_to_manager"]
-
-
-class QualificationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = LeadQualification
-        fields = ["variant", "buying_timeline", "finance_type", "trade_in", "test_drive", "notes", "updated_at"]
-        read_only_fields = ["updated_at"]
 
 
 class LeadDetailSerializer(LeadSerializer):
