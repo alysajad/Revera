@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentUser, getLeadDetail, getMyDashboard, getOfficers, toOfficer, updateMyLead, type CurrentUser, type LeadDetail, type LeadQualification, type Officer, type SalesDashboard, type SalesLead } from "@/lib/crm";
 
-type Section = "fresh" | "followups" | "pending" | "qualified" | "walkin" | "won_lost";
+type Section = "fresh" | "followups" | "pending" | "qualified" | "walkin" | "won_lost" | "active";
 type FreshSubfilter = "untouched" | "called" | "scheduled";
 type Draft = {
   status: string; category: string; sales_outcome: string; call_outcome: string; call_status: string; other_so_called: string; remarks: string; follow_up_at: string;
@@ -146,7 +146,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   useEffect(() => {
     void getCurrentUser().then(result => {
       setUser(result.user);
-      if (result.user.role === "SO" && !followUpsOnly) setSection("qualified");
+      if (result.user.role === "SO" && !followUpsOnly) setSection("active");
     }).catch(() => setUser(null)).finally(() => setAuthChecked(true));
   }, [followUpsOnly]);
 

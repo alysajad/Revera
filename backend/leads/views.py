@@ -135,6 +135,7 @@ class LeadViewSet(viewsets.ModelViewSet):
             "qualified": Q(status=Lead.Status.QUALIFIED),
             "walkin": Q(status=Lead.Status.WALKIN),
             "won_lost": Q(status__in=[Lead.Status.WON, Lead.Status.LOST, Lead.Status.UNQUALIFIED]),
+            "active": ~Q(status__in=[Lead.Status.WON, Lead.Status.LOST, Lead.Status.UNQUALIFIED]),
         }
         if section == "fresh" and fresh_subfilter in fresh_filters:
             queryset = queryset.filter(fresh_filters[fresh_subfilter])
