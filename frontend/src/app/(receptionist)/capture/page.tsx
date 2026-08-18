@@ -70,7 +70,7 @@ export default function CaptureLeadPage() {
         profession: formData.profession,
         source: sourceType === "Walk-in" ? "WALKIN" : digitalSource,
         model_interest: formData.model_interest,
-        assigned_ps_id: formData.assigned_ps_id ? parseInt(formData.assigned_ps_id) : undefined,
+        ps_officer_id: formData.assigned_ps_id ? parseInt(formData.assigned_ps_id) : undefined,
         qualification_input: {
           variant: formData.variant,
           buying_timeline: formData.buying_timeline,
