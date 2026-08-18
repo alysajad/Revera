@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 
 from accounts.models import User
 from accounts.permissions import IsAdmin
-from leads.models import Lead
+from leads.models import Lead, LeadAudit
 
 
 def metrics(queryset):
