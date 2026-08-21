@@ -158,7 +158,12 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
       setUser(result.user);
       if (result.user.role === "SO" && !followUpsOnly) setSection("active");
     }).catch(() => setUser(null)).finally(() => setAuthChecked(true));
-    void getSystemConfig().then(config => setBranches(config.lists?.branches || []));
+    void getSystemConfig()
+      .then(config => setBranches(config.lists?.branches?.length ? config.lists.branches : locationOptions))
+      .catch(error => {
+        console.warn("Failed to fetch system config, falling back to default branches", error);
+        setBranches(locationOptions);
+      });
   }, [followUpsOnly]);
 
   useEffect(() => {
