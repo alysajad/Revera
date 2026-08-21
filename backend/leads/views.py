@@ -23,8 +23,8 @@ FORWARD_TRANSITIONS = {
     Lead.Status.SWITCHED_OFF: {Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED, Lead.Status.LOST},
     Lead.Status.CALLBACK: {Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.PENDING, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED, Lead.Status.WALKIN, Lead.Status.LOST},
     Lead.Status.PENDING: {Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED, Lead.Status.WALKIN, Lead.Status.LOST},
-    Lead.Status.QUALIFIED: {Lead.Status.WALKIN, Lead.Status.WON, Lead.Status.LOST},
-    Lead.Status.WALKIN: {Lead.Status.WON, Lead.Status.LOST},
+    Lead.Status.QUALIFIED: {Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.QUALIFIED, Lead.Status.WALKIN, Lead.Status.WON, Lead.Status.LOST},
+    Lead.Status.WALKIN: {Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.QUALIFIED, Lead.Status.WALKIN, Lead.Status.WON, Lead.Status.LOST},
 }
 
 
