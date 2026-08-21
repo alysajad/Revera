@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createLead, getCurrentUser, getLeadDetail, getMyDashboard, getOfficers, toOfficer, updateMyLead, type CurrentUser, type LeadDetail, type LeadInput, type LeadQualification, type Officer, type SalesDashboard, type SalesLead, getSystemConfig } from "@/lib/crm";
-import { formatDate, formatDateTime, parseDate } from "@/lib/dates";
+import { formatDate, formatDateTime, parseDate, toApiDate } from "@/lib/dates";
 
 type Section = "fresh" | "followups" | "pending" | "qualified" | "walkin" | "won_lost" | "active";
 type FreshSubfilter = "untouched" | "called" | "scheduled";
@@ -76,21 +76,26 @@ function formatFollowUp(value: string | null) {
   return formatDateTime(value) || "Invalid date";
 }
 
+const localDateValue = (date: Date) => {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
 const minimumFollowUpDay = () => {
   const date = new Date();
   date.setDate(date.getDate() + 1);
-  return formatDate(date);
+  return localDateValue(date);
 };
 
 const maximumFollowUpDay = () => {
   const date = new Date();
   date.setDate(date.getDate() + 3);
-  return formatDate(date);
+  return localDateValue(date);
 };
 
 const followUpIso = (value: string) => {
-  const date = parseDate(value);
-  return date ? new Date(`${date}T09:00:00`).toISOString() : null;
+  const date = toApiDate(value);
+  return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T09:00:00`).toISOString() : null;
 };
 
 function progressState(callCount: number, index: number) {
@@ -223,9 +228,11 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
       if (["PENDING", "WALKIN", "CALLBACK"].includes(nextStatus)) {
         if (!draft.follow_up_at) return setNotice("Choose a follow-up date for this outcome.");
         followUpAt = followUpIso(draft.follow_up_at);
-        if (!followUpAt) return setNotice("Enter the follow-up date as DD/MM/YYYY.");
-        const maxDay = parseDate(maximumFollowUpDay());
-        const chosenDay = parseDate(draft.follow_up_at);
+        if (!followUpAt) return setNotice("Choose a valid follow-up date.");
+        const minDay = minimumFollowUpDay();
+        const maxDay = maximumFollowUpDay();
+        const chosenDay = toApiDate(draft.follow_up_at);
+        if (chosenDay && chosenDay < minDay) return setNotice("Choose a future follow-up date.");
         if (maxDay && chosenDay && chosenDay > maxDay) return setNotice("Choose a follow-up date within the next 3 days.");
         if (new Date(followUpAt).getTime() <= Date.now()) return setNotice("Choose a future follow-up date.");
       }
@@ -237,7 +244,9 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
       if (draft.call_outcome === "PENDING" && (!draft.pending_reason || !draft.remarks.trim() || !draft.follow_up_at)) return setNotice("Choose a pending reason, add remarks, and set follow-up date.");
       if (draft.call_outcome === "BOOKED" && (!draft.remarks.trim() || !draft.follow_up_at)) return setNotice("Add remarks and set the booked follow-up date.");
       followUpAt = ["PENDING", "BOOKED"].includes(draft.call_outcome) ? followUpIso(draft.follow_up_at) : null;
-      if (["PENDING", "BOOKED"].includes(draft.call_outcome) && !followUpAt) return setNotice("Enter the follow-up date as DD/MM/YYYY.");
+      if (["PENDING", "BOOKED"].includes(draft.call_outcome) && !followUpAt) return setNotice("Choose a valid follow-up date.");
+      const chosenDay = toApiDate(draft.follow_up_at);
+      if (["PENDING", "BOOKED"].includes(draft.call_outcome) && chosenDay && chosenDay > maximumFollowUpDay()) return setNotice("Choose a follow-up date within the next 3 days.");
       if (["PENDING", "BOOKED"].includes(draft.call_outcome) && followUpAt && new Date(followUpAt).getTime() <= Date.now()) return setNotice("Choose a future follow-up date.");
       remarks = draft.call_outcome === "LOST" ? `Lost reason: ${draft.lost_reason}\n${draft.remarks}` : draft.call_outcome === "PENDING" ? `Pending reason: ${draft.pending_reason}\n${draft.remarks}` : draft.qualification.notes;
     }
@@ -394,7 +403,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
                {draft.call_outcome && ["PENDING", "WALKIN", "CALLBACK"].includes(statusOptions[draft.call_outcome]?.[0] || "") && (
                  <div style={{ marginTop: "1.5rem" }}>
                    <h4 style={{ fontSize: "0.85rem", color: "var(--text-light)", marginBottom: "0.5rem" }}>Follow Up Date *</h4>
-                   <input type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" placeholder="DD/MM/YYYY" value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} style={{ width: "100%", padding: "0.75rem", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--field-bg)", fontSize: "1rem" }} />
+                   <input type="date" min={minimumFollowUpDay()} max={maximumFollowUpDay()} value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} style={{ width: "100%", padding: "0.75rem", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--field-bg)", fontSize: "1rem" }} />
                  </div>
                )}
 
@@ -425,11 +434,11 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
 
         {!readOnlyHandoff && draft.call_outcome === "PENDING" && <section className="sales-outcome-grid">
           <article className="sales-branch-card sales-single-branch"><h3>Pending Reason</h3><label>Pending Status</label><ChoiceRow options={pendingReasons} value={draft.pending_reason} onChange={value => choose("pending_reason", value)} /><label>Remark for Pending Reason *<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Enter detailed remark for this pending reason..." /></label></article>
-          <article className="sales-branch-card sales-single-branch"><h3>Follow Up Details</h3><label>Follow Up Date *<input type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" placeholder="DD/MM/YYYY" value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} /></label><small>Lead will be moved to the correct follow-up section after update.</small></article>
+          <article className="sales-branch-card sales-single-branch"><h3>Follow Up Details</h3><label>Follow Up Date *<input type="date" min={minimumFollowUpDay()} max={maximumFollowUpDay()} value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} /></label><small>Lead will be moved to the correct follow-up section after update.</small></article>
         </section>}
 
         {!readOnlyHandoff && draft.call_outcome === "BOOKED" && <section className="sales-outcome-grid">
-          <article className="sales-branch-card sales-single-branch"><h3>Booked Follow-up</h3><label>Follow Up Date *<input type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" placeholder="DD/MM/YYYY" value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} /></label><label>Remarks *<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Add PS/SO follow-up notes" /></label></article>
+          <article className="sales-branch-card sales-single-branch"><h3>Booked Follow-up</h3><label>Follow Up Date *<input type="date" min={minimumFollowUpDay()} max={maximumFollowUpDay()} value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} /></label><label>Remarks *<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Add PS/SO follow-up notes" /></label></article>
         </section>}
 
         {!readOnlyHandoff && draft.call_outcome === "RETAILED" && <section className="sales-branch-card sales-single-branch"><h3>Retail Details</h3><label>Remarks<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Add sale confirmation notes" /></label><p className="sales-warning">Lead will be marked as won and retailed after update.</p></section>}
