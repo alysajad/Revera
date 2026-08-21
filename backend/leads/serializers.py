@@ -4,6 +4,30 @@ from django.utils import timezone
 from accounts.models import User
 from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification, SystemConfig
 
+PS_CALL_OUTCOME_STATUS_OPTIONS = {
+    "Need Test Drive": {Lead.Status.PENDING},
+    "Showroom Visit": {Lead.Status.PENDING},
+    "Exchange Issue": {Lead.Status.PENDING},
+    "Booking Done": {Lead.Status.WALKIN},
+    "Retail Done": {Lead.Status.WON},
+    "Need time": {Lead.Status.PENDING},
+    "Need SO Call": {Lead.Status.PENDING},
+    "Need More Details": {Lead.Status.PENDING},
+    "Discount Issue": {Lead.Status.PENDING},
+    "Not Interested": {Lead.Status.LOST},
+    "Already Booked": {Lead.Status.LOST},
+    "Lost to Competition": {Lead.Status.LOST},
+    "Finance Rejected": {Lead.Status.LOST},
+    "Dropped": {Lead.Status.LOST},
+    "Lost to co-dealer": {Lead.Status.LOST},
+    "RNR": {Lead.Status.RNR},
+    "Switch Off": {Lead.Status.SWITCHED_OFF},
+    "Call Me Back": {Lead.Status.CALLBACK},
+    "Call Forwarding": {Lead.Status.PENDING},
+    "Line Busy": {Lead.Status.PENDING},
+    "Invalid Number": {Lead.Status.PENDING},
+}
+
 CALL_OUTCOME_STATUS_OPTIONS = {
     "PENDING": {Lead.Status.PENDING},
     "QUALIFIED": {Lead.Status.QUALIFIED},
@@ -11,6 +35,7 @@ CALL_OUTCOME_STATUS_OPTIONS = {
     "RNR": {Lead.Status.RNR},
     "SWITCHED_OFF": {Lead.Status.SWITCHED_OFF},
     "CALLBACK": {Lead.Status.CALLBACK},
+    **PS_CALL_OUTCOME_STATUS_OPTIONS,
 }
 class QualificationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -175,4 +200,3 @@ class SystemConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = SystemConfig
         fields = ["lists", "updated_at"]
-
