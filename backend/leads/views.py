@@ -96,9 +96,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         today = timezone.localdate()
         owner_filter = {"assigned_so": request.user} if request.user.role == User.Role.CRE else {"assigned_ps": request.user}
         queryset = Lead.objects.filter(deleted_at__isnull=True, **owner_filter)
-        if request.user.role == User.Role.CRE:
-            queryset = queryset.filter(assigned_ps__isnull=True)
-        open_followup = Q(follow_ups__id__isnull=False, follow_ups__resolved_at__isnull=True, follow_ups__scheduled_for__date__lte=today)
+        open_followup = Q(follow_ups__id__isnull=False, follow_ups__resolved_at__isnull=True)
         date_range = request.query_params.get("range", "all")
         if date_range == "today":
             queryset = queryset.filter(enquiry_date=today)
@@ -132,6 +130,7 @@ class LeadViewSet(viewsets.ModelViewSet):
             "scheduled": open_followup,
         }
         section_filters = {
+            "all": Q(),
             "fresh": Q(status=Lead.Status.FRESH),
             "followups": open_followup,
             "pending": Q(status__in=[Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING]),
@@ -156,8 +155,6 @@ class LeadViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["patch"], url_path="so-update")
     def so_update(self, request, pk=None):
         lead = self.get_object()
-        if not request.user.is_admin and request.user.role == User.Role.CRE and lead.assigned_ps_id:
-            return Response({"detail": "This lead has been handed to PS/SO."}, status=status.HTTP_403_FORBIDDEN)
         user_field = "assigned_so_id" if request.user.role == User.Role.CRE else "assigned_ps_id"
         if not request.user.is_admin and getattr(lead, user_field) != request.user.id:
             return Response({"detail": "This lead is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
@@ -184,13 +181,25 @@ class LeadViewSet(viewsets.ModelViewSet):
         if data.get("follow_up_at") and next_status not in {Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.WALKIN}:
             return Response({"detail": "Only callbacks and walk-ins can have an appointment."}, status=status.HTTP_400_BAD_REQUEST)
         ps_officer = data.get("ps_officer")
-        if not request.user.is_admin and request.user.role == User.Role.CRE and next_status == Lead.Status.QUALIFIED:
+        qualification_update = (
+            request.user.role == User.Role.CRE
+            and next_status == Lead.Status.QUALIFIED
+            and (
+                lead.status != Lead.Status.QUALIFIED
+                or call_outcome == "QUALIFIED"
+                or ps_officer
+                or "city" in data
+                or data.get("qualification")
+            )
+        )
+        if not request.user.is_admin and qualification_update:
             location = (data.get("city") or lead.city or "").strip()
             if not location:
                 return Response({"city": "Select customer location before qualifying this lead."}, status=status.HTTP_400_BAD_REQUEST)
-            if not ps_officer:
+            assigned_ps = ps_officer or lead.assigned_ps
+            if not assigned_ps:
                 return Response({"ps_officer_id": "Choose the PS/SO for this customer location."}, status=status.HTTP_400_BAD_REQUEST)
-            if ps_officer.location.strip().lower() != location.lower():
+            if assigned_ps.location.strip().lower() != location.lower():
                 return Response({"ps_officer_id": "Choose a PS/SO assigned to this customer location."}, status=status.HTTP_400_BAD_REQUEST)
         ps_outcome = request.user.role == User.Role.SALES_OFFICER and lead.status not in {Lead.Status.WON, Lead.Status.LOST, Lead.Status.UNQUALIFIED} and call_outcome in PS_CALL_OUTCOME_STATUS_OPTIONS
         if not request.user.is_admin and not ps_outcome and next_status != lead.status and next_status not in FORWARD_TRANSITIONS.get(lead.status, set()):
@@ -342,8 +351,6 @@ class LeadViewSet(viewsets.ModelViewSet):
             user_field = "assigned_so_id" if request.user.role == User.Role.CRE else "assigned_ps_id"
             if not request.user.is_admin and getattr(lead, user_field) != request.user.id:
                 return Response({"detail": "This lead is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
-            if request.user.role == User.Role.CRE and lead.assigned_ps_id:
-                return Response({"detail": "This lead has been handed to PS/SO."}, status=status.HTTP_403_FORBIDDEN)
             serializer = LeadUpdateSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             next_status = serializer.validated_data["status"]

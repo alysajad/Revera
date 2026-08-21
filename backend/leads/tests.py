@@ -118,8 +118,35 @@ class LeadAccessTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["summary"]["qualified"], 1)
         self.assertEqual(len(response.data["results"]), 1)
-        self.assertEqual(set(response.data["results"][0]), {"id", "status", "name", "phone", "source"})
+        self.assertEqual(set(response.data["results"][0]), {"id", "status", "name", "phone", "source", "flagged_to_manager"})
         self.assertEqual(response.data["results"][0]["status"], Lead.Status.QUALIFIED)
+
+    def test_cre_all_dashboard_includes_handed_off_own_leads(self):
+        self.first_lead.status = Lead.Status.QUALIFIED
+        self.first_lead.assigned_ps = self.ps_so
+        self.first_lead.save(update_fields=["status", "assigned_ps"])
+        self.client.force_authenticate(self.first_so)
+
+        response = self.client.get("/api/leads/my-dashboard/?section=all")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["summary"]["total"], 1)
+        self.assertEqual(response.data["summary"]["qualified"], 1)
+        self.assertEqual([lead["id"] for lead in response.data["results"]], [self.first_lead.id])
+
+    def test_cre_can_update_handed_off_lead_after_ps_call(self):
+        self.first_lead.status = Lead.Status.PENDING
+        self.first_lead.assigned_ps = self.ps_so
+        self.first_lead.save(update_fields=["status", "assigned_ps"])
+        CallLog.objects.create(lead=self.first_lead, so=self.ps_so, status=Lead.Status.PENDING, outcome="Need Test Drive", remarks="PS scheduled a test drive.")
+        self.client.force_authenticate(self.first_so)
+        future = timezone.now() + timedelta(days=1)
+
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "PENDING", "status": Lead.Status.PENDING, "remarks": "CRE helped the customer.", "follow_up_at": future.isoformat()}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([call["outcome"] for call in response.data["call_history"]], ["PENDING", "Need Test Drive"])
+        self.assertTrue(FollowUp.objects.filter(lead=self.first_lead, so=self.first_so, scheduled_for=future, resolved_at__isnull=True).exists())
 
     def test_fresh_dashboard_subfilters_return_matching_rows(self):
         called = Lead.objects.create(name="Called", phone="7305198422", assigned_so=self.first_so, status=Lead.Status.QUALIFIED)
@@ -310,7 +337,7 @@ class LeadAccessTests(TestCase):
         self.first_lead.refresh_from_db()
         self.assertEqual(self.first_lead.assigned_ps, self.ps_so)
 
-    def test_cre_has_read_only_access_after_ps_handoff(self):
+    def test_cre_keeps_update_access_after_ps_handoff(self):
         self.first_lead.status = Lead.Status.QUALIFIED
         self.first_lead.assigned_ps = self.ps_so
         self.first_lead.save(update_fields=["status", "assigned_ps"])
@@ -322,9 +349,9 @@ class LeadAccessTests(TestCase):
         log_call = self.client.post(f"/api/leads/{self.first_lead.id}/log-call/", {"status": Lead.Status.WALKIN, "follow_up_at": (timezone.now() + timedelta(days=1)).isoformat()}, format="json")
 
         self.assertEqual(detail.status_code, 200)
-        self.assertNotIn(self.first_lead.id, [lead["id"] for lead in dashboard.data["results"]])
-        self.assertEqual(update.status_code, 403)
-        self.assertEqual(log_call.status_code, 403)
+        self.assertIn(self.first_lead.id, [lead["id"] for lead in dashboard.data["results"]])
+        self.assertEqual(update.status_code, 200)
+        self.assertEqual(log_call.status_code, 200)
 
     def test_ps_so_sees_assigned_qualified_lead_with_cre_qualification(self):
         LeadQualification.objects.create(lead=self.first_lead, variant="R8 Pro", buying_timeline="Immediate", finance_type="Inhouse", notes="Ready")
