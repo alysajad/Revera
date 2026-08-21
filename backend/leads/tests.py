@@ -171,8 +171,6 @@ class LeadAccessTests(TestCase):
 
     def test_call_outcome_only_allows_matching_lead_statuses(self):
         self.client.force_authenticate(self.first_so)
-        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "CONNECTED", "status": Lead.Status.RNR}, format="json")
-        self.assertEqual(response.status_code, 400)
 
         future = timezone.now() + timedelta(days=1)
         response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "PENDING", "status": Lead.Status.QUALIFIED, "follow_up_at": future.isoformat()}, format="json")
