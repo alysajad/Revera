@@ -78,7 +78,10 @@ class LeadViewSet(viewsets.ModelViewSet):
         return Response(LeadDetailSerializer(self.get_object()).data)
 
     def perform_create(self, serializer):
-        lead = serializer.save()
+        if not self.request.user.is_admin and getattr(self.request.user, "role", None) == User.Role.CRE:
+            lead = serializer.save(assigned_so=self.request.user)
+        else:
+            lead = serializer.save()
         LeadAudit.objects.create(lead=lead, actor=self.request.user, event="created")
 
     def get_permissions(self):

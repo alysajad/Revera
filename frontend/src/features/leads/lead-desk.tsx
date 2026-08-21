@@ -71,7 +71,12 @@ const emptyLead = (): LeadInput => ({ name: "", phone: "", email: "", source: "O
 const leadQuery = (officerMode: boolean, followUpsOnly: boolean, filters: LeadFilters, page: number, search: string, assignmentView = "fresh") => {
   const params = new URLSearchParams();
   if (officerMode) { if (followUpsOnly) params.set("status", "CALLBACK"); }
-  else { params.set(assignmentView === "qualified" ? "ps_unassigned" : "unassigned", "true"); params.set("page", String(page)); Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value); }); }
+  else { 
+    if (assignmentView === "fresh") params.set("unassigned", "true");
+    else if (assignmentView === "qualified") params.set("ps_unassigned", "true");
+    params.set("page", String(page)); 
+    Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value); }); 
+  }
   if (search) params.set("q", search);
   return `?${params.toString()}`;
 };
@@ -93,7 +98,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState<any>(null);
-  const [assignmentView, setAssignmentView] = useState<"fresh" | "qualified">("fresh");
+  const [assignmentView, setAssignmentView] = useState<"fresh" | "qualified" | "all">("fresh");
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [leadDetail, setLeadDetail] = useState<LeadDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -124,7 +129,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const [searchFilter, setSearchFilter] = useState("");
   const [totalLeads, setTotalLeads] = useState(0);
   const supportLoaded = useRef(false);
-  const assignmentUsers = assignmentView === "fresh" ? creUsers : psUsers;
+  const assignmentUsers = assignmentView === "qualified" ? psUsers : creUsers;
 
   const refresh = useCallback(async () => {
     setLoading(true); setError("");
@@ -164,10 +169,10 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const assign = async (lead: Lead, officerId: number) => {
     const previousLeads = leads;
     const previousUsers = assignmentUsers;
-    const setUsers = assignmentView === "fresh" ? setCreUsers : setPsUsers;
+    const setUsers = assignmentView === "qualified" ? setPsUsers : setCreUsers;
     setLeads(current => current.filter(item => item.id !== lead.id));
     setUsers(current => current.map(officer => officer.id === officerId ? { ...officer, assigned: officer.assigned + 1 } : officer));
-    try { await (assignmentView === "fresh" ? assignLead : assignPsLead)(lead.id, officerId); setNotice(`${lead.name} assigned to ${assignmentView === "fresh" ? "CRE" : "PS/SO"}.`); }
+    try { await (assignmentView === "qualified" ? assignPsLead : assignLead)(lead.id, officerId); setNotice(`${lead.name} assigned to ${assignmentView === "qualified" ? "PS/SO" : "CRE"}.`); }
     catch (requestError) { setLeads(previousLeads); setUsers(previousUsers); setError(requestError instanceof Error ? requestError.message : "Assignment failed."); }
     finally { setDropTargetId(null); }
   };
@@ -182,7 +187,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     if (!officer || !leads.length || bulkAssigning) return;
     if (!window.confirm(`Assign all leads matching these filters to ${officer.name}?`)) return;
     setBulkAssigning(true); setError("");
-    try { const result = await (assignmentView === "fresh" ? assignFilteredLeads : assignFilteredPsLeads)(officer.id, activeFilters); setNotice(`${result.assigned} leads assigned to ${officer.name}.`); setBulkOfficerId(""); await refresh(); }
+    try { const result = await (assignmentView === "qualified" ? assignFilteredPsLeads : assignFilteredLeads)(officer.id, activeFilters); setNotice(`${result.assigned} leads assigned to ${officer.name}.`); setBulkOfficerId(""); await refresh(); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Bulk assignment failed."); }
     finally { setBulkAssigning(false); }
   };
@@ -323,12 +328,19 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   };
   const duplicateRows = upload?.rows?.filter(row => row.duplicate_of && row.resolution === "PENDING") || [];
   const importableRows = upload?.rows ? upload.rows.filter(row => !row.validation_error && row.resolution !== "SKIP").length : upload?.parsed_ok;
-  const targetLabel = assignmentView === "fresh" ? "CRE" : "PS/SO";
-  const poolLabel = assignmentView === "fresh" ? "Fresh lead pool" : "Qualified handoff pool";
+  const targetLabel = assignmentView === "qualified" ? "PS/SO" : "CRE";
+  const poolLabel = assignmentView === "fresh" ? "Fresh lead pool" : assignmentView === "qualified" ? "Qualified handoff pool" : "All leads";
   const heading = followUpsOnly ? "Follow-ups" : officerMode ? "My queue" : "Assignment desk";
 
   return <section className="page">
     <div className="page-heading compact"><div><p className="eyebrow">{heading.toUpperCase()}</p><h1>{officerMode ? <>Keep the <span>promise.</span></> : <>All <span>leads.</span></>}</h1><p className="subtext">{officerMode ? "Your assigned conversations and follow-ups." : "Manage and assign all leads in the CRM."}</p></div>{!officerMode && assignmentView === "fresh" && <button className="button primary" onClick={autoAssign} disabled={!leads.length}>↻ Auto assign {leads.length} leads</button>}</div>
+    {!officerMode && (
+      <div className="tabs" style={{ marginBottom: "1.5rem", display: "flex", gap: "1.5rem", borderBottom: "1px solid var(--border)" }}>
+        <button style={{ padding: "0.5rem 0", fontWeight: assignmentView === "fresh" ? "bold" : "normal", background: "none", border: "none", cursor: "pointer", color: "var(--foreground)", borderBottom: assignmentView === "fresh" ? "2px solid var(--primary)" : "2px solid transparent" }} onClick={() => { setAssignmentView("fresh"); setPage(1); }}>Fresh unassigned</button>
+        <button style={{ padding: "0.5rem 0", fontWeight: assignmentView === "qualified" ? "bold" : "normal", background: "none", border: "none", cursor: "pointer", color: "var(--foreground)", borderBottom: assignmentView === "qualified" ? "2px solid var(--primary)" : "2px solid transparent" }} onClick={() => { setAssignmentView("qualified"); setPage(1); }}>Qualified unassigned</button>
+        <button style={{ padding: "0.5rem 0", fontWeight: assignmentView === "all" ? "bold" : "normal", background: "none", border: "none", cursor: "pointer", color: "var(--foreground)", borderBottom: assignmentView === "all" ? "2px solid var(--primary)" : "2px solid transparent" }} onClick={() => { setAssignmentView("all"); setPage(1); }}>All leads</button>
+      </div>
+    )}
     {!officerMode && analytics?.summary && (
       <section className="sales-metrics" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
         <article className="sales-metric blue">

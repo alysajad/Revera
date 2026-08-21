@@ -14,7 +14,7 @@ export type Lead = {
   branch: string; campaign: string; category: string; salesOutcome: string; nextFollowUp: string | null; callCount: number; statusCode: string; status: string; assignedSoId: number | null; assignedSoName: string; assignedPsId: number | null; assignedPsName: string;
 };
 export type SalesLead = { id: number; status: string; statusCode: string; name: string; phone: string; source: string; sourceCode: string; flagged_to_manager: boolean };
-export type LeadInput = { name: string; phone: string; email?: string; source: string; source_label?: string; campaign?: string; model_interest?: string; city?: string; enquiry_date?: string; profession?: string; assigned_ps_id?: number; qualification?: LeadQualification };
+export type LeadInput = { name: string; phone: string; email?: string; source: string; source_label?: string; campaign?: string; model_interest?: string; city?: string; branch?: string; enquiry_date?: string; profession?: string; assigned_ps_id?: number; status?: string; qualification?: LeadQualification };
 export type LeadFilters = { source?: string; model?: string; city?: string; source_label?: string; date_from?: string; date_to?: string };
 export type LeadQualification = { variant: string; buying_timeline: string; finance_type: string; trade_in: boolean | null; test_drive: string; notes: string; updated_at?: string };
 export type CallHistory = { id: number; status: string; outcome: string; remarks: string; so_name: string; created_at: string; call_status?: string };
