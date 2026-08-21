@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createLead, getCurrentUser, getLeadDetail, getMyDashboard, getOfficers, toOfficer, updateMyLead, type CurrentUser, type LeadDetail, type LeadInput, type LeadQualification, type Officer, type SalesDashboard, type SalesLead, getSystemConfig } from "@/lib/crm";
-import { formatDate, parseDate } from "@/lib/dates";
+import { formatDate, formatDateTime, parseDate } from "@/lib/dates";
 
 type Section = "fresh" | "followups" | "pending" | "qualified" | "walkin" | "won_lost" | "active";
 type FreshSubfilter = "untouched" | "called" | "scheduled";
@@ -73,28 +73,25 @@ const emptyLead = (): LeadInput => ({ name: "", phone: "", email: "", source: "O
 
 function formatFollowUp(value: string | null) {
   if (!value) return "Not scheduled";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Invalid date" : new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+  return formatDateTime(value) || "Invalid date";
 }
-
-const localDateTimeValue = (date: Date) => {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-};
 
 const minimumFollowUpDay = () => {
   const date = new Date();
   date.setDate(date.getDate() + 1);
-  return localDateTimeValue(date).slice(0, 10);
+  return formatDate(date);
 };
 
 const maximumFollowUpDay = () => {
   const date = new Date();
   date.setDate(date.getDate() + 3);
-  return localDateTimeValue(date).slice(0, 10);
+  return formatDate(date);
 };
 
-const followUpIso = (value: string) => value ? new Date(`${value}T09:00:00`).toISOString() : null;
+const followUpIso = (value: string) => {
+  const date = parseDate(value);
+  return date ? new Date(`${date}T09:00:00`).toISOString() : null;
+};
 
 function progressState(callCount: number, index: number) {
   const currentStep = Math.min(callCount, 4);
@@ -109,7 +106,7 @@ function draftFor(lead: LeadDetail): Draft {
 }
 
 function leadFieldsFor(lead: LeadDetail): LeadFields {
-  return { name: lead.name, phone: lead.phone, email: lead.email, source: lead.sourceCode, source_label: lead.sourceLabel, campaign: lead.campaign, model_interest: lead.model === "—" ? "" : lead.model, city: lead.city, branch: lead.branch, enquiry_date: lead.enquiryDate };
+  return { name: lead.name, phone: lead.phone, email: lead.email, source: lead.sourceCode, source_label: lead.sourceLabel, campaign: lead.campaign, model_interest: lead.model === "—" ? "" : lead.model, city: lead.city, branch: lead.branch, enquiry_date: formatDate(lead.enquiryDate) };
 }
 
 function ChoiceRow({ options, value, onChange }: { options: string[]; value: string; onChange: (value: string) => void }) {
@@ -118,7 +115,7 @@ function ChoiceRow({ options, value, onChange }: { options: string[]; value: str
 
 function LeadEditPanel({ fields, onChange, onClose, onSave, saving }: { fields: LeadFields; onChange: (fields: LeadFields) => void; onClose: () => void; onSave: () => void; saving: boolean }) {
   const update = (field: keyof LeadFields, value: string | null) => onChange({ ...fields, [field]: value });
-  return <div className="modal-layer sales-edit-layer" role="presentation"><section className="modal sales-detail-modal sales-edit-modal" role="dialog" aria-modal="true" aria-labelledby="sales-edit-title"><header className="sales-detail-header"><div><p className="eyebrow">CUSTOMER INFORMATION</p><h2 id="sales-edit-title">Edit lead details</h2><p className="subtext">Update the customer record saved in River.</p></div><button className="modal-close" onClick={onClose} aria-label="Close">×</button></header><div className="sales-detail-scroll"><section className="sales-form-card"><div className="sales-form-grid"><label>Full name<input required value={fields.name} onChange={event => update("name", event.target.value)} /></label><label>Phone number<input required type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={fields.phone} onChange={event => update("phone", event.target.value.replace(/\D/g, "").slice(0, 10))} /></label><label>Email<input type="email" value={fields.email} onChange={event => update("email", event.target.value)} /></label><label>Lead source<select value={fields.source} onChange={event => update("source", event.target.value)}>{sourceOptions.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label><label>Source detail<input value={fields.source_label} onChange={event => update("source_label", event.target.value)} /></label><label>Campaign<input value={fields.campaign} onChange={event => update("campaign", event.target.value)} /></label><label>Vehicle / model<input list="vehicle-edit-options" value={fields.model_interest} onChange={event => update("model_interest", event.target.value)} /><datalist id="vehicle-edit-options">{modelOptions.map(model => <option value={model} key={model} />)}</datalist></label><label>City<input value={fields.city} onChange={event => update("city", event.target.value)} /></label><label>Branch<input value={fields.branch} onChange={event => update("branch", event.target.value)} /></label><label>Enquiry date<input type="date" max={localDateTimeValue(new Date()).slice(0, 10)} value={fields.enquiry_date || ""} onChange={event => update("enquiry_date", event.target.value || null)} /></label></div></section></div><footer className="sales-detail-footer"><button className="filter" onClick={onClose}>Cancel</button><button className="button primary" disabled={saving || !fields.name.trim() || fields.phone.length !== 10} onClick={onSave}>{saving ? "Saving…" : "Save details"}</button></footer></section></div>;
+  return <div className="modal-layer sales-edit-layer" role="presentation"><section className="modal sales-detail-modal sales-edit-modal" role="dialog" aria-modal="true" aria-labelledby="sales-edit-title"><header className="sales-detail-header"><div><p className="eyebrow">CUSTOMER INFORMATION</p><h2 id="sales-edit-title">Edit lead details</h2><p className="subtext">Update the customer record saved in River.</p></div><button className="modal-close" onClick={onClose} aria-label="Close">×</button></header><div className="sales-detail-scroll"><section className="sales-form-card"><div className="sales-form-grid"><label>Full name<input required value={fields.name} onChange={event => update("name", event.target.value)} /></label><label>Phone number<input required type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={fields.phone} onChange={event => update("phone", event.target.value.replace(/\D/g, "").slice(0, 10))} /></label><label>Email<input type="email" value={fields.email} onChange={event => update("email", event.target.value)} /></label><label>Lead source<select value={fields.source} onChange={event => update("source", event.target.value)}>{sourceOptions.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label><label>Source detail<input value={fields.source_label} onChange={event => update("source_label", event.target.value)} /></label><label>Campaign<input value={fields.campaign} onChange={event => update("campaign", event.target.value)} /></label><label>Vehicle / model<input list="vehicle-edit-options" value={fields.model_interest} onChange={event => update("model_interest", event.target.value)} /><datalist id="vehicle-edit-options">{modelOptions.map(model => <option value={model} key={model} />)}</datalist></label><label>City<input value={fields.city} onChange={event => update("city", event.target.value)} /></label><label>Branch<input value={fields.branch} onChange={event => update("branch", event.target.value)} /></label><label>Enquiry date<input type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={fields.enquiry_date || ""} onChange={event => update("enquiry_date", event.target.value || null)} placeholder="DD/MM/YYYY" /></label></div></section></div><footer className="sales-detail-footer"><button className="filter" onClick={onClose}>Cancel</button><button className="button primary" disabled={saving || !fields.name.trim() || fields.phone.length !== 10} onClick={onSave}>{saving ? "Saving…" : "Save details"}</button></footer></section></div>;
 }
 
 export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: boolean }) {
@@ -226,7 +223,11 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
       if (["PENDING", "WALKIN", "CALLBACK"].includes(nextStatus)) {
         if (!draft.follow_up_at) return setNotice("Choose a follow-up date for this outcome.");
         followUpAt = followUpIso(draft.follow_up_at);
-        if (!followUpAt || new Date(followUpAt).getTime() <= Date.now()) return setNotice("Choose a future follow-up date.");
+        if (!followUpAt) return setNotice("Enter the follow-up date as DD/MM/YYYY.");
+        const maxDay = parseDate(maximumFollowUpDay());
+        const chosenDay = parseDate(draft.follow_up_at);
+        if (maxDay && chosenDay && chosenDay > maxDay) return setNotice("Choose a follow-up date within the next 3 days.");
+        if (new Date(followUpAt).getTime() <= Date.now()) return setNotice("Choose a future follow-up date.");
       }
       remarks = draft.remarks;
     } else {
@@ -236,7 +237,8 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
       if (draft.call_outcome === "PENDING" && (!draft.pending_reason || !draft.remarks.trim() || !draft.follow_up_at)) return setNotice("Choose a pending reason, add remarks, and set follow-up date.");
       if (draft.call_outcome === "BOOKED" && (!draft.remarks.trim() || !draft.follow_up_at)) return setNotice("Add remarks and set the booked follow-up date.");
       followUpAt = ["PENDING", "BOOKED"].includes(draft.call_outcome) ? followUpIso(draft.follow_up_at) : null;
-      if (["PENDING", "BOOKED"].includes(draft.call_outcome) && (!followUpAt || new Date(followUpAt).getTime() <= Date.now())) return setNotice("Choose a future follow-up date.");
+      if (["PENDING", "BOOKED"].includes(draft.call_outcome) && !followUpAt) return setNotice("Enter the follow-up date as DD/MM/YYYY.");
+      if (["PENDING", "BOOKED"].includes(draft.call_outcome) && followUpAt && new Date(followUpAt).getTime() <= Date.now()) return setNotice("Choose a future follow-up date.");
       remarks = draft.call_outcome === "LOST" ? `Lost reason: ${draft.lost_reason}\n${draft.remarks}` : draft.call_outcome === "PENDING" ? `Pending reason: ${draft.pending_reason}\n${draft.remarks}` : draft.qualification.notes;
     }
 
@@ -263,9 +265,13 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   const saveLeadFields = async () => {
     if (!detail || !leadFields || saving) return;
     if (!isPs && detail.assignedPsId) return setNotice("This lead has been handed to PS/SO.");
+    const enquiryDate = leadFields.enquiry_date ? parseDate(leadFields.enquiry_date) : null;
+    if (leadFields.enquiry_date && !enquiryDate) return setNotice("Enter the enquiry date as DD/MM/YYYY.");
+    const today = parseDate(formatDate(new Date()));
+    if (enquiryDate && today && enquiryDate > today) return setNotice("Enquiry date cannot be in the future.");
     setSaving(true); setError("");
     try {
-      const updated = await updateMyLead(detail.id, leadFields);
+      const updated = await updateMyLead(detail.id, { ...leadFields, enquiry_date: enquiryDate });
       setDetail(updated); setLeadFields(leadFieldsFor(updated)); setEditingLead(false); setNotice("Customer details updated."); await loadDashboard();
     } catch (requestError) { const message = requestError instanceof Error ? requestError.message : "Customer details could not be saved."; setError(message); setNotice(message); }
     finally { setSaving(false); }
@@ -273,9 +279,13 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
 
   const saveLead = async () => {
     if (creatingLead) return;
+    const enquiryDate = parseDate(newLead.enquiry_date || "");
+    if (!enquiryDate) { setAddLeadError("Enter the enquiry date as DD/MM/YYYY."); return; }
+    const today = parseDate(formatDate(new Date()));
+    if (today && enquiryDate > today) { setAddLeadError("Enquiry date cannot be in the future."); return; }
     setCreatingLead(true); setAddLeadError("");
     try {
-      const payload: LeadInput = { ...newLead };
+      const payload: LeadInput = { ...newLead, enquiry_date: enquiryDate };
       if (newLead.ps_officer_id) {
          payload.status = "QUALIFIED";
       }
@@ -313,7 +323,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
     : [{label:"Fresh leads", value:summary?.fresh ?? 0, tone:"blue"}, {label:"Follow-ups", value:summary?.followups ?? 0, tone:"yellow"}, {label:"Pending leads", value:summary?.pending ?? 0, tone:"orange"}, {label:"Qualified leads", value:summary?.qualified ?? 0, tone:"green"}, {label:"Won leads", value:summary?.won ?? 0, tone:"mint"}, {label:"Lost leads", value:summary?.lost ?? 0, tone:"red"}];
 
   return <section className="page sales-workspace">
-    <div className="sales-hero"><div><p className="eyebrow">{isPs ? "PS/SO WORKSPACE" : "CRE WORKSPACE"}</p><h1>My queue</h1><p className="subtext">Today, {new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(new Date())}</p></div><div className="sales-hero-actions"><button className="filter" onClick={() => void loadDashboard()}>↻ Refresh</button><a className="button primary" href="/my-analytics">View analytics →</a>{!isPs && <button className="button primary" onClick={() => { setAddLeadError(""); setAddingLead(true); }}>＋ Add lead</button>}</div></div>
+    <div className="sales-hero"><div><p className="eyebrow">{isPs ? "PS/SO WORKSPACE" : "CRE WORKSPACE"}</p><h1>My queue</h1><p className="subtext">Today, {formatDate(new Date())}</p></div><div className="sales-hero-actions"><button className="filter" onClick={() => void loadDashboard()}>↻ Refresh</button><a className="button primary" href="/my-analytics">View analytics →</a>{!isPs && <button className="button primary" onClick={() => { setAddLeadError(""); setAddingLead(true); }}>＋ Add lead</button>}</div></div>
     {!isPs && <section className="sales-hero-banner"><div><p className="eyebrow">THE NEXT MOVE</p><h2>Every lead deserves a next move.</h2><p>Stay on top of your queue and guide every customer to their perfect ride.</p></div><div className="sales-hero-art" aria-hidden="true"><span>RIVER</span><i>↗</i></div></section>}
     <section className="sales-metrics">{metrics.map(metric => <article className={`sales-metric ${metric.tone}`} key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><small>Assigned to you</small></article>)}</section>
     
@@ -384,7 +394,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
                {draft.call_outcome && ["PENDING", "WALKIN", "CALLBACK"].includes(statusOptions[draft.call_outcome]?.[0] || "") && (
                  <div style={{ marginTop: "1.5rem" }}>
                    <h4 style={{ fontSize: "0.85rem", color: "var(--text-light)", marginBottom: "0.5rem" }}>Follow Up Date *</h4>
-                   <input type="date" min={minimumFollowUpDay()} max={maximumFollowUpDay()} value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} style={{ width: "100%", padding: "0.75rem", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--field-bg)", fontSize: "1rem" }} />
+                   <input type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" placeholder="DD/MM/YYYY" value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} style={{ width: "100%", padding: "0.75rem", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--field-bg)", fontSize: "1rem" }} />
                  </div>
                )}
 
@@ -415,11 +425,11 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
 
         {!readOnlyHandoff && draft.call_outcome === "PENDING" && <section className="sales-outcome-grid">
           <article className="sales-branch-card sales-single-branch"><h3>Pending Reason</h3><label>Pending Status</label><ChoiceRow options={pendingReasons} value={draft.pending_reason} onChange={value => choose("pending_reason", value)} /><label>Remark for Pending Reason *<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Enter detailed remark for this pending reason..." /></label></article>
-          <article className="sales-branch-card sales-single-branch"><h3>Follow Up Details</h3><label>Follow Up Date *<input type="date" min={minimumFollowUpDay()} value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} /></label><small>Lead will be moved to the correct follow-up section after update.</small></article>
+          <article className="sales-branch-card sales-single-branch"><h3>Follow Up Details</h3><label>Follow Up Date *<input type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" placeholder="DD/MM/YYYY" value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} /></label><small>Lead will be moved to the correct follow-up section after update.</small></article>
         </section>}
 
         {!readOnlyHandoff && draft.call_outcome === "BOOKED" && <section className="sales-outcome-grid">
-          <article className="sales-branch-card sales-single-branch"><h3>Booked Follow-up</h3><label>Follow Up Date *<input type="date" min={minimumFollowUpDay()} value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} /></label><label>Remarks *<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Add PS/SO follow-up notes" /></label></article>
+          <article className="sales-branch-card sales-single-branch"><h3>Booked Follow-up</h3><label>Follow Up Date *<input type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" placeholder="DD/MM/YYYY" value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} /></label><label>Remarks *<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Add PS/SO follow-up notes" /></label></article>
         </section>}
 
         {!readOnlyHandoff && draft.call_outcome === "RETAILED" && <section className="sales-branch-card sales-single-branch"><h3>Retail Details</h3><label>Remarks<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Add sale confirmation notes" /></label><p className="sales-warning">Lead will be marked as won and retailed after update.</p></section>}
