@@ -266,7 +266,9 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
         ps_officer_id: !isPs && draft.call_outcome === "QUALIFIED" ? Number(draft.ps_officer_id) : undefined,
         qualification: !isPs && draft.call_outcome === "QUALIFIED" ? { ...draft.qualification, trade_in: draft.trade_in_note === "Yes" ? true : draft.trade_in_note ? false : null, notes } : undefined,
       });
-      setDetail(updated); setDraft(draftFor(updated)); setNotice("Lead updated and follow-up history saved."); await loadDashboard();
+      if (isPs) { setDetail(null); setDraft(null); }
+      else { setDetail(updated); setDraft(draftFor(updated)); }
+      setNotice("Lead updated and follow-up history saved."); await loadDashboard();
     } catch (requestError) { const message = requestError instanceof Error ? requestError.message : "Lead update could not be saved."; setError(message); setNotice(message); }
     finally { setSaving(false); }
   };
@@ -430,18 +432,18 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
           <article className="sales-branch-card"><h3>Lead Category</h3><label>Lead Category</label><ChoiceRow options={["HOT", "WARM", "COLD"]} value={draft.category} onChange={value => choose("category", value)} /></article>
         </section>}
 
-        {!readOnlyHandoff && draft.call_outcome === "LOST" && <section className="sales-branch-card sales-single-branch lost"><h3>Lead Lost Reason</h3><label>Reason for Loss</label><ChoiceRow options={lostReasons} value={draft.lost_reason} onChange={value => choose("lost_reason", value)} /><label>Remarks *<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Add reason/remark for loss" /></label><p className="sales-warning">△ Lead will be marked as lost and moved to won/lost leads section after update.</p></section>}
+        {!readOnlyHandoff && !isPs && draft.call_outcome === "LOST" && <section className="sales-branch-card sales-single-branch lost"><h3>Lead Lost Reason</h3><label>Reason for Loss</label><ChoiceRow options={lostReasons} value={draft.lost_reason} onChange={value => choose("lost_reason", value)} /><label>Remarks *<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Add reason/remark for loss" /></label><p className="sales-warning">△ Lead will be marked as lost and moved to won/lost leads section after update.</p></section>}
 
-        {!readOnlyHandoff && draft.call_outcome === "PENDING" && <section className="sales-outcome-grid">
+        {!readOnlyHandoff && !isPs && draft.call_outcome === "PENDING" && <section className="sales-outcome-grid">
           <article className="sales-branch-card sales-single-branch"><h3>Pending Reason</h3><label>Pending Status</label><ChoiceRow options={pendingReasons} value={draft.pending_reason} onChange={value => choose("pending_reason", value)} /><label>Remark for Pending Reason *<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Enter detailed remark for this pending reason..." /></label></article>
           <article className="sales-branch-card sales-single-branch"><h3>Follow Up Details</h3><label>Follow Up Date *<input type="date" min={minimumFollowUpDay()} max={maximumFollowUpDay()} value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} /></label><small>Lead will be moved to the correct follow-up section after update.</small></article>
         </section>}
 
-        {!readOnlyHandoff && draft.call_outcome === "BOOKED" && <section className="sales-outcome-grid">
+        {!readOnlyHandoff && !isPs && draft.call_outcome === "BOOKED" && <section className="sales-outcome-grid">
           <article className="sales-branch-card sales-single-branch"><h3>Booked Follow-up</h3><label>Follow Up Date *<input type="date" min={minimumFollowUpDay()} max={maximumFollowUpDay()} value={draft.follow_up_at} onChange={event => choose("follow_up_at", event.target.value)} /></label><label>Remarks *<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Add PS/SO follow-up notes" /></label></article>
         </section>}
 
-        {!readOnlyHandoff && draft.call_outcome === "RETAILED" && <section className="sales-branch-card sales-single-branch"><h3>Retail Details</h3><label>Remarks<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Add sale confirmation notes" /></label><p className="sales-warning">Lead will be marked as won and retailed after update.</p></section>}
+        {!readOnlyHandoff && !isPs && draft.call_outcome === "RETAILED" && <section className="sales-branch-card sales-single-branch"><h3>Retail Details</h3><label>Remarks<textarea value={draft.remarks} onChange={event => choose("remarks", event.target.value)} placeholder="Add sale confirmation notes" /></label><p className="sales-warning">Lead will be marked as won and retailed after update.</p></section>}
 
         <section className="sales-history"><h3>History</h3>{detail.callHistory.length ? detail.callHistory.map(call => <div className="sales-history-row" key={`call-${call.id}`}><span className="history-dot" /><div><b>{allOutcomeLabels[call.outcome] || statusLabels[call.status] || call.status}</b><small>{call.remarks || "No remarks"} · {call.so_name || "You"}</small></div><time>{formatFollowUp(call.created_at)}</time></div>) : <p className="subtext">No calls recorded yet.</p>}{detail.followUpHistory.length ? detail.followUpHistory.map(followUp => <div className="sales-history-row" key={`follow-${followUp.id}`}><span className="history-dot follow" /><div><b>Follow-up {followUp.resolved_at ? "completed" : "scheduled"}</b><small>{formatFollowUp(followUp.scheduled_for)}</small></div><time>{followUp.resolved_at ? "Resolved" : "Open"}</time></div>) : null}</section>
       </div>
