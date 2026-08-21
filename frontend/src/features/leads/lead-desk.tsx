@@ -2,22 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assignFilteredLeads, assignFilteredPsLeads, assignLead, assignPsLead, autoAssignLeads, commitUpload, createLead, getAdminAnalytics, getCres, getLeadDetail, getLeadsPage, getOfficers, getUpload, logCall, resolveUploadDuplicates, sourceClass, statusName, toLead, toOfficer, updateMyLead, type CallHistory, type Lead, type LeadDetail, type LeadFilters, type LeadInput, type LeadQualification, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
-import { formatDate, parseDate } from "@/lib/dates";
+import { formatDate, formatDateTime, parseDate, parseDateTime, toApiDate } from "@/lib/dates";
 
 const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", SWITCHED_OFF: "Switch off", CALLBACK: "Callback", PENDING: "Pending", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
 const outcomeLabels: Record<string, string> = { CONNECTED: "Connected", NO_RESPONSE: "No response", CALLBACK: "Callback", QUALIFIED: "Qualified", WRONG_NUMBER: "Wrong number" };
 
 function formatCallDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+  return formatDateTime(value) || value;
 }
 
 function localDateTimeValue(value: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return formatDateTime(value);
 }
 
 function followUpOptions() {
@@ -75,7 +70,7 @@ const leadQuery = (officerMode: boolean, followUpsOnly: boolean, filters: LeadFi
     if (assignmentView === "fresh") params.set("unassigned", "true");
     else if (assignmentView === "qualified") params.set("ps_unassigned", "true");
     params.set("page", String(page)); 
-    Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value); }); 
+    Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, key === "date_from" || key === "date_to" ? toApiDate(value) || value : value); });
   }
   if (search) params.set("q", search);
   return `?${params.toString()}`;
@@ -195,9 +190,11 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const saveCall = async () => {
     if (!activeLead || !outcome || savingCall) return;
     if (needsAppointment && !followUpAt) { setError("Select a follow-up time."); return; }
+    const parsedFollowUpAt = followUpAt ? parseDateTime(followUpAt) || (Number.isNaN(new Date(followUpAt).getTime()) ? "" : new Date(followUpAt).toISOString()) : "";
+    if (needsAppointment && !parsedFollowUpAt) { setError("Enter follow-up time as DD/MM/YYYY HH:mm."); return; }
     setSavingCall(true);
     try {
-      const normalizedFollowUpAt = followUpAt ? new Date(followUpAt).toISOString() : "";
+      const normalizedFollowUpAt = parsedFollowUpAt;
       if (!officerMode && leadDetail) {
         await updateMyLead(activeLead.id, {
           status: resolveStatus(outcome, activeLead.status),
@@ -366,7 +363,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
       </section>
     )}
     <section className="lead-toolbar"><label className="search" style={{ flex: 1 }}><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search by name or mobile..." /></label>{!officerMode && <label className="button filter" style={{ color: "#2e5bbf", borderColor: "#2e5bbf", background: "rgba(46,91,191,0.1)" }}>{uploading ? "Uploading…" : "Bulk Upload"}<input hidden type="file" accept=".xlsx,.csv" onChange={event => void selectFile(event.target.files?.[0])} /></label>}<button className="button primary" onClick={() => { setError(""); setAddingLead(true); }}>＋ Add lead</button></section>
-    {!officerMode && <section className="panel lead-filters"><div className="lead-filters-grid"><label>Source<select value={filters.source || ""} onChange={event => setFilters(current => ({ ...current, source: event.target.value || undefined }))}><option value="">All sources</option>{sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Model<input value={filters.model || ""} onChange={event => setFilters(current => ({ ...current, model: event.target.value || undefined }))} placeholder="Any model" /></label><label>City<input value={filters.city || ""} onChange={event => setFilters(current => ({ ...current, city: event.target.value || undefined }))} placeholder="Any city" /></label><label>Source detail<input value={filters.source_label || ""} onChange={event => setFilters(current => ({ ...current, source_label: event.target.value || undefined }))} placeholder="Google, OEM, or campaign" /></label><label>From<input type="date" value={filters.date_from || ""} onChange={event => setFilters(current => ({ ...current, date_from: event.target.value || undefined }))} /></label><label>To<input type="date" value={filters.date_to || ""} onChange={event => setFilters(current => ({ ...current, date_to: event.target.value || undefined }))} /></label></div><footer className="lead-filters-actions"><span>{Object.values(activeFilters).filter(Boolean).length ? `Filtered ${poolLabel.toLowerCase()}` : `All ${poolLabel.toLowerCase()}`}</span><div><button className="filter" onClick={() => { setFilters({}); setActiveFilters({}); }}>Clear</button><button className="filter" onClick={() => setActiveFilters({ ...filters })}>Apply filters</button><select className="filter" aria-label={`Assign filtered leads to ${targetLabel}`} value={bulkOfficerId} onChange={event => setBulkOfficerId(event.target.value)}><option value="">Assign to {targetLabel}…</option>{assignmentUsers.map(officer => <option key={officer.id} value={officer.id}>{officer.name}</option>)}</select><button className="button primary" onClick={() => void bulkAssign()} disabled={!bulkOfficerId || !leads.length || bulkAssigning}>{bulkAssigning ? "Assigning…" : "Assign matching leads"}</button></div></footer></section>}
+    {!officerMode && <section className="panel lead-filters"><div className="lead-filters-grid"><label>Source<select value={filters.source || ""} onChange={event => setFilters(current => ({ ...current, source: event.target.value || undefined }))}><option value="">All sources</option>{sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Model<input value={filters.model || ""} onChange={event => setFilters(current => ({ ...current, model: event.target.value || undefined }))} placeholder="Any model" /></label><label>City<input value={filters.city || ""} onChange={event => setFilters(current => ({ ...current, city: event.target.value || undefined }))} placeholder="Any city" /></label><label>Source detail<input value={filters.source_label || ""} onChange={event => setFilters(current => ({ ...current, source_label: event.target.value || undefined }))} placeholder="Google, OEM, or campaign" /></label><label>From<input type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={filters.date_from || ""} onChange={event => setFilters(current => ({ ...current, date_from: event.target.value || undefined }))} placeholder="DD/MM/YYYY" /></label><label>To<input type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={filters.date_to || ""} onChange={event => setFilters(current => ({ ...current, date_to: event.target.value || undefined }))} placeholder="DD/MM/YYYY" /></label></div><footer className="lead-filters-actions"><span>{Object.values(activeFilters).filter(Boolean).length ? `Filtered ${poolLabel.toLowerCase()}` : `All ${poolLabel.toLowerCase()}`}</span><div><button className="filter" onClick={() => { setFilters({}); setActiveFilters({}); }}>Clear</button><button className="filter" onClick={() => setActiveFilters({ ...filters })}>Apply filters</button><select className="filter" aria-label={`Assign filtered leads to ${targetLabel}`} value={bulkOfficerId} onChange={event => setBulkOfficerId(event.target.value)}><option value="">Assign to {targetLabel}…</option>{assignmentUsers.map(officer => <option key={officer.id} value={officer.id}>{officer.name}</option>)}</select><button className="button primary" onClick={() => void bulkAssign()} disabled={!bulkOfficerId || !leads.length || bulkAssigning}>{bulkAssigning ? "Assigning…" : "Assign matching leads"}</button></div></footer></section>}
     {upload && <section className="panel" style={{ padding: "1rem", marginBottom: "1rem" }}><b>Import: {upload.status === "PARSING" ? "Checking file…" : upload.status}</b><span> · {importableRows}/{upload.total_rows} rows ready to import</span>{upload.duplicates_found > 0 && <span> · {upload.duplicates_found} duplicates need review</span>}<div style={{ display: "inline-flex", gap: ".5rem", marginLeft: "1rem" }}><button className="filter" disabled={checkingUpload || uploading} onClick={() => void checkUpload()}>{checkingUpload ? "Checking…" : "Check import"}</button>{upload.status === "READY" && !duplicateRows.length && upload.duplicates_found === 0 && <button className="button primary" disabled={importingUpload} onClick={() => void importUpload()}>{importingUpload ? "Importing…" : "Import leads"}</button>}</div>{duplicateRows.length > 0 && <div style={{ marginTop: "1rem" }}><p className="subtext">Duplicates already exist in the CRM. Remove them from this import to keep the existing lead.</p><button className="filter" onClick={() => void removeDuplicates(duplicateRows.map(row => row.id))}>Remove all duplicates</button><div style={{ display: "grid", gap: ".5rem", marginTop: ".75rem" }}>{duplicateRows.map(row => <div key={row.id} className="lead-summary"><b>Row {row.row_number} · {row.data.name || "Unnamed lead"}</b><span>Matches {row.existing_name || "existing lead"}</span><small>{row.normalized_phone} · Current status: {row.existing_status}</small><button className="row-action" onClick={() => void removeDuplicates([row.id])}>Remove duplicate</button></div>)}</div></div>}{upload.error_message && <p className="subtext">{upload.error_message}</p>}</section>}
     {error && <div className="empty-state">{error}</div>}
     <section className={officerMode ? "lead-layout one-column" : "lead-layout"}>
@@ -424,7 +421,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
             <div style={{ gridColumn: "1 / -1" }}><h4>Outcome *</h4><div className="sales-choice-row admin-outcome-row" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>{(callStatus === "Connected" ? connectedOutcomes : notConnectedOutcomes).map(item => <button type="button" className={outcome === item ? "chosen" : ""} onClick={() => { setOutcome(item); if (!["Call Me Back", "Need time", "Need SO Call"].includes(item)) setFollowUpAt(""); }} key={item}>{item}</button>)}</div></div>
 
             <label className="sales-full-label" style={{ gridColumn: "1 / -1" }}>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Enter your call remarks…" /></label>
-            {needsAppointment && <label className="admin-follow-up-date"><span><b>Next follow-up date</b> *</span><input type="datetime-local" required min={localDateTimeValue(new Date().toISOString())} value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>}
+            {needsAppointment && <label className="admin-follow-up-date"><span><b>Next follow-up date</b> *</span><input type="text" required inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}[ ,]+([01]\d|2[0-3]):[0-5]\d" placeholder="DD/MM/YYYY HH:mm" value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>}
             <div><h4>Test drive</h4><label className="admin-checkbox-card"><input type="checkbox" checked={testDrive === "Completed"} onChange={event => setTestDrive(event.target.checked ? "Completed" : "")} /> <span>Mark test drive as done</span></label></div>
           </div>
         </section>

@@ -3,7 +3,6 @@
 import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createLead, getSystemConfig, getOfficers, toOfficer, sourceName, type Officer, type SystemConfig } from "@/lib/crm";
-import { formatDate } from "@/lib/dates";
 
 const RIVER_MODELS = {
   "Indie": ["Standard", "Pro", "Custom"]
@@ -212,4 +211,3 @@ export default function CaptureLeadPage() {
     </div>
   );
 }
-

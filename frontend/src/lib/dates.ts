@@ -10,12 +10,24 @@ export const formatDate = (value: Date | string | null | undefined) => {
   return Number.isNaN(date.getTime()) ? "" : `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
 };
 
+export const formatDateTime = (value: Date | string | null | undefined) => {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${formatDate(date)} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
 export const parseDate = (value: string) => {
   const match = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!match) return null;
   const [, day, month, year] = match;
   const date = new Date(Number(year), Number(month) - 1, Number(day));
   return date.getFullYear() === Number(year) && date.getMonth() === Number(month) - 1 && date.getDate() === Number(day) ? `${year}-${month}-${day}` : null;
+};
+
+export const toApiDate = (value: string | null | undefined) => {
+  if (!value) return value;
+  return parseDate(value) || value;
 };
 
 export const parseDateTime = (value: string) => {
