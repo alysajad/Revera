@@ -70,16 +70,6 @@ class LeadDetailSerializer(LeadSerializer):
     call_history = serializers.SerializerMethodField()
     follow_up_history = serializers.SerializerMethodField()
     audit_history = serializers.SerializerMethodField()
-    previous_consultant = serializers.SerializerMethodField()
-
-    def get_previous_consultant(self, obj):
-        previous_lead = Lead.objects.filter(phone=obj.phone).exclude(id=obj.id).exclude(assigned_so__isnull=True).order_by('-created_at').first()
-        if previous_lead and previous_lead.assigned_so:
-            return {
-                "name": f"{previous_lead.assigned_so.first_name} {previous_lead.assigned_so.last_name}".strip() or previous_lead.assigned_so.email,
-                "phone": previous_lead.assigned_so.phone
-            }
-        return None
 
     def get_call_history(self, obj):
         return CallLogSerializer(obj.call_logs.select_related("so").order_by("-created_at"), many=True).data
@@ -91,7 +81,7 @@ class LeadDetailSerializer(LeadSerializer):
         return [{"event": event.event, "before": event.before, "after": event.after, "actor": event.actor.get_full_name() if event.actor else "System", "created_at": event.created_at} for event in obj.audit_events.select_related("actor").order_by("-created_at")[:30]]
 
     class Meta(LeadSerializer.Meta):
-        fields = LeadSerializer.Meta.fields + ["call_history", "follow_up_history", "audit_history", "previous_consultant"]
+        fields = LeadSerializer.Meta.fields + ["call_history", "follow_up_history", "audit_history"]
 
 
 class CallLogSerializer(serializers.ModelSerializer):
@@ -99,7 +89,7 @@ class CallLogSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CallLog
-        fields = ["id", "status", "call_status", "outcome", "remarks", "so_name", "other_so_called", "created_at"]
+        fields = ["id", "status", "call_status", "outcome", "remarks", "so_name", "created_at"]
         read_only_fields = ["id", "created_at"]
 
 
@@ -108,7 +98,6 @@ class LeadUpdateSerializer(serializers.Serializer):
     remarks = serializers.CharField(max_length=500, required=False, allow_blank=True)
     call_status = serializers.CharField(max_length=20, required=False, allow_blank=True)
     call_outcome = serializers.CharField(max_length=50, required=False, allow_blank=True)
-    other_so_called = serializers.CharField(max_length=160, required=False, allow_blank=True)
     follow_up_at = serializers.DateTimeField(required=False)
 
     def validate(self, attrs):
@@ -139,7 +128,6 @@ class SOLeadUpdateSerializer(serializers.Serializer):
     remarks = serializers.CharField(max_length=500, required=False, allow_blank=True)
     call_status = serializers.CharField(max_length=20, required=False, allow_blank=True)
     call_outcome = serializers.CharField(max_length=50, required=False, allow_blank=True)
-    other_so_called = serializers.CharField(max_length=160, required=False, allow_blank=True)
     follow_up_at = serializers.DateTimeField(required=False, allow_null=True)
     qualification = QualificationSerializer(required=False)
     ps_officer_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True), source="ps_officer", required=False)

@@ -6,7 +6,7 @@ import { getCurrentUser, getLeadDetail, getMyDashboard, getOfficers, toOfficer, 
 type Section = "fresh" | "followups" | "pending" | "qualified" | "walkin" | "won_lost" | "active";
 type FreshSubfilter = "untouched" | "called" | "scheduled";
 type Draft = {
-  status: string; category: string; sales_outcome: string; call_outcome: string; call_status: string; other_so_called: string; remarks: string; follow_up_at: string;
+  status: string; category: string; sales_outcome: string; call_outcome: string; call_status: string; remarks: string; follow_up_at: string;
   model_interest: string; city: string; profession: string; custom_location: string; ps_officer_id: string; lost_reason: string; pending_reason: string; trade_in_note: string;
   qualification: LeadQualification;
 };
@@ -102,7 +102,7 @@ function draftFor(lead: LeadDetail): Draft {
   const { updated_at: _updatedAt, ...qualification } = lead.qualification || emptyQualification();
   const latestOutcome = lead.callHistory[0]?.outcome;
   const call_outcome = ["PENDING", "QUALIFIED", "LOST"].includes(latestOutcome || "") ? latestOutcome : lead.statusCode === "PENDING" ? "PENDING" : lead.statusCode === "QUALIFIED" ? "QUALIFIED" : lead.statusCode === "LOST" ? "LOST" : "";
-  return { status: lead.statusCode, category: lead.category || "WARM", sales_outcome: lead.salesOutcome || "PENDING", call_outcome, call_status: "", other_so_called: "Select...", remarks: "", follow_up_at: "", model_interest: lead.model === "—" ? "" : lead.model, city: lead.city, profession: "", custom_location: "", ps_officer_id: lead.assignedPsId ? String(lead.assignedPsId) : "", lost_reason: "", pending_reason: "", trade_in_note: "", qualification };
+  return { status: lead.statusCode, category: lead.category || "WARM", sales_outcome: lead.salesOutcome || "PENDING", call_outcome, call_status: "", remarks: "", follow_up_at: "", model_interest: lead.model === "—" ? "" : lead.model, city: lead.city, profession: "", custom_location: "", ps_officer_id: lead.assignedPsId ? String(lead.assignedPsId) : "", lost_reason: "", pending_reason: "", trade_in_note: "", qualification };
 }
 
 function leadFieldsFor(lead: LeadDetail): LeadFields {
@@ -197,7 +197,6 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
     if (isPs) {
       if (!draft.call_status) return setNotice("Choose Connected or Not Connected.");
       if (!draft.call_outcome) return setNotice("Choose a call outcome.");
-      if (draft.call_status === "Connected" && draft.other_so_called === "Select...") return setNotice("Select whether any other SO called the customer.");
       if (!draft.remarks.trim()) return setNotice("Remarks are required.");
       const nextStatus = statusOptions[draft.call_outcome]?.[0] || "";
       if (["PENDING", "WALKIN", "CALLBACK"].includes(nextStatus)) {
@@ -205,7 +204,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
         followUpAt = followUpIso(draft.follow_up_at);
         if (!followUpAt || new Date(followUpAt).getTime() <= Date.now()) return setNotice("Choose a future follow-up date.");
       }
-      remarks = draft.call_status === "Connected" && draft.other_so_called !== "Select..." && draft.other_so_called !== "No" ? `Other SO called: ${draft.other_so_called}\n${draft.remarks}` : draft.remarks;
+      remarks = draft.remarks;
     } else {
       if (!draft.call_outcome) return setNotice("Choose Qualified, Lost, or Pending.");
       if (draft.call_outcome === "QUALIFIED" && (!draft.model_interest || !selectedLocation || !draft.ps_officer_id || !draft.qualification.variant || !draft.qualification.buying_timeline || !draft.qualification.finance_type || !draft.qualification.notes.trim())) return setNotice("Complete model, location, PS/SO, buying plan, finance, and qualification notes.");
@@ -313,7 +312,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
       <header className="sales-detail-header"><div><p className="eyebrow">LEAD DETAIL · #{String(detail.id).padStart(6, "0")}</p><h2 id="sales-detail-title">Update {detail.name}</h2><p className="subtext">Customer information and call history.</p></div><button className="modal-close" onClick={() => setDetail(null)} aria-label="Close">×</button></header>
       <div className="sales-detail-scroll">
         {error && <p className="form-error" role="alert">{error}</p>}
-        {isPs && detail.previousConsultant && <div style={{ background: "#fff7e6", padding: "1rem", borderRadius: "8px", border: "1px solid #ffd591", marginBottom: "1rem" }}><h4 style={{ color: "#d46b08", display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", fontWeight: 600 }}>⚠️ Sales consultant info</h4><div style={{ fontSize: "0.9rem" }}><strong>Consultant:</strong> {detail.previousConsultant.name}<br /><strong>Phone no:</strong> <a href={`tel:${detail.previousConsultant.phone}`} style={{ color: "var(--blue)" }}>{detail.previousConsultant.phone}</a></div></div>}
+
         <section className="sales-info-card"><h3>Customer information {!readOnlyHandoff && <button type="button" className="row-action" onClick={() => { setLeadFields(leadFieldsFor(detail)); setEditingLead(true); }}>Edit fields</button>}</h3><div className="sales-info-grid"><span><small>Name</small><b>{detail.name}</b></span><span><small>Phone</small><b>{detail.phone}</b></span><span><small>Email</small><b>{detail.email || "—"}</b></span><span><small>Source</small><b>{detail.source}</b></span><span><small>Source detail</small><b>{detail.sourceLabel || "—"}</b></span><span><small>Model</small><b>{detail.model}</b></span><span><small>City</small><b>{detail.city || "—"}</b></span><span><small>Enquiry date</small><b>{detail.enquiredAt}</b></span><span><small>Campaign</small><b>{detail.campaign || "—"}</b></span><span><small>Branch</small><b>{detail.branch || "—"}</b></span></div><div className="sales-detail-meta"><span>Category <b className={`category-pill ${draft.category.toLowerCase()}`}>{draft.category}</b></span><span>Calls <b>{detail.callCount}</b></span></div></section>
         {detail.qualification && <section className="sales-info-card"><h3>CRE qualification</h3><div className="sales-info-grid"><span><small>Variant</small><b>{detail.qualification.variant || "—"}</b></span><span><small>Buying plan</small><b>{detail.qualification.buying_timeline || "—"}</b></span><span><small>Finance</small><b>{detail.qualification.finance_type || "—"}</b></span><span><small>Test drive</small><b>{detail.qualification.test_drive || "—"}</b></span><span><small>Trade-in</small><b>{detail.qualification.trade_in === true ? "Yes" : detail.qualification.trade_in === false ? "No" : "—"}</b></span><span><small>Notes</small><b>{detail.qualification.notes || "—"}</b></span></div></section>}
         {readOnlyHandoff ? <section className="sales-form-card sales-outcome-card"><h3>Handed to PS/SO</h3><p className="subtext">This qualified lead is now owned by PS/SO. CRE details stay visible for reference.</p></section> : <section className="sales-form-card sales-outcome-card"><h3>Lead Status Update</h3><div className="sales-stepper">{["F1", "F2", "F3", "F4", "F5"].map((step, index) => <span className={progressState(detail.callCount, index)} key={step}>{index < Math.min(detail.callCount, 4) ? "✓" : index === Math.min(detail.callCount, 4) ? "○" : "▣"} {step}</span>)}</div>
@@ -336,16 +335,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
                  </div>
                )}
                
-               {draft.call_status === "Connected" && (
-                 <div style={{ marginTop: "1.5rem" }}>
-                   <h4 style={{ fontSize: "0.85rem", color: "var(--text-light)", marginBottom: "0.5rem" }}>Did any other SO call the customer?</h4>
-                   <select value={draft.other_so_called} onChange={e => choose("other_so_called", e.target.value)} style={{ width: "100%", padding: "0.75rem", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--field-bg)", fontSize: "1rem" }}>
-                     <option value="Select...">Select...</option>
-                     <option value="Yes">Yes</option>
-                     <option value="No">No</option>
-                   </select>
-                 </div>
-               )}
+
 
                {draft.call_outcome && ["PENDING", "WALKIN", "CALLBACK"].includes(statusOptions[draft.call_outcome]?.[0] || "") && (
                  <div style={{ marginTop: "1.5rem" }}>

@@ -102,7 +102,6 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const [followUpAt, setFollowUpAt] = useState("");
   const [testDrive, setTestDrive] = useState("");
   const [callStatus, setCallStatus] = useState("Connected");
-  const [otherSoCalled, setOtherSoCalled] = useState("");
   const [editingCustomer, setEditingCustomer] = useState(false);
   const [editDetails, setEditDetails] = useState({ name: "", phone: "", model: "", variant: "", buying_timeline: "", finance_type: "", trade_in: null as boolean | null, category: "" });
   const [savingDetails, setSavingDetails] = useState(false);
@@ -200,14 +199,13 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
           remarks,
           call_status: callStatus,
           call_outcome: outcome,
-          other_so_called: otherSoCalled,
           ...(normalizedFollowUpAt ? { follow_up_at: normalizedFollowUpAt } : {}),
           ...(testDrive ? { qualification: { variant: leadDetail.qualification?.variant || "", buying_timeline: leadDetail.qualification?.buying_timeline || "", finance_type: leadDetail.qualification?.finance_type || "", trade_in: leadDetail.qualification?.trade_in ?? null, test_drive: testDrive, notes: leadDetail.qualification?.notes || "" } } : {}),
         });
       } else {
         await logCall(activeLead.id, { status: outcome, remarks, ...(normalizedFollowUpAt ? { follow_up_at: normalizedFollowUpAt } : {}) });
       }
-      setNotice(`Call log saved for ${activeLead.name}.`); setActiveLead(null); setLeadDetail(null); setRemarks(""); setFollowUpAt(""); setTestDrive(""); setCallStatus("Connected"); setOtherSoCalled(""); await refresh();
+      setNotice(`Call log saved for ${activeLead.name}.`); setActiveLead(null); setLeadDetail(null); setRemarks(""); setFollowUpAt(""); setTestDrive(""); setCallStatus("Connected"); await refresh();
     } finally { setSavingCall(false); }
   };
 
@@ -261,7 +259,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
 
   const openLead = async (lead: Lead) => {
     const initialOutcome = officerMode ? nextOutcomes[lead.status]?.[0]?.value || "" : lead.statusCode === "WON" ? "WON" : ["LOST", "UNQUALIFIED"].includes(lead.statusCode) ? "LOST" : lead.statusCode === "PENDING" || lead.nextFollowUp ? "PENDING" : "";
-    setActiveLead(lead); setOutcome(initialOutcome); setRemarks(""); setFollowUpAt(localDateTimeValue(lead.nextFollowUp)); setTestDrive(""); setCallStatus("Connected"); setOtherSoCalled(""); setEditingCustomer(false); setSavingCall(false); setError("");
+    setActiveLead(lead); setOutcome(initialOutcome); setRemarks(""); setFollowUpAt(localDateTimeValue(lead.nextFollowUp)); setTestDrive(""); setCallStatus("Connected"); setEditingCustomer(false); setSavingCall(false); setError("");
     if (!officerMode) {
       setDetailLoading(true);
       try { const detail = await getLeadDetail(lead.id); setLeadDetail(detail); setFollowUpAt(localDateTimeValue(detail.nextFollowUp)); setTestDrive(detail.qualification?.test_drive || ""); }
@@ -401,21 +399,18 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
               <div className="sales-detail-meta"><span>Trade-in <b>{leadDetail?.qualification?.trade_in === true ? "Yes" : leadDetail?.qualification?.trade_in === false ? "No" : "—"}</b></span><span>Category <b className={`category-pill ${activeLead.category?.toLowerCase() || "warm"}`}>{activeLead.category || "WARM"}</b></span></div>
             </>
           )}
-          {leadDetail?.previousConsultant && <div className="sales-consultant-alert" style={{ marginTop: "1rem", padding: "1rem", background: "#fff3cd", border: "1px solid #ffeeba", borderRadius: "8px" }}>
-            <p style={{ margin: "0 0 0.5rem 0", fontWeight: "bold", color: "#856404" }}>⚠️ Sales consultant Info</p>
-            <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "#856404" }}><li>Consultant:<br/><b>{leadDetail.previousConsultant.name}</b><br/>Phone no:<br/><a href={`tel:${leadDetail.previousConsultant.phone}`}>{leadDetail.previousConsultant.phone}</a></li></ul>
-          </div>}
+
         </section>
         {(detailLoading || leadDetail?.callHistory.length) ? <section className="sales-form-card admin-call-history">
           <h3>Call history</h3>
-          {detailLoading ? <p className="subtext">Loading call history…</p> : <div className="admin-history-list">{leadDetail?.callHistory.map((call, index) => <div className="sales-history-row" key={`call-${call.id}`}><div><b>Call #{leadDetail.callHistory.length - index} · {call.so_name || "Admin"}</b><small>{call.remarks || "No remarks"}</small><div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap", marginTop: "0.25rem" }}>{call.call_status && <span className="admin-history-outcome" style={{ background: "#e2e8f0", color: "#1e293b" }}>{call.call_status}</span>}{call.outcome && <span className="admin-history-outcome">{call.outcome}</span>}{call.other_so_called && <span className="admin-history-outcome" style={{ background: "#fff3cd", color: "#856404" }}>Other SO: {call.other_so_called}</span>}</div></div><time>{formatCallDate(call.created_at)}</time></div>)}</div>}
+          {detailLoading ? <p className="subtext">Loading call history…</p> : <div className="admin-history-list">{leadDetail?.callHistory.map((call, index) => <div className="sales-history-row" key={`call-${call.id}`}><div><b>Call #{leadDetail.callHistory.length - index} · {call.so_name || "Admin"}</b><small>{call.remarks || "No remarks"}</small><div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap", marginTop: "0.25rem" }}>{call.call_status && <span className="admin-history-outcome" style={{ background: "#e2e8f0", color: "#1e293b" }}>{call.call_status}</span>}{call.outcome && <span className="admin-history-outcome">{call.outcome}</span>}</div></div><time>{formatCallDate(call.created_at)}</time></div>)}</div>}
         </section> : null}
         <section className="sales-form-card admin-call-card">
           <h3>Log follow-up F{leadDetail ? leadDetail.callHistory.length + 1 : 1}</h3>
           <div className="admin-follow-up-grid">
             <div style={{ gridColumn: "1 / -1" }}><h4>Call status *</h4><div className="sales-choice-row admin-outcome-row" style={{ display: "flex", gap: "0.5rem" }}><button type="button" className={callStatus === "Connected" ? "chosen" : ""} onClick={() => { setCallStatus("Connected"); setOutcome(""); }}>Connected</button><button type="button" className={callStatus === "Not Connected" ? "chosen" : ""} onClick={() => { setCallStatus("Not Connected"); setOutcome(""); }}>Not Connected</button></div></div>
             <div style={{ gridColumn: "1 / -1" }}><h4>Outcome *</h4><div className="sales-choice-row admin-outcome-row" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>{(callStatus === "Connected" ? connectedOutcomes : notConnectedOutcomes).map(item => <button type="button" className={outcome === item ? "chosen" : ""} onClick={() => { setOutcome(item); if (!["Call Me Back", "Need time", "Need SO Call"].includes(item)) setFollowUpAt(""); }} key={item}>{item}</button>)}</div></div>
-            {callStatus === "Connected" && <label style={{ gridColumn: "1 / -1" }}>Did any other SO call the customer?<select value={otherSoCalled} onChange={event => setOtherSoCalled(event.target.value)}><option value="">Select...</option><option value="Yes">Yes</option><option value="No">No</option></select></label>}
+
             <label className="sales-full-label" style={{ gridColumn: "1 / -1" }}>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Enter your call remarks…" /></label>
             {needsAppointment && <label className="admin-follow-up-date"><span><b>Next follow-up date</b> *</span><input type="datetime-local" required min={localDateTimeValue(new Date().toISOString())} value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>}
             <div><h4>Test drive</h4><label className="admin-checkbox-card"><input type="checkbox" checked={testDrive === "Completed"} onChange={event => setTestDrive(event.target.checked ? "Completed" : "")} /> <span>Mark test drive as done</span></label></div>
