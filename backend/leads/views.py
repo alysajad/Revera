@@ -169,7 +169,7 @@ class LeadViewSet(viewsets.ModelViewSet):
             if next_status not in CALL_OUTCOME_STATUS_OPTIONS[call_outcome]:
                 return Response({"detail": "Choose a lead status that matches the call outcome."}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            next_status = call_status.get(call_outcome) if call_outcome else data.get("status") or sales_status.get(data.get("sales_outcome"), lead.status)
+            next_status = call_status.get(call_outcome, data.get("status")) if call_outcome else data.get("status") or sales_status.get(data.get("sales_outcome"), lead.status)
         if call_outcome == "PENDING" and not data.get("follow_up_at"):
             return Response({"detail": "Pending calls require a follow-up time."}, status=status.HTTP_400_BAD_REQUEST)
         if call_outcome in CALL_OUTCOME_STATUS_OPTIONS and next_status not in {Lead.Status.CALLBACK, Lead.Status.PENDING} and data.get("follow_up_at"):
