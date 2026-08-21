@@ -1,16 +1,19 @@
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
-import { getUsers, createUser, disableUser, type CurrentUser } from "@/lib/crm";
+import { getUsers, createUser, disableUser, getSystemConfig, type CurrentUser } from "@/lib/crm";
 
 export function TeamPage() {
   const [usersRaw, setUsers] = useState<CurrentUser[]>([]);
   const users = Array.isArray(usersRaw) ? usersRaw : ((usersRaw as any).results || []) as CurrentUser[];
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [selectedRole, setSelectedRole] = useState("");
 
   useEffect(() => {
     loadUsers();
+    getSystemConfig().then(config => setBranches(config.lists?.branches || []));
   }, []);
 
   const loadUsers = () => {
@@ -33,14 +36,18 @@ export function TeamPage() {
     if (uiRole === "Sales Manager") backendRole = "SO";
     if (uiRole === "Receptionist") backendRole = "RECEPTIONIST";
 
-    const payload = {
-      first_name: formData.get("firstName"),
-      last_name: formData.get("lastName"),
-      email: formData.get("email"),
-      password: formData.get("password"),
+    const payload: Record<string, string | boolean> = {
+      first_name: formData.get("firstName") as string,
+      last_name: formData.get("lastName") as string,
+      email: formData.get("email") as string,
+      password: formData.get("password") as string,
       role: backendRole,
       is_active: true
     };
+    
+    if (backendRole === "SO") {
+      payload.location = formData.get("branch") as string;
+    }
 
     try {
       await createUser(payload);
@@ -103,15 +110,25 @@ export function TeamPage() {
               <input type="password" name="password" required minLength={6} />
             </label>
             <label>Role *
-              <select name="role" required>
+              <select name="role" required value={selectedRole} onChange={e => setSelectedRole(e.target.value)}>
                 <option value="">Select...</option>
                 <option value="Admin">Admin</option>
-                <option value="Marketing">Marketing</option>
-                <option value="Sales Manager">Sales Manager</option>
+                <option value="Marketing">Marketing (CRE)</option>
+                <option value="Sales Manager">Sales Manager (SO)</option>
                 <option value="Receptionist">Receptionist</option>
               </select>
             </label>
           </div>
+          {selectedRole === "Sales Manager" && (
+            <div className="form-grid" style={{ marginTop: "13px" }}>
+              <label>Branch *
+                <select name="branch" required>
+                  <option value="">Select branch...</option>
+                  {branches.map(branch => <option key={branch} value={branch}>{branch}</option>)}
+                </select>
+              </label>
+            </div>
+          )}
           <button type="submit" className="button primary" disabled={loading} style={{ width: "100%", marginTop: "20px" }}>
             {loading ? "Creating..." : "Create user"}
           </button>
@@ -127,7 +144,7 @@ export function TeamPage() {
             <li key={user.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "1rem", borderBottom: "1px solid var(--border)" }}>
               <div>
                 <b style={{ display: "block" }}>{user.first_name} {user.last_name}</b>
-                <small style={{ color: "var(--text-dim)" }}>@{user.email.split("@")[0]} · {displayRole(user.role)}</small>
+                <small style={{ color: "var(--text-dim)" }}>@{user.email.split("@")[0]} · {displayRole(user.role)}{user.role === "SO" && user.location ? ` (${user.location})` : ""}</small>
               </div>
               <button className="button" onClick={() => handleDisable(user.id)}>Disable</button>
             </li>

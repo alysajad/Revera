@@ -25,7 +25,7 @@ export type PersonalAnalytics = { range: string; summary: { total: number; assig
 export type Officer = { id: number; name: string; initials: string; color: "blue" | "green" | "violet" | "orange"; location: string; assigned: number; calls: number; qualified: number; won: number };
 export type Metrics = { total_assigned: number; total_called: number; calls_today?: number; qualified: number; walkins: number; won: number; lost: number; conversion_rate: number };
 export type Analytics = { summary: Metrics; source: { source: string; total: number; qualified: number; won: number }[]; cre: (Metrics & { id: number; name: string })[]; officers: (Metrics & { id: number; name: string })[] };
-export type CurrentUser = { id: number; first_name: string; last_name: string; email: string; role: "ADMIN" | "CRE" | "SO" | "RECEPTIONIST"; is_active?: boolean };
+export type CurrentUser = { id: number; first_name: string; last_name: string; email: string; role: "ADMIN" | "CRE" | "SO" | "RECEPTIONIST"; is_active?: boolean; location?: string };
 
 let csrfToken = "";
 
