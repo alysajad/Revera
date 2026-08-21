@@ -192,6 +192,28 @@ class LeadAccessTests(TestCase):
         self.assertEqual(self.first_lead.status, Lead.Status.PENDING)
         self.assertTrue(FollowUp.objects.filter(lead=self.first_lead, resolved_at__isnull=True).exists())
 
+    def test_assigned_ps_can_schedule_next_day_follow_up(self):
+        self.first_lead.status = Lead.Status.QUALIFIED
+        self.first_lead.assigned_ps = self.ps_so
+        self.first_lead.save(update_fields=["status", "assigned_ps"])
+        self.client.force_authenticate(self.ps_so)
+        future = timezone.now() + timedelta(days=1)
+
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {
+            "call_status": "Connected",
+            "call_outcome": "Need Test Drive",
+            "status": Lead.Status.PENDING,
+            "sales_outcome": Lead.SalesOutcome.PENDING,
+            "remarks": "Customer asked for a test drive tomorrow.",
+            "follow_up_at": future.isoformat(),
+        }, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        self.first_lead.refresh_from_db()
+        self.assertEqual(self.first_lead.status, Lead.Status.PENDING)
+        self.assertTrue(FollowUp.objects.filter(lead=self.first_lead, so=self.ps_so, scheduled_for=future, resolved_at__isnull=True).exists())
+        self.assertEqual(CallLog.objects.get(lead=self.first_lead).outcome, "Need Test Drive")
+
     def test_direct_qualified_and_lost_outcomes_set_matching_statuses(self):
         self.client.force_authenticate(self.first_so)
         response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "QUALIFIED", "status": Lead.Status.QUALIFIED, "city": "Kochi", "ps_officer_id": self.ps_so.id, "qualification": {"variant": "R8 Pro"}}, format="json")
