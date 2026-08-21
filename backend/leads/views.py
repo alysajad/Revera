@@ -174,7 +174,7 @@ class LeadViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Pending calls require a follow-up time."}, status=status.HTTP_400_BAD_REQUEST)
         if call_outcome in CALL_OUTCOME_STATUS_OPTIONS and next_status not in {Lead.Status.CALLBACK, Lead.Status.PENDING} and data.get("follow_up_at"):
             return Response({"detail": "Only callback status can have a follow-up time."}, status=status.HTTP_400_BAD_REQUEST)
-        if call_outcome and call_outcome not in CALL_OUTCOME_STATUS_OPTIONS and call_outcome != "PENDING" and data.get("follow_up_at"):
+        if call_outcome and call_outcome not in CALL_OUTCOME_STATUS_OPTIONS and call_outcome != "PENDING" and data.get("follow_up_at") and next_status not in {Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.WALKIN}:
             return Response({"detail": "Only pending calls can have a follow-up time."}, status=status.HTTP_400_BAD_REQUEST)
         if data.get("follow_up_at") and next_status in {Lead.Status.FRESH, Lead.Status.RNR}:
             next_status = Lead.Status.CALLBACK
