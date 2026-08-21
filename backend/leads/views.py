@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import User
-from accounts.permissions import IsAdmin, IsAdminOrReceptionist
+from accounts.permissions import IsAdmin, IsAdminOrReceptionist, IsAdminReceptionistOrCRE
 from notifications.models import Notification
 from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification, SystemConfig
 from .serializers import CALL_OUTCOME_STATUS_OPTIONS, AssignmentSerializer, FollowUpSerializer, LeadDetailSerializer, LeadSerializer, LeadUpdateSerializer, PSAssignmentSerializer, SOLeadListSerializer, SOLeadUpdateSerializer, SystemConfigSerializer
@@ -85,7 +85,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         if self.action in {"assign", "assign_ps", "bulk_assign", "bulk_assign_ps", "auto_assign", "reopen", "destroy"}:
             return [IsAdmin()]
         if self.action == "create":
-            return [IsAdminOrReceptionist()]
+            return [IsAdminReceptionistOrCRE()]
         return super().get_permissions()
 
     @action(detail=False, methods=["get"], url_path="my-dashboard")
