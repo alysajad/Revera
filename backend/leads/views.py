@@ -23,8 +23,8 @@ FORWARD_TRANSITIONS = {
     Lead.Status.SWITCHED_OFF: {Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED, Lead.Status.LOST},
     Lead.Status.CALLBACK: {Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.PENDING, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED, Lead.Status.WALKIN, Lead.Status.LOST},
     Lead.Status.PENDING: {Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED, Lead.Status.WALKIN, Lead.Status.LOST},
-    Lead.Status.QUALIFIED: {Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.QUALIFIED, Lead.Status.WALKIN, Lead.Status.WON, Lead.Status.LOST},
-    Lead.Status.WALKIN: {Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.QUALIFIED, Lead.Status.WALKIN, Lead.Status.WON, Lead.Status.LOST},
+    Lead.Status.QUALIFIED: {Lead.Status.WALKIN, Lead.Status.WON, Lead.Status.LOST},
+    Lead.Status.WALKIN: {Lead.Status.WON, Lead.Status.LOST},
 }
 
 
@@ -169,12 +169,12 @@ class LeadViewSet(viewsets.ModelViewSet):
             if next_status not in CALL_OUTCOME_STATUS_OPTIONS[call_outcome]:
                 return Response({"detail": "Choose a lead status that matches the call outcome."}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            next_status = call_status.get(call_outcome, data.get("status")) if call_outcome else data.get("status") or sales_status.get(data.get("sales_outcome"), lead.status)
+            next_status = call_status.get(call_outcome) if call_outcome else data.get("status") or sales_status.get(data.get("sales_outcome"), lead.status)
         if call_outcome == "PENDING" and not data.get("follow_up_at"):
             return Response({"detail": "Pending calls require a follow-up time."}, status=status.HTTP_400_BAD_REQUEST)
         if call_outcome in CALL_OUTCOME_STATUS_OPTIONS and next_status not in {Lead.Status.CALLBACK, Lead.Status.PENDING} and data.get("follow_up_at"):
             return Response({"detail": "Only callback status can have a follow-up time."}, status=status.HTTP_400_BAD_REQUEST)
-        if call_outcome and call_outcome not in CALL_OUTCOME_STATUS_OPTIONS and call_outcome != "PENDING" and data.get("follow_up_at") and next_status not in {Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.WALKIN}:
+        if call_outcome and call_outcome not in CALL_OUTCOME_STATUS_OPTIONS and call_outcome != "PENDING" and data.get("follow_up_at"):
             return Response({"detail": "Only pending calls can have a follow-up time."}, status=status.HTTP_400_BAD_REQUEST)
         if data.get("follow_up_at") and next_status in {Lead.Status.FRESH, Lead.Status.RNR}:
             next_status = Lead.Status.CALLBACK

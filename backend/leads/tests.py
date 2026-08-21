@@ -73,6 +73,12 @@ class LeadAccessTests(TestCase):
         self.first_lead.refresh_from_db()
         self.assertEqual(self.first_lead.assigned_so, self.first_so)
 
+    def test_sales_officer_cannot_move_a_lead_backward(self):
+        self.first_lead.status = Lead.Status.QUALIFIED
+        self.first_lead.save()
+        self.client.force_authenticate(self.first_so)
+        response = self.client.post(f"/api/leads/{self.first_lead.id}/log-call/", {"status": Lead.Status.RNR}, format="json")
+        self.assertEqual(response.status_code, 400)
 
     def test_sales_officer_cannot_skip_ahead_to_won(self):
         self.client.force_authenticate(self.first_so)
@@ -165,6 +171,8 @@ class LeadAccessTests(TestCase):
 
     def test_call_outcome_only_allows_matching_lead_statuses(self):
         self.client.force_authenticate(self.first_so)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "CONNECTED", "status": Lead.Status.RNR}, format="json")
+        self.assertEqual(response.status_code, 400)
 
         future = timezone.now() + timedelta(days=1)
         response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "PENDING", "status": Lead.Status.QUALIFIED, "follow_up_at": future.isoformat()}, format="json")
