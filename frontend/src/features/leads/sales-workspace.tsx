@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { createLead, getCurrentUser, getLeadDetail, getMyDashboard, getOfficers, toOfficer, updateMyLead, type CurrentUser, type LeadDetail, type LeadInput, type LeadQualification, type Officer, type SalesDashboard, type SalesLead } from "@/lib/crm";
+import { createLead, getCurrentUser, getLeadDetail, getMyDashboard, getOfficers, toOfficer, updateMyLead, type CurrentUser, type LeadDetail, type LeadInput, type LeadQualification, type Officer, type SalesDashboard, type SalesLead, getSystemConfig } from "@/lib/crm";
 import { formatDate, parseDate } from "@/lib/dates";
 
 type Section = "fresh" | "followups" | "pending" | "qualified" | "walkin" | "won_lost" | "active";
@@ -69,7 +69,7 @@ const lostReasons = ["Invalid Number", "Wrong Number", "Just enquired", "Service
 const pendingReasons = ["RNR", "DND", "Not Reachable", "Switched Off", "Busy", "Disconnecting the call", "Temporary out of Service", "Call me back", "Incoming call facility not available", "Out of Network", "Plan Postponed"];
 const emptyQualification = (): LeadQualification => ({ variant: "", buying_timeline: "", finance_type: "", trade_in: null, test_drive: "", notes: "" });
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const emptyLead = (): LeadInput => ({ name: "", phone: "", email: "", source: "OTHER", source_label: "", campaign: "", model_interest: "", city: "", enquiry_date: formatDate(new Date()) });
+const emptyLead = (): LeadInput => ({ name: "", phone: "", email: "", source: "OTHER", source_label: "", campaign: "", model_interest: "", city: "", branch: "", enquiry_date: formatDate(new Date()) });
 
 function formatFollowUp(value: string | null) {
   if (!value) return "Not scheduled";
@@ -147,6 +147,8 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   const [authChecked, setAuthChecked] = useState(false);
   const [psOptions, setPsOptions] = useState<Officer[]>([]);
   const [psLoading, setPsLoading] = useState(false);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [addLeadPsOptions, setAddLeadPsOptions] = useState<Officer[]>([]);
   const isPs = user?.role === "SO";
   const activeOutcomeLabels = isPs ? psOutcomeLabels : outcomeLabels;
   const selectedLocation = draft ? (draft.custom_location || draft.city).trim() : "";
@@ -156,7 +158,16 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
       setUser(result.user);
       if (result.user.role === "SO" && !followUpsOnly) setSection("active");
     }).catch(() => setUser(null)).finally(() => setAuthChecked(true));
+    void getSystemConfig().then(config => setBranches(config.lists?.branches || []));
   }, [followUpsOnly]);
+
+  useEffect(() => {
+    if (newLead.branch) {
+      void getOfficers(newLead.branch).then(records => setAddLeadPsOptions(records.map(r => toOfficer(r))));
+    } else {
+      setAddLeadPsOptions([]);
+    }
+  }, [newLead.branch]);
 
   const loadDashboard = useCallback(async () => {
     if (!user) return;
@@ -257,19 +268,22 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
 
   const saveLead = async () => {
     if (creatingLead) return;
-    const email = newLead.email?.trim() || "";
-    if (email && !emailPattern.test(email)) { setAddLeadError("Enter a valid email address, such as name@example.com."); return; }
-    const enquiryDate = parseDate(newLead.enquiry_date || "");
-    if (!enquiryDate) { setAddLeadError("Enter the enquiry date as DD/MM/YYYY."); return; }
-    const today = parseDate(formatDate(new Date()));
-    if (today && enquiryDate > today) { setAddLeadError("Enquiry date cannot be in the future."); return; }
     setCreatingLead(true); setAddLeadError("");
     try {
-      const lead = await createLead({ ...newLead, email, enquiry_date: enquiryDate });
-      setAddingLead(false); setNewLead(emptyLead()); setSubmittedLead(lead.name);
-      await loadDashboard();
-    } catch (requestError) { setAddLeadError(requestError instanceof Error ? requestError.message : "Lead could not be added."); }
-    finally { setCreatingLead(false); }
+      const payload: LeadInput = { ...newLead };
+      if (newLead.assigned_ps_id) {
+         payload.status = "QUALIFIED";
+      }
+      const created = await createLead(payload);
+      setSubmittedLead(created.name);
+      setAddingLead(false);
+      setNewLead(emptyLead());
+      void loadDashboard();
+    } catch (requestError) {
+      setAddLeadError(requestError instanceof Error ? requestError.message : "Failed to add lead.");
+    } finally {
+      setCreatingLead(false);
+    }
   };
 
   const summary = dashboard?.summary;
@@ -409,7 +423,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
       </div>
       <footer className="sales-detail-footer"><button className="filter" onClick={() => setDetail(null)}>Close</button>{!readOnlyHandoff && <button className={`button primary ${draft.call_outcome.toLowerCase()}`} disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : submitLabel}</button>}</footer>
     </section></div>}
-    {addingLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-lead-title"><button className="modal-close" onClick={() => setAddingLead(false)} aria-label="Close">×</button><p className="eyebrow">LEAD INTAKE</p><h2 id="add-lead-title">Add a lead</h2><form className="lead-form" onSubmit={event => { event.preventDefault(); void saveLead(); }}><div className="form-grid"><label>Full name<input required maxLength={160} value={newLead.name} onChange={event => setNewLead(current => ({ ...current, name: event.target.value }))} placeholder="Customer name" /></label><label>Phone number<input required inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={newLead.phone} onChange={event => setNewLead(current => ({ ...current, phone: event.target.value.replace(/\D/g, "") }))} placeholder="10-digit mobile number" /></label><label>Email<input type="email" inputMode="email" pattern={emailPattern.source} title="Use a complete email such as name@example.com" value={newLead.email} onChange={event => setNewLead(current => ({ ...current, email: event.target.value }))} placeholder="name@example.com" /></label><label>City<input maxLength={100} value={newLead.city} onChange={event => setNewLead(current => ({ ...current, city: event.target.value }))} placeholder="City" /></label><label>Lead source<select value={newLead.source} onChange={event => setNewLead(current => ({ ...current, source: event.target.value }))}>{sourceOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label>Enquiry date<input required type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={newLead.enquiry_date} onChange={event => setNewLead(current => ({ ...current, enquiry_date: event.target.value }))} placeholder="DD/MM/YYYY" /></label><label>Vehicle interest<input list="vehicle-options-new" maxLength={100} value={newLead.model_interest} onChange={event => setNewLead(current => ({ ...current, model_interest: event.target.value }))} placeholder="Choose or type a model" /><datalist id="vehicle-options-new">{modelOptions.map(model => <option key={model} value={model} />)}</datalist></label><label>Campaign<input maxLength={160} value={newLead.campaign} onChange={event => setNewLead(current => ({ ...current, campaign: event.target.value }))} placeholder="Campaign name" /></label></div><label style={{ marginTop: "13px", display: "block" }}>Source detail<input maxLength={100} value={newLead.source_label} onChange={event => setNewLead(current => ({ ...current, source_label: event.target.value }))} placeholder="Ad set, partner, referral, or other detail" /></label>{addLeadError && <p className="form-error" role="alert">{addLeadError}</p>}<p className="subtext">The new lead will be automatically assigned to you.</p><footer><button type="button" className="filter" onClick={() => setAddingLead(false)}>Cancel</button><button className="button primary" disabled={creatingLead}>{creatingLead ? "Adding…" : "Add lead"}</button></footer></form></section></div>}
-    {submittedLead && <div className="modal-layer" role="presentation"><section className="modal success-modal" role="dialog" aria-modal="true" aria-labelledby="submitted-title"><button className="modal-close" onClick={() => setSubmittedLead(null)} aria-label="Close">×</button><div className="success-mark" aria-hidden="true">✓</div><p className="eyebrow">LEAD SUBMITTED</p><h2 id="submitted-title">Thank you, lead submitted.</h2><p className="subtext">{submittedLead} has been successfully added to your queue.</p><button className="button primary" onClick={() => setSubmittedLead(null)}>Done</button></section></div>}
+    {addingLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-lead-title"><button className="modal-close" onClick={() => setAddingLead(false)} aria-label="Close">×</button><p className="eyebrow">LEAD INTAKE</p><h2 id="add-lead-title">Add a lead</h2><form className="lead-form" onSubmit={event => { event.preventDefault(); void saveLead(); }}><div className="form-grid"><label>Full name<input required maxLength={160} value={newLead.name} onChange={event => setNewLead(current => ({ ...current, name: event.target.value }))} placeholder="Customer name" /></label><label>Phone number<input required inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={newLead.phone} onChange={event => setNewLead(current => ({ ...current, phone: event.target.value.replace(/\D/g, "") }))} placeholder="10-digit mobile number" /></label><label>Email<input type="email" inputMode="email" pattern={emailPattern.source} title="Use a complete email such as name@example.com" value={newLead.email} onChange={event => setNewLead(current => ({ ...current, email: event.target.value }))} placeholder="name@example.com" /></label><label>City<input maxLength={100} value={newLead.city} onChange={event => setNewLead(current => ({ ...current, city: event.target.value }))} placeholder="City" /></label><label>Lead source<select value={newLead.source} onChange={event => setNewLead(current => ({ ...current, source: event.target.value }))}>{sourceOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label>Enquiry date<input required type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={newLead.enquiry_date} onChange={event => setNewLead(current => ({ ...current, enquiry_date: event.target.value }))} placeholder="DD/MM/YYYY" /></label><label>Vehicle interest<input list="vehicle-options-new" maxLength={100} value={newLead.model_interest} onChange={event => setNewLead(current => ({ ...current, model_interest: event.target.value }))} placeholder="Choose or type a model" /><datalist id="vehicle-options-new">{modelOptions.map(model => <option key={model} value={model} />)}</datalist></label><label>Campaign<input maxLength={160} value={newLead.campaign} onChange={event => setNewLead(current => ({ ...current, campaign: event.target.value }))} placeholder="Campaign name" /></label><label>Branch *<select required value={newLead.branch || ""} onChange={event => setNewLead(current => ({ ...current, branch: event.target.value, assigned_ps_id: undefined }))}><option value="">Select branch</option>{branches.map(branch => <option key={branch} value={branch}>{branch}</option>)}</select></label><label>PS Name *<select required value={newLead.assigned_ps_id || ""} onChange={event => setNewLead(current => ({ ...current, assigned_ps_id: Number(event.target.value) }))}><option value="">{addLeadPsOptions.length ? "Select PS" : newLead.branch ? "No PS in this branch" : "Select branch first"}</option>{addLeadPsOptions.map(ps => <option key={ps.id} value={ps.id}>{ps.name}</option>)}</select></label></div><label style={{ marginTop: "13px", display: "block" }}>Source detail<input maxLength={100} value={newLead.source_label} onChange={event => setNewLead(current => ({ ...current, source_label: event.target.value }))} placeholder="Ad set, partner, referral, or other detail" /></label>{addLeadError && <p className="form-error" role="alert">{addLeadError}</p>}<p className="subtext">The new lead will be automatically assigned to the selected PS as a Qualified lead.</p><footer><button type="button" className="filter" onClick={() => setAddingLead(false)}>Cancel</button><button className="button primary" disabled={creatingLead || !newLead.assigned_ps_id}>{creatingLead ? "Adding…" : "Add lead"}</button></footer></form></section></div>}
+    {submittedLead && <div className="modal-layer" role="presentation"><section className="modal success-modal" role="dialog" aria-modal="true" aria-labelledby="submitted-title"><button className="modal-close" onClick={() => setSubmittedLead(null)} aria-label="Close">×</button><div className="success-mark" aria-hidden="true">✓</div><p className="eyebrow">LEAD SUBMITTED</p><h2 id="submitted-title">Thank you, lead submitted.</h2><p className="subtext">{submittedLead} has been directly assigned as Qualified.</p><button className="button primary" onClick={() => setSubmittedLead(null)}>Done</button></section></div>}
   </section>;
 }
