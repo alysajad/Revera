@@ -14,7 +14,7 @@ export type Lead = {
   branch: string; campaign: string; category: string; salesOutcome: string; nextFollowUp: string | null; callCount: number; statusCode: string; status: string; assignedSoId: number | null; assignedSoName: string; assignedPsId: number | null; assignedPsName: string;
 };
 export type SalesLead = { id: number; status: string; statusCode: string; name: string; phone: string; source: string; sourceCode: string; flagged_to_manager: boolean };
-export type LeadInput = { name: string; phone: string; email?: string; source: string; source_label?: string; campaign?: string; model_interest?: string; city?: string; branch?: string; enquiry_date?: string; profession?: string; assigned_ps_id?: number; status?: string; qualification?: LeadQualification };
+export type LeadInput = { name: string; phone: string; email?: string; source: string; source_label?: string; campaign?: string; model_interest?: string; city?: string; branch?: string; enquiry_date?: string; profession?: string; ps_officer_id?: number; status?: string; qualification?: LeadQualification };
 export type LeadFilters = { source?: string; model?: string; city?: string; source_label?: string; date_from?: string; date_to?: string };
 export type LeadQualification = { variant: string; buying_timeline: string; finance_type: string; trade_in: boolean | null; test_drive: string; notes: string; updated_at?: string };
 export type CallHistory = { id: number; status: string; outcome: string; remarks: string; so_name: string; created_at: string; call_status?: string };
@@ -102,8 +102,8 @@ export type UploadRow = { id: number; row_number: number; data: { name?: string 
 export type UploadBatch = { id: number; status: "PARSING" | "READY" | "COMMITTED" | "FAILED"; total_rows: number; parsed_ok: number; duplicates_found: number; skipped: number; error_message: string; rows?: UploadRow[] };
 
 export type SystemConfig = { lists: { branches?: string[]; sources?: string[]; activities?: string[]; models?: string[] }; updated_at?: string };
-export const getSystemConfig = () => api<SystemConfig>("/api/leads/system-config/");
-export const updateSystemConfig = (lists: SystemConfig["lists"]) => api<SystemConfig>("/api/leads/system-config/", { method: "PUT", body: JSON.stringify({ lists }) });
+export const getSystemConfig = () => api<SystemConfig>("/api/system-config/");
+export const updateSystemConfig = (lists: SystemConfig["lists"]) => api<SystemConfig>("/api/system-config/", { method: "PUT", body: JSON.stringify({ lists }) });
 export const getUsers = async () => { const data = await api<any>("/api/auth/users/"); return (data.results || data) as CurrentUser[]; };
 export const createUser = (payload: any) => api<CurrentUser>("/api/auth/users/", { method: "POST", body: JSON.stringify(payload) });
 export const disableUser = (userId: number) => api<void>(`/api/auth/users/${userId}/`, { method: "DELETE" });
