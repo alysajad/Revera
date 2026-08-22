@@ -5,7 +5,7 @@ from rest_framework.test import APIClient
 from datetime import timedelta
 
 from accounts.models import User
-from .models import CallLog, FollowUp, Lead, LeadQualification
+from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification
 
 
 class LeadAccessTests(TestCase):
@@ -52,6 +52,39 @@ class LeadAccessTests(TestCase):
         self.assertEqual(response.data["assigned"], 1)
         google.refresh_from_db()
         self.assertEqual(google.assigned_so, self.second_so)
+
+    def test_admin_distributes_filtered_bucket_across_selected_cres(self):
+        meta_leads = [Lead.objects.create(name=f"Meta {index}", phone=f"70066824{index:02d}", source=Lead.Source.META) for index in range(5)]
+        google = Lead.objects.create(name="Google bucket", phone="7006682500", source=Lead.Source.OTHER, source_label="Google")
+        assigned_meta = Lead.objects.create(name="Assigned Meta", phone="7006682501", source=Lead.Source.META, assigned_so=self.first_so)
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post("/api/leads/bulk-distribute/", {"sales_officer_ids": [self.first_so.id, self.second_so.id], "filters": {"source": Lead.Source.META}}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["assigned"], 5)
+        self.assertEqual(response.data["distribution"][0]["assigned"], 3)
+        self.assertEqual(response.data["distribution"][1]["assigned"], 2)
+        self.assertEqual(Lead.objects.filter(id__in=[lead.id for lead in meta_leads], assigned_so=self.first_so).count(), 3)
+        self.assertEqual(Lead.objects.filter(id__in=[lead.id for lead in meta_leads], assigned_so=self.second_so).count(), 2)
+        google.refresh_from_db()
+        assigned_meta.refresh_from_db()
+        self.assertIsNone(google.assigned_so)
+        self.assertEqual(assigned_meta.assigned_so, self.first_so)
+        self.assertEqual(LeadAudit.objects.filter(lead__in=meta_leads, event="bucket_assigned_cre").count(), 5)
+
+    def test_admin_distribute_requires_active_cre_selection(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post("/api/leads/bulk-distribute/", {"sales_officer_ids": [], "filters": {}}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+        response = self.client.post("/api/leads/bulk-distribute/", {"sales_officer_ids": [self.ps_so.id], "filters": {}}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+        self.second_so.is_active = False
+        self.second_so.save(update_fields=["is_active"])
+        response = self.client.post("/api/leads/bulk-distribute/", {"sales_officer_ids": [self.second_so.id], "filters": {}}, format="json")
+        self.assertEqual(response.status_code, 400)
 
     def test_admin_can_add_an_unassigned_lead(self):
         self.client.force_authenticate(self.admin)

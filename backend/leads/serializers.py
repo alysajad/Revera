@@ -185,6 +185,19 @@ class AssignmentSerializer(serializers.Serializer):
     sales_officer_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=User.Role.CRE, is_active=True), source="sales_officer")
 
 
+class BulkDistributeSerializer(serializers.Serializer):
+    sales_officer_ids = serializers.ListField(child=serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=User.Role.CRE, is_active=True)), min_length=1)
+
+    def validate_sales_officer_ids(self, officers):
+        seen = set()
+        unique = []
+        for officer in officers:
+            if officer.id not in seen:
+                seen.add(officer.id)
+                unique.append(officer)
+        return unique
+
+
 class PSAssignmentSerializer(serializers.Serializer):
     sales_officer_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True), source="sales_officer")
 
