@@ -97,7 +97,9 @@ class LeadViewSet(viewsets.ModelViewSet):
         owner_filter = {"assigned_so": request.user} if request.user.role == User.Role.CRE else {"assigned_ps": request.user}
         queryset = Lead.objects.filter(deleted_at__isnull=True, **owner_filter)
         open_followup = Q(follow_ups__id__isnull=False, follow_ups__resolved_at__isnull=True)
-        callback_followup = open_followup & Q(status=Lead.Status.CALLBACK)
+        followup_filter = open_followup
+        if request.user.role == User.Role.CRE:
+            followup_filter = open_followup & Q(status=Lead.Status.PENDING, follow_ups__scheduled_for__date=today, call_logs__outcome="Call Me Back")
         pending_status = Q(status__in=[Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.PENDING])
         date_range = request.query_params.get("range", "all")
         if date_range == "today":
@@ -110,11 +112,15 @@ class LeadViewSet(viewsets.ModelViewSet):
             if request.query_params.get("date_to"):
                 queryset = queryset.filter(enquiry_date__lte=parse_date(request.query_params["date_to"]))
 
+        pending_queryset = queryset.filter(pending_status)
+        if request.user.role == User.Role.CRE:
+            pending_queryset = pending_queryset.exclude(followup_filter)
+
         summary = {
             "total": queryset.count(),
             "fresh": queryset.filter(status=Lead.Status.FRESH).count(),
-            "followups": queryset.filter(callback_followup).distinct().count(),
-            "pending": queryset.filter(pending_status).count(),
+            "followups": queryset.filter(followup_filter).distinct().count(),
+            "pending": pending_queryset.distinct().count(),
             "qualified": queryset.filter(status=Lead.Status.QUALIFIED).count(),
             "walkin": queryset.filter(status=Lead.Status.WALKIN).count(),
             "won": queryset.filter(status=Lead.Status.WON).count(),
@@ -134,7 +140,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         section_filters = {
             "all": Q(),
             "fresh": Q(status=Lead.Status.FRESH),
-            "followups": callback_followup,
+            "followups": followup_filter,
             "pending": pending_status,
             "qualified": Q(status=Lead.Status.QUALIFIED),
             "walkin": Q(status=Lead.Status.WALKIN),
@@ -143,6 +149,8 @@ class LeadViewSet(viewsets.ModelViewSet):
         }
         if section == "fresh" and fresh_subfilter in fresh_filters:
             queryset = queryset.filter(fresh_filters[fresh_subfilter])
+        elif section == "pending" and request.user.role == User.Role.CRE:
+            queryset = pending_queryset
         elif section in section_filters:
             queryset = queryset.filter(section_filters[section])
         if value := request.query_params.get("category"):
