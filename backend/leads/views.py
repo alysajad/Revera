@@ -15,7 +15,7 @@ from accounts.models import User
 from accounts.permissions import IsAdmin, IsAdminOrReceptionist, IsAdminReceptionistOrCRE
 from notifications.models import Notification
 from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification, SystemConfig
-from .serializers import CALL_OUTCOME_STATUS_OPTIONS, PS_CALL_OUTCOME_STATUS_OPTIONS, AssignmentSerializer, FollowUpSerializer, LeadDetailSerializer, LeadSerializer, LeadUpdateSerializer, PSAssignmentSerializer, SOLeadListSerializer, SOLeadUpdateSerializer, SystemConfigSerializer
+from .serializers import CALL_OUTCOME_STATUS_OPTIONS, PS_CALL_OUTCOME_STATUS_OPTIONS, AssignmentSerializer, BulkDistributeSerializer, FollowUpSerializer, LeadDetailSerializer, LeadSerializer, LeadUpdateSerializer, PSAssignmentSerializer, SOLeadListSerializer, SOLeadUpdateSerializer, SystemConfigSerializer
 
 FORWARD_TRANSITIONS = {
     Lead.Status.FRESH: {Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.QUALIFIED, Lead.Status.UNQUALIFIED, Lead.Status.LOST},
@@ -85,7 +85,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         LeadAudit.objects.create(lead=lead, actor=self.request.user, event="created")
 
     def get_permissions(self):
-        if self.action in {"assign", "assign_ps", "bulk_assign", "bulk_assign_ps", "auto_assign", "reopen", "destroy"}:
+        if self.action in {"assign", "assign_ps", "bulk_assign", "bulk_assign_ps", "bulk_distribute", "auto_assign", "reopen", "destroy"}:
             return [IsAdmin()]
         if self.action == "create":
             return [IsAdminReceptionistOrCRE()]
@@ -315,6 +315,33 @@ class LeadViewSet(viewsets.ModelViewSet):
             if leads:
                 Notification.objects.create(user=officer, kind=Notification.Kind.ASSIGNMENT, message=f"You have {len(leads)} qualified lead(s) assigned.")
         return Response({"assigned": len(leads)})
+
+    @action(detail=False, methods=["post"], url_path="bulk-distribute")
+    def bulk_distribute(self, request):
+        serializer = BulkDistributeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        filters = request.data.get("filters", {})
+        if not isinstance(filters, dict):
+            raise ValidationError({"filters": "Expected an object of filter values."})
+        officers = serializer.validated_data["sales_officer_ids"]
+        leads = Lead.objects.filter(deleted_at__isnull=True, assigned_so__isnull=True)
+        leads = apply_lead_filters(leads, filters)
+        with transaction.atomic():
+            leads = list(leads.select_for_update().order_by("created_at"))
+            distribution = defaultdict(int)
+            audits = []
+            now = timezone.now()
+            for index, lead in enumerate(leads):
+                officer = officers[index % len(officers)]
+                lead.assigned_so = officer
+                lead.updated_at = now
+                distribution[officer.id] += 1
+                audits.append(LeadAudit(lead=lead, actor=request.user, event="bucket_assigned_cre", after={"assigned_so": officer.id}))
+            if leads:
+                Lead.objects.bulk_update(leads, fields=["assigned_so", "updated_at"], batch_size=1000)
+                LeadAudit.objects.bulk_create(audits)
+                Notification.objects.bulk_create([Notification(user=officer, kind=Notification.Kind.ASSIGNMENT, message=f"You have {distribution[officer.id]} new lead(s) assigned.") for officer in officers if distribution[officer.id]])
+        return Response({"assigned": len(leads), "distribution": [{"sales_officer_id": officer.id, "name": officer.get_full_name() or officer.email, "assigned": distribution[officer.id]} for officer in officers]})
 
     @action(detail=False, methods=["post"], url_path="auto-assign")
     def auto_assign(self, request):

@@ -15,7 +15,7 @@ export type Lead = {
 };
 export type SalesLead = { id: number; status: string; statusCode: string; name: string; phone: string; source: string; sourceCode: string; flagged_to_manager: boolean };
 export type LeadInput = { name: string; phone: string; email?: string; source: string; source_label?: string; campaign?: string; model_interest?: string; city?: string; branch?: string; enquiry_date?: string; profession?: string; ps_officer_id?: number; status?: string; qualification?: LeadQualification };
-export type LeadFilters = { source?: string; model?: string; city?: string; source_label?: string; date_from?: string; date_to?: string };
+export type LeadFilters = { source?: string; model?: string; city?: string; source_label?: string; date_from?: string; date_to?: string; q?: string };
 export type LeadQualification = { variant: string; buying_timeline: string; finance_type: string; trade_in: boolean | null; test_drive: string; notes: string; updated_at?: string };
 export type CallHistory = { id: number; status: string; outcome: string; remarks: string; so_name: string; created_at: string; call_status?: string };
 export type FollowUpHistory = { id: number; lead: number; customer: string; scheduled_for: string; resolved_at: string | null; notified_at: string | null };
@@ -91,6 +91,7 @@ export const assignPsLead = (leadId: number, officerId: number) => api<Lead>(`/a
 const withApiDateFilters = (filters: LeadFilters): LeadFilters => ({ ...filters, date_from: filters.date_from ? toApiDate(filters.date_from) || filters.date_from : undefined, date_to: filters.date_to ? toApiDate(filters.date_to) || filters.date_to : undefined });
 export const assignFilteredLeads = (officerId: number, filters: LeadFilters) => api<{ assigned: number }>("/api/leads/bulk-assign/", { method: "POST", body: JSON.stringify({ sales_officer_id: officerId, filters: withApiDateFilters(filters) }) });
 export const assignFilteredPsLeads = (officerId: number, filters: LeadFilters) => api<{ assigned: number }>("/api/leads/bulk-assign-ps/", { method: "POST", body: JSON.stringify({ sales_officer_id: officerId, filters: withApiDateFilters(filters) }) });
+export const distributeFilteredLeads = (officerIds: number[], filters: LeadFilters) => api<{ assigned: number; distribution: { sales_officer_id: number; name: string; assigned: number }[] }>("/api/leads/bulk-distribute/", { method: "POST", body: JSON.stringify({ sales_officer_ids: officerIds, filters: withApiDateFilters(filters) }) });
 export const autoAssignLeads = () => api<{ assigned: number }>("/api/leads/auto-assign/", { method: "POST", body: JSON.stringify({}) });
 export const logCall = (leadId: number, payload: { status: string; remarks?: string; follow_up_at?: string }) => api<Lead>(`/api/leads/${leadId}/log-call/`, { method: "POST", body: JSON.stringify(payload) });
 export const login = (email: string, password: string) => api<{ user: CurrentUser }>("/api/auth/login/", { method: "POST", body: JSON.stringify({ email, password }) });
