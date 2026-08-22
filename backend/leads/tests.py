@@ -6,7 +6,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from accounts.models import User
-from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification
+from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification, SystemConfig
 
 
 class LeadAccessTests(TestCase):
@@ -219,6 +219,16 @@ class LeadAccessTests(TestCase):
         ids = [officer["id"] for officer in response.data["results"]]
         self.assertIn(self.ps_so.id, ids)
         self.assertNotIn(other_ps.id, ids)
+
+    def test_system_config_returns_only_admin_branches(self):
+        User.objects.create_user(email="north@example.com", password="password-12345", role=User.Role.SALES_OFFICER, location="Kannur")
+        SystemConfig.objects.create(id=1, lists={"branches": ["Kochi"]})
+        self.client.force_authenticate(self.first_so)
+
+        response = self.client.get("/api/system-config/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["lists"]["branches"], ["Kochi"])
 
     def test_cre_must_choose_matching_ps_for_qualified_lead(self):
         other_ps = User.objects.create_user(email="north@example.com", password="password-12345", role=User.Role.SALES_OFFICER, location="Kannur")

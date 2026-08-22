@@ -48,17 +48,25 @@ async function csrf() {
   return csrfToken;
 }
 
-export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function api<T>(path: string, options: RequestInit = {}, didRefresh = false): Promise<T> {
   const method = options.method?.toUpperCase() || "GET";
   const headers = new Headers(options.headers);
   if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers.set("X-CSRFToken", await csrf());
   const response = await fetch(`${API_URL}${path}`, { ...options, headers, credentials: "include" });
   if (!response.ok) {
+    if (response.status === 401 && !didRefresh && await refreshSession()) return api<T>(path, options, true);
     const body = await response.json().catch(() => ({}));
     throw new Error(responseError(body, `The request could not be completed (${response.status}).`));
   }
   return response.status === 204 ? undefined as T : response.json() as Promise<T>;
+}
+
+async function refreshSession() {
+  const headers = new Headers();
+  if (csrfToken) headers.set("X-CSRFToken", csrfToken);
+  const response = await fetch(`${API_URL}/api/auth/refresh/`, { method: "POST", headers, credentials: "include" });
+  return response.ok;
 }
 
 const sourceNames: Record<string, string> = { META: "Meta Ads", WEBSITE: "Website", CARWALE: "CarWale", WALKIN: "Walk-in", CAMPAIGN: "Campaign", OTHER: "Other", UNKNOWN: "Unknown" };
