@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createLead, getCurrentUser, getLeadDetail, getMyDashboard, getOfficers, toOfficer, updateMyLead, type CurrentUser, type LeadDetail, type LeadInput, type LeadQualification, type Officer, type SalesDashboard, type SalesLead, getSystemConfig } from "@/lib/crm";
 import { formatDate, formatDateTime, parseDate, toApiDate } from "@/lib/dates";
 
-type Section = "all" | "fresh" | "followups" | "pending" | "qualified" | "walkin" | "won_lost" | "active";
+type Section = "all" | "fresh" | "followups" | "pending" | "qualified" | "won_lost" | "active";
 type FreshSubfilter = "untouched" | "called" | "scheduled";
 type WonLostFilter = "all" | "won" | "lost";
 type Draft = {
@@ -47,7 +47,6 @@ const sections: { key: Section; label: string; count: keyof SalesDashboard["summ
   { key: "followups", label: "Today's follow-ups", count: "followups", icon: "◷" },
   { key: "pending", label: "Pending leads", count: "pending", icon: "!" },
   { key: "qualified", label: "Qualified leads", count: "qualified", icon: "◎" },
-  { key: "walkin", label: "Walk-in leads", count: "walkin", icon: "↗" },
   { key: "won_lost", label: "Won / lost", count: "won_lost", icon: "◇" },
 ];
 const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", SWITCHED_OFF: "Switch off", CALLBACK: "Callback", PENDING: "Pending", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };

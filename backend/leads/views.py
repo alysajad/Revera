@@ -78,7 +78,14 @@ class LeadViewSet(viewsets.ModelViewSet):
         return Response(LeadDetailSerializer(self.get_object()).data)
 
     def perform_create(self, serializer):
-        if not self.request.user.is_admin and getattr(self.request.user, "role", None) == User.Role.CRE:
+        is_walkin = (
+            serializer.validated_data.get("source") == Lead.Source.WALKIN
+            or serializer.validated_data.get("status") == Lead.Status.WALKIN
+        )
+        if is_walkin:
+            # Walk-in leads bypass CRE – go directly to PS/SO as qualified
+            lead = serializer.save(status=Lead.Status.QUALIFIED)
+        elif not self.request.user.is_admin and getattr(self.request.user, "role", None) == User.Role.CRE:
             lead = serializer.save(assigned_so=self.request.user)
         else:
             lead = serializer.save()
@@ -289,7 +296,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         if not isinstance(filters, dict):
             raise ValidationError({"filters": "Expected an object of filter values."})
         officer = serializer.validated_data["sales_officer"]
-        leads = Lead.objects.filter(deleted_at__isnull=True, assigned_so__isnull=True)
+        leads = Lead.objects.filter(deleted_at__isnull=True, assigned_so__isnull=True, assigned_ps__isnull=True)
         leads = apply_lead_filters(leads, filters)
         with transaction.atomic():
             leads = list(leads.select_for_update().order_by("created_at"))
@@ -335,7 +342,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         if not isinstance(filters, dict):
             raise ValidationError({"filters": "Expected an object of filter values."})
         officers = serializer.validated_data["sales_officer_ids"]
-        leads = Lead.objects.filter(deleted_at__isnull=True, assigned_so__isnull=True)
+        leads = Lead.objects.filter(deleted_at__isnull=True, assigned_so__isnull=True, assigned_ps__isnull=True)
         leads = apply_lead_filters(leads, filters)
         with transaction.atomic():
             leads = list(leads.select_for_update().order_by("created_at"))
@@ -358,7 +365,7 @@ class LeadViewSet(viewsets.ModelViewSet):
     def auto_assign(self, request):
         lead_ids = request.data.get("lead_ids", [])
         with transaction.atomic():
-            leads = Lead.objects.select_for_update().filter(deleted_at__isnull=True, assigned_so__isnull=True)
+            leads = Lead.objects.select_for_update().filter(deleted_at__isnull=True, assigned_so__isnull=True, assigned_ps__isnull=True)
             if lead_ids:
                 leads = leads.filter(id__in=lead_ids)
             leads = list(leads.order_by("created_at"))

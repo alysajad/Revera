@@ -79,7 +79,7 @@ export default function CaptureLeadPage() {
       
       const finalPayload = {
         ...payload,
-        status: sourceType === "Walk-in" ? "WALKIN" : "FRESH"
+        status: sourceType === "Walk-in" ? "QUALIFIED" : "FRESH"
       };
 
       await createLead(finalPayload as any);
