@@ -181,17 +181,13 @@ input[type="radio"] {
 
 .admin-leads-heading {
   display: grid;
-  grid-template-columns: minmax(260px, 0.62fr) minmax(500px, 1fr);
-  gap: 18px;
-  align-items: start;
+  grid-template-columns: minmax(220px, 0.5fr) minmax(420px, 1fr) auto;
+  gap: 16px;
+  align-items: center;
   margin-bottom: 12px;
 }
 
 .admin-heading-main {
-  display: flex;
-  gap: 14px;
-  justify-content: space-between;
-  align-items: center;
   min-width: 0;
 }
 
@@ -210,8 +206,13 @@ input[type="radio"] {
   color: var(--orange);
 }
 
-.admin-heading-main .button {
-  flex: 0 0 auto;
+.admin-heading-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-self: center;
+}
+
+.admin-heading-actions .button {
   white-space: nowrap;
 }
 
@@ -655,12 +656,7 @@ input[type="radio"] {
     margin-bottom: 10px;
   }
 
-  .admin-heading-main {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .admin-heading-main .button {
+  .admin-heading-actions .button {
     width: 100%;
     text-align: center;
   }

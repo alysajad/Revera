@@ -435,7 +435,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   ) : null;
 
   return <section className="page">
-    {officerMode ? <div className="page-heading compact"><div><p className="eyebrow">{heading.toUpperCase()}</p><h1>Keep the <span>promise.</span></h1><p className="subtext">Your assigned conversations and follow-ups.</p></div></div> : <div className="admin-leads-heading"><div className="admin-heading-main"><div><p className="eyebrow">{heading.toUpperCase()}</p><h1>All <span>leads.</span></h1><p className="subtext">Manage and assign all leads in the CRM.</p></div>{assignmentView === "fresh" && <button className="button primary" onClick={autoAssign} disabled={!leads.length}>↻ Auto assign {leads.length} leads</button>}</div>{adminMetrics}</div>}
+    {officerMode ? <div className="page-heading compact"><div><p className="eyebrow">{heading.toUpperCase()}</p><h1>Keep the <span>promise.</span></h1><p className="subtext">Your assigned conversations and follow-ups.</p></div></div> : <div className="admin-leads-heading"><div className="admin-heading-main"><p className="eyebrow">{heading.toUpperCase()}</p><h1>All <span>leads.</span></h1><p className="subtext">Manage and assign all leads in the CRM.</p></div>{adminMetrics}<div className="admin-heading-actions">{assignmentView === "fresh" && <button className="button primary" onClick={autoAssign} disabled={!leads.length}>↻ Auto assign {leads.length} leads</button>}</div></div>}
     {!officerMode && (
       <div className="admin-lead-tabs">
         <button className={assignmentView === "fresh" ? "active" : ""} onClick={() => { setAssignmentView("fresh"); setPage(1); }}>Fresh unassigned</button>
