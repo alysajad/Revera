@@ -82,15 +82,33 @@ def parse_upload_batch(batch_id):
         existing_leads = {}
         for lead in Lead.objects.filter(phone__in={row["phone"] for row in parsed_rows if row["phone"]}, deleted_at__isnull=True).only("id", "phone").order_by("id"):
             existing_leads.setdefault(lead.phone, lead)
-        staged = [UploadRow(batch=batch, row_number=row["row_number"], normalized_phone=row["phone"], validation_error=row["validation_error"], duplicate_of=(duplicate := existing_leads.get(row["phone"])), resolution=UploadRow.Resolution.PENDING if duplicate else UploadRow.Resolution.IMPORT, data=row["data"]) for row in parsed_rows]
-        duplicates = sum(row.duplicate_of_id is not None for row in staged)
+        staged = []
+        first_uploaded_phone = {}
+        duplicates = 0
+        for row in parsed_rows:
+            data = row["data"].copy()
+            duplicate = existing_leads.get(row["phone"]) if not row["validation_error"] else None
+            resolution = UploadRow.Resolution.IMPORT
+            if duplicate:
+                data["_duplicate_type"] = "CRM"
+                resolution = UploadRow.Resolution.SKIP
+                duplicates += 1
+            elif not row["validation_error"] and row["phone"] in first_uploaded_phone:
+                first_row = first_uploaded_phone[row["phone"]]
+                data["_duplicate_type"] = "FILE"
+                data["_duplicate_label"] = f"Row {first_row['row_number']} - {first_row['data'].get('name') or 'first matching row'}"
+                resolution = UploadRow.Resolution.SKIP
+                duplicates += 1
+            elif not row["validation_error"] and row["phone"]:
+                first_uploaded_phone[row["phone"]] = row
+            staged.append(UploadRow(batch=batch, row_number=row["row_number"], normalized_phone=row["phone"], validation_error=row["validation_error"], duplicate_of=duplicate, resolution=resolution, data=data))
         with transaction.atomic():
             UploadRow.objects.filter(batch=batch).delete()
             UploadRow.objects.bulk_create(staged)
             batch.total_rows = len(staged)
-            batch.parsed_ok = len([row for row in staged if not row.validation_error])
-            batch.duplicates_found = duplicates
-            batch.skipped = skipped
+            batch.parsed_ok = len([row for row in staged if not row.validation_error and row.resolution != UploadRow.Resolution.SKIP])
+            batch.duplicates_found = 0
+            batch.skipped = skipped + duplicates
             batch.status = UploadBatch.Status.READY
             batch.save(update_fields=["total_rows", "parsed_ok", "duplicates_found", "skipped", "status"])
     except Exception as error:

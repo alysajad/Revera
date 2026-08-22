@@ -404,7 +404,11 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     setCheckingUpload(true);
     try {
       const summary = await getUpload(upload.id);
-      setUpload(summary.duplicates_found > 0 && summary.status === "READY" ? await getUpload(upload.id, true) : summary);
+      const nextUpload = summary.status === "READY" && (summary.removed_duplicates > 0 || summary.pending_duplicates > 0) ? await getUpload(upload.id, true) : summary;
+      setUpload(nextUpload);
+      if (nextUpload.status === "READY" && nextUpload.removed_duplicates > 0) {
+        setNotice(`${nextUpload.removed_duplicates} duplicate ${nextUpload.removed_duplicates === 1 ? "row was" : "rows were"} removed: ${nextUpload.crm_duplicates_found} already in CRM, ${nextUpload.file_duplicates_found} repeated in this file.`);
+      }
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to check import."); }
     finally { setCheckingUpload(false); }
   };
@@ -421,14 +425,16 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     setImportingUpload(true); setError("");
     try {
       const result = await commitUpload(upload.id);
-      setUpload(null); setNotice(`${result.created} leads imported. Assign them from the pool.`);
+      const duplicateNote = upload.removed_duplicates ? ` ${upload.removed_duplicates} duplicate ${upload.removed_duplicates === 1 ? "row was" : "rows were"} skipped.` : "";
+      setUpload(null); setNotice(`${result.created} leads imported.${duplicateNote} Assign them from the pool.`);
       setLoading(true);
       const pageResult = await getLeadsPage(leadQuery(false, false, activeFilters, page, searchFilter, assignmentView));
       setLeads(pageResult.results); setTotalLeads(pageResult.count);
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Import failed."); }
     finally { setImportingUpload(false); setLoading(false); }
   };
-  const duplicateRows = upload?.rows?.filter(row => row.duplicate_of && row.resolution === "PENDING") || [];
+  const duplicateRows = upload?.rows?.filter(row => row.duplicate_type && row.resolution === "PENDING") || [];
+  const removedDuplicateRows = upload?.rows?.filter(row => row.duplicate_type && row.resolution === "SKIP") || [];
   const importableRows = upload?.rows ? upload.rows.filter(row => !row.validation_error && row.resolution !== "SKIP").length : upload?.parsed_ok;
   const targetLabel = assignmentView === "qualified" ? "PS/SO" : "CRE";
   const poolLabel = assignmentView === "fresh" ? "Fresh lead pool" : assignmentView === "qualified" ? "Qualified handoff pool" : "All leads";
@@ -497,7 +503,26 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     )}
     {adminFilterBand}
     {officerMode && <section className="lead-toolbar"><label className="search" style={{ flex: 1 }}><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search by name or mobile..." /></label><button className="button primary" onClick={() => { setError(""); setAddingLead(true); }}>＋ Add lead</button></section>}
-    {upload && <section className="panel" style={{ padding: "1rem", marginBottom: "1rem" }}><b>Import: {upload.status === "PARSING" ? "Checking file…" : upload.status}</b><span> · {importableRows}/{upload.total_rows} rows ready to import</span>{upload.duplicates_found > 0 && <span> · {upload.duplicates_found} duplicates need review</span>}<div style={{ display: "inline-flex", gap: ".5rem", marginLeft: "1rem" }}><button className="filter" disabled={checkingUpload || uploading} onClick={() => void checkUpload()}>{checkingUpload ? "Checking…" : "Check import"}</button>{upload.status === "READY" && !duplicateRows.length && upload.duplicates_found === 0 && <button className="button primary" disabled={importingUpload} onClick={() => void importUpload()}>{importingUpload ? "Importing…" : "Import leads"}</button>}</div>{duplicateRows.length > 0 && <div style={{ marginTop: "1rem" }}><p className="subtext">Duplicates already exist in the CRM. Remove them from this import to keep the existing lead.</p><button className="filter" onClick={() => void removeDuplicates(duplicateRows.map(row => row.id))}>Remove all duplicates</button><div style={{ display: "grid", gap: ".5rem", marginTop: ".75rem" }}>{duplicateRows.map(row => <div key={row.id} className="lead-summary"><b>Row {row.row_number} · {row.data.name || "Unnamed lead"}</b><span>Matches {row.existing_name || "existing lead"}</span><small>{row.normalized_phone} · Current status: {row.existing_status}</small><button className="row-action" onClick={() => void removeDuplicates([row.id])}>Remove duplicate</button></div>)}</div></div>}{upload.error_message && <p className="subtext">{upload.error_message}</p>}</section>}
+    {upload && (
+      <section className="panel" style={{ padding: "1rem", marginBottom: "1rem" }}>
+        <b>Import: {upload.status === "PARSING" ? "Checking file…" : upload.status}</b>
+        <span> · {importableRows}/{upload.total_rows} rows ready to import</span>
+        {upload.removed_duplicates > 0 && <span> · {upload.removed_duplicates} duplicates auto-removed</span>}
+        {upload.pending_duplicates > 0 && <span> · {upload.pending_duplicates} duplicates need review</span>}
+        <div style={{ display: "inline-flex", gap: ".5rem", marginLeft: "1rem" }}>
+          <button className="filter" disabled={checkingUpload || uploading} onClick={() => void checkUpload()}>{checkingUpload ? "Checking…" : "Check import"}</button>
+          {upload.status === "READY" && !duplicateRows.length && <button className="button primary" disabled={importingUpload} onClick={() => void importUpload()}>{importingUpload ? "Importing…" : "Import leads"}</button>}
+        </div>
+        {upload.removed_duplicates > 0 && (
+          <div style={{ marginTop: "1rem" }}>
+            <p className="subtext">{upload.removed_duplicates} duplicate {upload.removed_duplicates === 1 ? "row was" : "rows were"} removed automatically: {upload.crm_duplicates_found} already in CRM, {upload.file_duplicates_found} repeated inside this file.</p>
+            {removedDuplicateRows.length > 0 && <div style={{ display: "grid", gap: ".5rem", marginTop: ".75rem" }}>{removedDuplicateRows.map(row => <div key={row.id} className="lead-summary"><b>Row {row.row_number} · {row.data.name || "Unnamed lead"}</b><span>{row.duplicate_type === "CRM" ? "Already in CRM" : "Duplicate in Excel"}</span><small>{row.normalized_phone} · Matches {row.existing_name || "matching lead"}</small></div>)}</div>}
+          </div>
+        )}
+        {duplicateRows.length > 0 && <div style={{ marginTop: "1rem" }}><p className="subtext">Duplicates need review. Remove them from this import to keep the existing lead.</p><button className="filter" onClick={() => void removeDuplicates(duplicateRows.map(row => row.id))}>Remove all duplicates</button><div style={{ display: "grid", gap: ".5rem", marginTop: ".75rem" }}>{duplicateRows.map(row => <div key={row.id} className="lead-summary"><b>Row {row.row_number} · {row.data.name || "Unnamed lead"}</b><span>{row.duplicate_type === "CRM" ? "Already in CRM" : "Duplicate in Excel"}</span><small>{row.normalized_phone} · Matches {row.existing_name || "matching lead"}</small><button className="row-action" onClick={() => void removeDuplicates([row.id])}>Remove duplicate</button></div>)}</div></div>}
+        {upload.error_message && <p className="subtext">{upload.error_message}</p>}
+      </section>
+    )}
     {error && <div className="empty-state">{error}</div>}
     {!officerMode && <aside className="officer-rail officer-grid"><header><p className="eyebrow">ACTIVE {targetLabel}</p><span>{assignmentView === "fresh" ? "Select CREs for bucket assignment, or drag one to a lead row" : `Drag a ${targetLabel} card to a lead row`}</span></header>{assignmentUsers.map(officer => <div className={`officer-card ${draggedOfficerId === officer.id ? "dragging" : ""} ${assignmentView === "fresh" && bucketOfficerIds.includes(officer.id) ? "selected" : ""}`} key={officer.id} draggable onClick={() => toggleBucketOfficer(officer.id)} onDragStart={event => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/river-officer", String(officer.id)); setDraggedOfficerId(officer.id); }} onDragEnd={() => { setDraggedOfficerId(null); setDropTargetId(null); }}><span className={`avatar ${officer.color}`}>{officer.initials}</span><span><b>{officer.name}</b><small>{targetLabel}</small></span><span className="officer-load"><small>LEAD LOAD</small><b>{officer.assigned}</b><small>CALLS TODAY</small><b>{officer.calls}</b></span></div>)}</aside>}
     <section className={officerMode ? "lead-layout one-column" : "lead-layout admin-lead-layout"}>
