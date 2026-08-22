@@ -54,7 +54,7 @@ class UploadBatchViewSet(viewsets.GenericViewSet):
             if row := rows.get(item["id"]):
                 row.resolution = item["resolution"]
                 row.save(update_fields=["resolution"])
-        batch.duplicates_found = batch.rows.filter(duplicate_of__isnull=False, resolution=UploadRow.Resolution.PENDING).count()
+        batch.duplicates_found = batch.rows.filter(resolution=UploadRow.Resolution.PENDING).count()
         batch.save(update_fields=["duplicates_found"])
         return Response({"detail": "Duplicate choices saved.", "duplicates_found": batch.duplicates_found})
 
@@ -70,7 +70,7 @@ class UploadBatchViewSet(viewsets.GenericViewSet):
         overwrite_leads = []
         new_leads = []
         for row in rows:
-            data = row.data.copy()
+            data = {key: value for key, value in row.data.items() if not key.startswith("_")}
             data["enquiry_date"] = data.get("enquiry_date") or None
             if row.duplicate_of and row.resolution == UploadRow.Resolution.OVERWRITE:
                 for field in ("name", "email", "source", "source_label", "campaign", "model_interest", "city", "enquiry_date"):
