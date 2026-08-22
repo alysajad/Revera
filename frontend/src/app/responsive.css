@@ -85,6 +85,12 @@ input[type="radio"] {
   text-align: center;
 }
 
+.lead-side-panel .sample-download {
+  padding: 7px 10px;
+  color: #59616b;
+  font-size: 10px;
+}
+
 .lead-side-panel .lead-filters {
   margin-bottom: 0;
   padding: 16px;
