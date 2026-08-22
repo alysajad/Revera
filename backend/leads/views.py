@@ -435,13 +435,7 @@ class FollowUpViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 class SystemConfigView(APIView):
     def get(self, request):
         config, _ = SystemConfig.objects.get_or_create(id=1)
-        data = SystemConfigSerializer(config).data
-        # Dynamically inject active SO locations into branches
-        active_locations = set(User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True).exclude(location="").values_list("location", flat=True))
-        if active_locations:
-            current_branches = set(data.get("lists", {}).get("branches", []))
-            data.setdefault("lists", {})["branches"] = sorted(list(current_branches | active_locations))
-        return Response(data)
+        return Response(SystemConfigSerializer(config).data)
 
     def put(self, request):
         if not request.user.is_admin:
