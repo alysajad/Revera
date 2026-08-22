@@ -15,6 +15,33 @@ function localDateTimeValue(value: string | null) {
   return formatDateTime(value);
 }
 
+const localInputDate = (value: Date | string | null | undefined) => {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+};
+
+const addDays = (days: number) => {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date;
+};
+
+const adminFollowUpDateToIso = (value: string) => {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const [, year, month, day] = match;
+  const scheduled = new Date(Number(year), Number(month) - 1, Number(day), 10, 0, 0, 0);
+  const now = new Date();
+  if (scheduled <= now) scheduled.setTime(now.getTime() + 5 * 60_000);
+  const max = new Date(now.getTime() + 3 * 24 * 60 * 60_000 - 5 * 60_000);
+  if (scheduled > max) scheduled.setTime(max.getTime());
+  return scheduled.toISOString();
+};
+
 function followUpOptions() {
   const now = new Date();
   const slot = (label: string, offsetMs: number) => {
@@ -198,6 +225,8 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
 
   const visible = useMemo(() => leads.filter(lead => `${lead.name} ${lead.phone}`.toLowerCase().includes(query.toLowerCase())), [leads, query]);
   const needsAppointment = officerMode ? ["CALLBACK", "WALKIN", "PENDING"].includes(outcome) : adminNeedsFollowUp(outcome);
+  const minAdminFollowUpDate = localInputDate(new Date());
+  const maxAdminFollowUpDate = localInputDate(addDays(3));
   const selectedBucketOfficers = useMemo(() => bucketOfficerIds.map(id => creUsers.find(officer => officer.id === id)).filter(Boolean) as Officer[], [bucketOfficerIds, creUsers]);
   const bucketName = useMemo(() => {
     const sourceLabel = sources.find(([value]) => value === activeFilters.source)?.[1];
@@ -262,9 +291,9 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
 
   const saveCall = async () => {
     if (!activeLead || !outcome || savingCall) return;
-    if (needsAppointment && !followUpAt) { setError("Select a follow-up time."); return; }
-    const parsedFollowUpAt = followUpAt ? parseDateTime(followUpAt) || (Number.isNaN(new Date(followUpAt).getTime()) ? "" : new Date(followUpAt).toISOString()) : "";
-    if (needsAppointment && !parsedFollowUpAt) { setError("Enter follow-up time as DD/MM/YYYY HH:mm."); return; }
+    if (needsAppointment && !followUpAt) { setError(officerMode ? "Select a follow-up time." : "Select a follow-up date."); return; }
+    const parsedFollowUpAt = followUpAt ? officerMode ? parseDateTime(followUpAt) || (Number.isNaN(new Date(followUpAt).getTime()) ? "" : new Date(followUpAt).toISOString()) : adminFollowUpDateToIso(followUpAt) : "";
+    if (needsAppointment && !parsedFollowUpAt) { setError(officerMode ? "Enter follow-up time as DD/MM/YYYY HH:mm." : "Select a valid follow-up date."); return; }
     setError("");
     setSavingCall(true);
     try {
@@ -337,10 +366,10 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
 
   const openLead = async (lead: Lead) => {
     const initialOutcome = officerMode ? nextOutcomes[lead.status]?.[0]?.value || "" : lead.statusCode === "WON" ? "WON" : ["LOST", "UNQUALIFIED"].includes(lead.statusCode) ? "LOST" : lead.statusCode === "PENDING" || lead.nextFollowUp ? "PENDING" : "";
-    setActiveLead(lead); setOutcome(initialOutcome); setRemarks(""); setFollowUpAt(localDateTimeValue(lead.nextFollowUp)); setTestDrive(""); setCallStatus("Connected"); setEditingCustomer(false); setSavingCall(false); setError("");
+    setActiveLead(lead); setOutcome(initialOutcome); setRemarks(""); setFollowUpAt(officerMode ? localDateTimeValue(lead.nextFollowUp) : localInputDate(lead.nextFollowUp)); setTestDrive(""); setCallStatus("Connected"); setEditingCustomer(false); setSavingCall(false); setError("");
     if (!officerMode) {
       setDetailLoading(true);
-      try { const detail = await getLeadDetail(lead.id); setLeadDetail(detail); setFollowUpAt(localDateTimeValue(detail.nextFollowUp)); setTestDrive(detail.qualification?.test_drive || ""); }
+      try { const detail = await getLeadDetail(lead.id); setLeadDetail(detail); setFollowUpAt(localInputDate(detail.nextFollowUp)); setTestDrive(detail.qualification?.test_drive || ""); }
       catch { /* detail fetch failed, modal still works with basic data */ }
       finally { setDetailLoading(false); }
     }
@@ -525,7 +554,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
             <div style={{ gridColumn: "1 / -1" }}><h4>Outcome *</h4><div className="sales-choice-row admin-outcome-row" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>{(callStatus === "Connected" ? connectedOutcomes : notConnectedOutcomes).map(item => <button type="button" className={outcome === item ? "chosen" : ""} onClick={() => { setOutcome(item); if (!adminNeedsFollowUp(item)) setFollowUpAt(""); }} key={item}>{item}</button>)}</div></div>
 
             <label className="sales-full-label" style={{ gridColumn: "1 / -1" }}>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Enter your call remarks…" /></label>
-            {needsAppointment && <label className="admin-follow-up-date"><span><b>Next follow-up date</b> *</span><input type="text" required inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}[ ,]+([01]\d|2[0-3]):[0-5]\d" placeholder="DD/MM/YYYY HH:mm" value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>}
+            {needsAppointment && <label className="admin-follow-up-date"><span><b>Next follow-up date</b> *</span><input type="date" required min={minAdminFollowUpDate} max={maxAdminFollowUpDate} value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>}
             <div><h4>Test drive</h4><label className="admin-checkbox-card"><input type="checkbox" checked={testDrive === "Completed"} onChange={event => setTestDrive(event.target.checked ? "Completed" : "")} /> <span>Mark test drive as done</span></label></div>
           </div>
         </section>
