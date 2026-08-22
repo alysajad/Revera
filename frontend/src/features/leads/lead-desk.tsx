@@ -381,47 +381,75 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const targetLabel = assignmentView === "qualified" ? "PS/SO" : "CRE";
   const poolLabel = assignmentView === "fresh" ? "Fresh lead pool" : assignmentView === "qualified" ? "Qualified handoff pool" : "All leads";
   const heading = followUpsOnly ? "Follow-ups" : officerMode ? "My queue" : "Assignment desk";
+  const adminMetrics = !officerMode && analytics?.summary ? (
+    <section className="admin-leads-metrics">
+      <article className="sales-metric blue">
+        <span>ALL LEADS</span>
+        <strong>{analytics.summary.total_assigned || 0}</strong>
+        <small>Total managed leads</small>
+      </article>
+      <article className="sales-metric mint">
+        <span>BOOKED</span>
+        <strong>{analytics.summary.walkins || 0}</strong>
+        <small>Appointments scheduled</small>
+      </article>
+      <article className="sales-metric green">
+        <span>RETAILED</span>
+        <strong>{analytics.summary.won || 0}</strong>
+        <small>Successfully closed</small>
+      </article>
+      <article className="sales-metric red">
+        <span>LOST</span>
+        <strong>{analytics.summary.lost || 0}</strong>
+        <small>Dropped leads</small>
+      </article>
+    </section>
+  ) : null;
+  const adminFilterBand = !officerMode ? (
+    <section className="panel admin-filter-band">
+      <section className="lead-toolbar admin-filter-toolbar">
+        <label className="search"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search by name or mobile..." /></label>
+        <label className="button filter bulk-upload-button">{uploading ? "Uploading…" : "Bulk Upload"}<input hidden type="file" accept=".xlsx,.csv" onChange={event => void selectFile(event.target.files?.[0])} /></label>
+        <button className="filter sample-download" onClick={downloadLeadSample}>Download sample format</button>
+        <button className="button primary" onClick={() => { setError(""); setAddingLead(true); }}>＋ Add lead</button>
+      </section>
+      <section className="lead-filters admin-lead-filters">
+        <div className="lead-filters-grid">
+          <label>Source<select value={filters.source || ""} onChange={event => setFilters(current => ({ ...current, source: event.target.value || undefined }))}><option value="">All sources</option>{sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label>Model<input value={filters.model || ""} onChange={event => setFilters(current => ({ ...current, model: event.target.value || undefined }))} placeholder="Any model" /></label>
+          <label>City<input value={filters.city || ""} onChange={event => setFilters(current => ({ ...current, city: event.target.value || undefined }))} placeholder="Any city" /></label>
+          <label>Source detail<input value={filters.source_label || ""} onChange={event => setFilters(current => ({ ...current, source_label: event.target.value || undefined }))} placeholder="Google, OEM, or campaign" /></label>
+          <label>From<input type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={filters.date_from || ""} onChange={event => setFilters(current => ({ ...current, date_from: event.target.value || undefined }))} placeholder="DD/MM/YYYY" /></label>
+          <label>To<input type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={filters.date_to || ""} onChange={event => setFilters(current => ({ ...current, date_to: event.target.value || undefined }))} placeholder="DD/MM/YYYY" /></label>
+        </div>
+        <footer className="lead-filters-actions">
+          <span>{Object.values(activeFilters).filter(Boolean).length || searchFilter ? `Filtered ${poolLabel.toLowerCase()}` : `All ${poolLabel.toLowerCase()}`}</span>
+          <div>
+            <button className="filter" onClick={() => { setFilters({}); setActiveFilters({}); setQuery(""); }}>Clear</button>
+            <button className="filter" onClick={() => setActiveFilters({ ...filters })}>Apply filters</button>
+            {assignmentView === "fresh" ? <section className="bucket-assignment"><p className="eyebrow">BUCKET</p><b>{bucketName}</b><span>{totalLeads} matching fresh lead{totalLeads === 1 ? "" : "s"}</span>{bucketSplit.length ? <div>{bucketSplit.map(item => <small key={item.officer.id}>{item.officer.name}: <b>{item.count}</b></small>)}</div> : <small>Select CRE cards above to split this bucket.</small>}<button className="button primary" onClick={() => void assignBucket()} disabled={!bucketOfficerIds.length || !totalLeads || bucketAssigning}>{bucketAssigning ? "Assigning…" : "Assign bucket"}</button></section> : <><select className="filter" aria-label={`Assign filtered leads to ${targetLabel}`} value={bulkOfficerId} onChange={event => setBulkOfficerId(event.target.value)}><option value="">Assign to {targetLabel}…</option>{assignmentUsers.map(officer => <option key={officer.id} value={officer.id}>{officer.name}</option>)}</select><button className="button primary" onClick={() => void bulkAssign()} disabled={!bulkOfficerId || !leads.length || bulkAssigning}>{bulkAssigning ? "Assigning…" : "Assign matching leads"}</button></>}
+          </div>
+        </footer>
+      </section>
+    </section>
+  ) : null;
 
   return <section className="page">
-    <div className="page-heading compact"><div><p className="eyebrow">{heading.toUpperCase()}</p><h1>{officerMode ? <>Keep the <span>promise.</span></> : <>All <span>leads.</span></>}</h1><p className="subtext">{officerMode ? "Your assigned conversations and follow-ups." : "Manage and assign all leads in the CRM."}</p></div>{!officerMode && assignmentView === "fresh" && <button className="button primary" onClick={autoAssign} disabled={!leads.length}>↻ Auto assign {leads.length} leads</button>}</div>
+    {officerMode ? <div className="page-heading compact"><div><p className="eyebrow">{heading.toUpperCase()}</p><h1>Keep the <span>promise.</span></h1><p className="subtext">Your assigned conversations and follow-ups.</p></div></div> : <div className="admin-leads-heading"><div className="admin-heading-main"><div><p className="eyebrow">{heading.toUpperCase()}</p><h1>All <span>leads.</span></h1><p className="subtext">Manage and assign all leads in the CRM.</p></div>{assignmentView === "fresh" && <button className="button primary" onClick={autoAssign} disabled={!leads.length}>↻ Auto assign {leads.length} leads</button>}</div>{adminMetrics}</div>}
     {!officerMode && (
-      <div className="tabs" style={{ marginBottom: "1.5rem", display: "flex", gap: "1.5rem", borderBottom: "1px solid var(--border)" }}>
-        <button style={{ padding: "0.5rem 0", fontWeight: assignmentView === "fresh" ? "bold" : "normal", background: "none", border: "none", cursor: "pointer", color: "var(--foreground)", borderBottom: assignmentView === "fresh" ? "2px solid var(--primary)" : "2px solid transparent" }} onClick={() => { setAssignmentView("fresh"); setPage(1); }}>Fresh unassigned</button>
-        <button style={{ padding: "0.5rem 0", fontWeight: assignmentView === "qualified" ? "bold" : "normal", background: "none", border: "none", cursor: "pointer", color: "var(--foreground)", borderBottom: assignmentView === "qualified" ? "2px solid var(--primary)" : "2px solid transparent" }} onClick={() => { setAssignmentView("qualified"); setPage(1); }}>Qualified unassigned</button>
-        <button style={{ padding: "0.5rem 0", fontWeight: assignmentView === "all" ? "bold" : "normal", background: "none", border: "none", cursor: "pointer", color: "var(--foreground)", borderBottom: assignmentView === "all" ? "2px solid var(--primary)" : "2px solid transparent" }} onClick={() => { setAssignmentView("all"); setPage(1); }}>All leads</button>
+      <div className="admin-lead-tabs">
+        <button className={assignmentView === "fresh" ? "active" : ""} onClick={() => { setAssignmentView("fresh"); setPage(1); }}>Fresh unassigned</button>
+        <button className={assignmentView === "qualified" ? "active" : ""} onClick={() => { setAssignmentView("qualified"); setPage(1); }}>Qualified unassigned</button>
+        <button className={assignmentView === "all" ? "active" : ""} onClick={() => { setAssignmentView("all"); setPage(1); }}>All leads</button>
       </div>
     )}
-    {!officerMode && analytics?.summary && (
-      <section className="sales-metrics" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
-        <article className="sales-metric blue">
-          <span>ALL LEADS</span>
-          <strong>{analytics.summary.total_assigned || 0}</strong>
-          <small>Total managed leads</small>
-        </article>
-        <article className="sales-metric mint">
-          <span>BOOKED</span>
-          <strong>{analytics.summary.walkins || 0}</strong>
-          <small>Appointments scheduled</small>
-        </article>
-        <article className="sales-metric green">
-          <span>RETAILED</span>
-          <strong>{analytics.summary.won || 0}</strong>
-          <small>Successfully closed</small>
-        </article>
-        <article className="sales-metric red">
-          <span>LOST</span>
-          <strong>{analytics.summary.lost || 0}</strong>
-          <small>Dropped leads</small>
-        </article>
-      </section>
-    )}
+    {adminFilterBand}
     {officerMode && <section className="lead-toolbar"><label className="search" style={{ flex: 1 }}><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search by name or mobile..." /></label><button className="button primary" onClick={() => { setError(""); setAddingLead(true); }}>＋ Add lead</button></section>}
     {upload && <section className="panel" style={{ padding: "1rem", marginBottom: "1rem" }}><b>Import: {upload.status === "PARSING" ? "Checking file…" : upload.status}</b><span> · {importableRows}/{upload.total_rows} rows ready to import</span>{upload.duplicates_found > 0 && <span> · {upload.duplicates_found} duplicates need review</span>}<div style={{ display: "inline-flex", gap: ".5rem", marginLeft: "1rem" }}><button className="filter" disabled={checkingUpload || uploading} onClick={() => void checkUpload()}>{checkingUpload ? "Checking…" : "Check import"}</button>{upload.status === "READY" && !duplicateRows.length && upload.duplicates_found === 0 && <button className="button primary" disabled={importingUpload} onClick={() => void importUpload()}>{importingUpload ? "Importing…" : "Import leads"}</button>}</div>{duplicateRows.length > 0 && <div style={{ marginTop: "1rem" }}><p className="subtext">Duplicates already exist in the CRM. Remove them from this import to keep the existing lead.</p><button className="filter" onClick={() => void removeDuplicates(duplicateRows.map(row => row.id))}>Remove all duplicates</button><div style={{ display: "grid", gap: ".5rem", marginTop: ".75rem" }}>{duplicateRows.map(row => <div key={row.id} className="lead-summary"><b>Row {row.row_number} · {row.data.name || "Unnamed lead"}</b><span>Matches {row.existing_name || "existing lead"}</span><small>{row.normalized_phone} · Current status: {row.existing_status}</small><button className="row-action" onClick={() => void removeDuplicates([row.id])}>Remove duplicate</button></div>)}</div></div>}{upload.error_message && <p className="subtext">{upload.error_message}</p>}</section>}
     {error && <div className="empty-state">{error}</div>}
     {!officerMode && <aside className="officer-rail officer-grid"><header><p className="eyebrow">ACTIVE {targetLabel}</p><span>{assignmentView === "fresh" ? "Select CREs for bucket assignment, or drag one to a lead row" : `Drag a ${targetLabel} card to a lead row`}</span></header>{assignmentUsers.map(officer => <div className={`officer-card ${draggedOfficerId === officer.id ? "dragging" : ""} ${assignmentView === "fresh" && bucketOfficerIds.includes(officer.id) ? "selected" : ""}`} key={officer.id} draggable onClick={() => toggleBucketOfficer(officer.id)} onDragStart={event => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/river-officer", String(officer.id)); setDraggedOfficerId(officer.id); }} onDragEnd={() => { setDraggedOfficerId(null); setDropTargetId(null); }}><span className={`avatar ${officer.color}`}>{officer.initials}</span><span><b>{officer.name}</b><small>{targetLabel}</small></span><span className="officer-load"><small>LEAD LOAD</small><b>{officer.assigned}</b><small>CALLS TODAY</small><b>{officer.calls}</b></span></div>)}</aside>}
-    <section className={officerMode ? "lead-layout one-column" : "lead-layout"}>
-      <article className="panel lead-pool"><header className="panel-heading"><div><p className="eyebrow">{officerMode ? "ACTIVE LEADS" : poolLabel.toUpperCase()}</p><h2>{loading ? "Loading leads…" : `${leads.length} leads in pool`}</h2></div></header><div className="lead-list">{!loading && visible.length ? visible.map(lead => <div className={`lead-row ${dropTargetId === lead.id ? "drop-target" : ""}`} key={lead.id} onDragOver={event => { if (!officerMode) { event.preventDefault(); setDropTargetId(lead.id); } }} onDragLeave={() => setDropTargetId(null)} onDrop={event => { event.preventDefault(); const officerId = Number(event.dataTransfer.getData("application/river-officer")) || draggedOfficerId; if (officerId) void assign(lead, officerId); setDraggedOfficerId(null); }}>{!officerMode && <span className="drag-slot">↓</span>}<div><b>{lead.name}</b><small>{lead.phone} · #{lead.id}</small></div><span className={`badge ${sourceClass(lead.source)}`}>{lead.source}</span><span className="model">{lead.model}</span><span className={`status ${lead.status.toLowerCase().replaceAll(" ", "-")}`}>{lead.status}</span>{!officerMode && <select className="mobile-assign" aria-label={`Assign ${lead.name} to ${targetLabel}`} value="" onChange={event => { const officerId = Number(event.target.value); if (officerId) void assign(lead, officerId); }}><option value="">Assign to {targetLabel}…</option>{assignmentUsers.map(officer => <option key={officer.id} value={officer.id}>{officer.name}</option>)}</select>}<button className="row-action" onClick={() => openLead(lead)}>{officerMode ? "Log call →" : "Open →"}</button></div>) : !loading && <div className="empty-state">No leads match this view.</div>}</div></article>
-      {!officerMode && <aside className="lead-side-panel"><section className="lead-toolbar"><label className="search"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search by name or mobile..." /></label><label className="button filter" style={{ color: "#2e5bbf", borderColor: "#2e5bbf", background: "rgba(46,91,191,0.1)" }}>{uploading ? "Uploading…" : "Bulk Upload"}<input hidden type="file" accept=".xlsx,.csv" onChange={event => void selectFile(event.target.files?.[0])} /></label><button className="filter sample-download" onClick={downloadLeadSample}>Download sample format</button><button className="button primary" onClick={() => { setError(""); setAddingLead(true); }}>＋ Add lead</button></section><section className="panel lead-filters"><div className="lead-filters-grid"><label>Source<select value={filters.source || ""} onChange={event => setFilters(current => ({ ...current, source: event.target.value || undefined }))}><option value="">All sources</option>{sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Model<input value={filters.model || ""} onChange={event => setFilters(current => ({ ...current, model: event.target.value || undefined }))} placeholder="Any model" /></label><label>City<input value={filters.city || ""} onChange={event => setFilters(current => ({ ...current, city: event.target.value || undefined }))} placeholder="Any city" /></label><label>Source detail<input value={filters.source_label || ""} onChange={event => setFilters(current => ({ ...current, source_label: event.target.value || undefined }))} placeholder="Google, OEM, or campaign" /></label><label>From<input type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={filters.date_from || ""} onChange={event => setFilters(current => ({ ...current, date_from: event.target.value || undefined }))} placeholder="DD/MM/YYYY" /></label><label>To<input type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={filters.date_to || ""} onChange={event => setFilters(current => ({ ...current, date_to: event.target.value || undefined }))} placeholder="DD/MM/YYYY" /></label></div><footer className="lead-filters-actions"><span>{Object.values(activeFilters).filter(Boolean).length || searchFilter ? `Filtered ${poolLabel.toLowerCase()}` : `All ${poolLabel.toLowerCase()}`}</span><div><button className="filter" onClick={() => { setFilters({}); setActiveFilters({}); setQuery(""); }}>Clear</button><button className="filter" onClick={() => setActiveFilters({ ...filters })}>Apply filters</button>{assignmentView === "fresh" ? <section className="bucket-assignment"><p className="eyebrow">BUCKET</p><b>{bucketName}</b><span>{totalLeads} matching fresh lead{totalLeads === 1 ? "" : "s"}</span>{bucketSplit.length ? <div>{bucketSplit.map(item => <small key={item.officer.id}>{item.officer.name}: <b>{item.count}</b></small>)}</div> : <small>Select CRE cards above to split this bucket.</small>}<button className="button primary" onClick={() => void assignBucket()} disabled={!bucketOfficerIds.length || !totalLeads || bucketAssigning}>{bucketAssigning ? "Assigning…" : "Assign bucket"}</button></section> : <><select className="filter" aria-label={`Assign filtered leads to ${targetLabel}`} value={bulkOfficerId} onChange={event => setBulkOfficerId(event.target.value)}><option value="">Assign to {targetLabel}…</option>{assignmentUsers.map(officer => <option key={officer.id} value={officer.id}>{officer.name}</option>)}</select><button className="button primary" onClick={() => void bulkAssign()} disabled={!bulkOfficerId || !leads.length || bulkAssigning}>{bulkAssigning ? "Assigning…" : "Assign matching leads"}</button></>}</div></footer></section></aside>}
+    <section className={officerMode ? "lead-layout one-column" : "lead-layout admin-lead-layout"}>
+      <article className={officerMode ? "panel lead-pool" : "panel lead-pool admin-lead-pool"}><header className="panel-heading"><div><p className="eyebrow">{officerMode ? "ACTIVE LEADS" : poolLabel.toUpperCase()}</p><h2>{loading ? "Loading leads…" : `${leads.length} leads in pool`}</h2></div></header><div className="lead-list">{!loading && visible.length ? visible.map(lead => <div className={`lead-row ${dropTargetId === lead.id ? "drop-target" : ""}`} key={lead.id} onDragOver={event => { if (!officerMode) { event.preventDefault(); setDropTargetId(lead.id); } }} onDragLeave={() => setDropTargetId(null)} onDrop={event => { event.preventDefault(); const officerId = Number(event.dataTransfer.getData("application/river-officer")) || draggedOfficerId; if (officerId) void assign(lead, officerId); setDraggedOfficerId(null); }}>{!officerMode && <span className="drag-slot">↓</span>}<div><b>{lead.name}</b><small>{lead.phone} · #{lead.id}</small></div><span className={`badge ${sourceClass(lead.source)}`}>{lead.source}</span><span className="model">{lead.model}</span><span className={`status ${lead.status.toLowerCase().replaceAll(" ", "-")}`}>{lead.status}</span>{!officerMode && <select className="mobile-assign" aria-label={`Assign ${lead.name} to ${targetLabel}`} value="" onChange={event => { const officerId = Number(event.target.value); if (officerId) void assign(lead, officerId); }}><option value="">Assign to {targetLabel}…</option>{assignmentUsers.map(officer => <option key={officer.id} value={officer.id}>{officer.name}</option>)}</select>}<button className="row-action" onClick={() => openLead(lead)}>{officerMode ? "Log call →" : "Open →"}</button></div>) : !loading && <div className="empty-state">No leads match this view.</div>}</div></article>
     </section>
     {!officerMode && <LeadPagination page={page} total={totalLeads} loading={loading} onPageChange={setPage} />}
     {notice && <div className="toast" role="status">{notice}<button aria-label="Dismiss" onClick={() => setNotice("")}>×</button></div>}

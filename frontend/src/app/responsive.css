@@ -179,9 +179,223 @@ input[type="radio"] {
   color: var(--ink);
 }
 
+.admin-leads-heading {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.62fr) minmax(500px, 1fr);
+  gap: 18px;
+  align-items: start;
+  margin-bottom: 12px;
+}
+
+.admin-heading-main {
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  align-items: center;
+  min-width: 0;
+}
+
+.admin-heading-main .eyebrow {
+  margin: 0 0 7px;
+}
+
+.admin-heading-main h1 {
+  margin: 0;
+  font-size: clamp(1.9rem, 3.2vw, 2.65rem);
+  line-height: 1.08;
+  letter-spacing: -1.7px;
+}
+
+.admin-heading-main h1 span {
+  color: var(--orange);
+}
+
+.admin-heading-main .button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.admin-leads-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(105px, 1fr));
+  gap: 9px;
+  min-width: 0;
+}
+
+.admin-leads-metrics .sales-metric {
+  min-height: 78px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  box-shadow: 0 5px 14px #2022260d;
+}
+
+.admin-leads-metrics .sales-metric span {
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+.admin-leads-metrics .sales-metric strong {
+  margin-top: 5px;
+  font-size: clamp(1.25rem, 2vw, 1.65rem);
+  line-height: 1;
+}
+
+.admin-leads-metrics .sales-metric small {
+  margin-top: 4px;
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.admin-lead-tabs {
+  display: flex;
+  gap: 18px;
+  margin: 0 0 10px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin-lead-tabs button {
+  flex: 0 0 auto;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 7px 0;
+  font: 700 11px Arial;
+}
+
+.admin-lead-tabs button:not(.active) {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.admin-lead-tabs button.active {
+  border-bottom-color: var(--orange);
+}
+
+.admin-filter-band {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+}
+
+.admin-filter-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.admin-filter-toolbar .search {
+  width: 100%;
+}
+
+.admin-filter-toolbar .bulk-upload-button {
+  border-color: #2e5bbf;
+  background: rgba(46, 91, 191, 0.1);
+  color: #2e5bbf;
+  text-align: center;
+}
+
+.admin-filter-toolbar .sample-download {
+  color: #59616b;
+}
+
+.admin-lead-filters {
+  margin: 0;
+  padding: 0;
+}
+
+.admin-filter-band .lead-filters-grid {
+  grid-template-columns: repeat(6, minmax(100px, 1fr));
+  gap: 8px;
+}
+
+.admin-filter-band .lead-filters input,
+.admin-filter-band .lead-filters select {
+  padding: 7px 8px;
+}
+
+.admin-filter-band .lead-filters-actions {
+  align-items: center;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.admin-filter-band .lead-filters-actions > div {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.admin-filter-band .lead-filters-actions > div > * {
+  flex: 0 0 auto;
+}
+
+.admin-filter-band .bucket-assignment {
+  grid-template-columns: auto auto auto minmax(130px, 1fr) auto;
+  align-items: center;
+  width: auto;
+  max-width: 100%;
+  padding: 8px 10px;
+}
+
+.admin-filter-band .bucket-assignment > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.admin-filter-band .bucket-assignment > b,
+.admin-filter-band .bucket-assignment > span,
+.admin-filter-band .bucket-assignment small {
+  white-space: nowrap;
+}
+
+.admin-lead-layout {
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+
+.admin-lead-pool {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.admin-lead-pool .lead-list {
+  max-height: max(220px, calc(100dvh - 560px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 @media (max-width: 1150px) {
   .lead-layout {
     grid-template-columns: 1fr;
+  }
+
+  .admin-leads-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-leads-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .admin-filter-toolbar {
+    grid-template-columns: minmax(0, 1fr) repeat(3, auto);
+  }
+
+  .admin-filter-band .lead-filters-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-filter-band .bucket-assignment {
+    grid-template-columns: auto auto minmax(140px, 1fr) auto;
+  }
+
+  .admin-filter-band .bucket-assignment .eyebrow {
+    display: none;
   }
 
   .lead-side-panel {
@@ -434,6 +648,75 @@ input[type="radio"] {
   .lead-toolbar {
     flex-wrap: wrap;
     gap: 8px;
+  }
+
+  .admin-leads-heading {
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .admin-heading-main {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-heading-main .button {
+    width: 100%;
+    text-align: center;
+  }
+
+  .admin-leads-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-filter-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .admin-filter-toolbar .search {
+    grid-column: 1 / -1;
+  }
+
+  .admin-filter-toolbar > .button,
+  .admin-filter-toolbar > .filter {
+    width: 100%;
+  }
+
+  .admin-filter-toolbar .sample-download {
+    grid-column: 1 / -1;
+  }
+
+  .admin-filter-band .lead-filters-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-filter-band .lead-filters-actions,
+  .admin-filter-band .lead-filters-actions > div {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-filter-band .lead-filters-actions > div > * {
+    width: 100%;
+  }
+
+  .admin-filter-band .bucket-assignment {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-filter-band .bucket-assignment .eyebrow {
+    display: block;
+  }
+
+  .admin-filter-band .bucket-assignment > b,
+  .admin-filter-band .bucket-assignment > span,
+  .admin-filter-band .bucket-assignment small {
+    white-space: normal;
+  }
+
+  .admin-lead-pool .lead-list {
+    max-height: none;
+    overflow: visible;
   }
 
   .lead-toolbar .search {
@@ -780,8 +1063,14 @@ input[type="radio"] {
 
   .metric-grid,
   .sales-metrics,
+  .admin-leads-metrics,
   .lead-filters-grid,
   .sales-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-filter-toolbar,
+  .admin-filter-band .lead-filters-grid {
     grid-template-columns: 1fr;
   }
 
