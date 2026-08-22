@@ -105,7 +105,7 @@ input[type="radio"] {
 }
 
 .officer-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
   gap: 12px;
   margin: 0 0 18px;
 }
@@ -132,12 +132,6 @@ input[type="radio"] {
 
 .officer-grid .officer-load small:nth-of-type(2) {
   grid-column: 1;
-}
-
-@media (max-width: 1400px) {
-  .officer-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 1150px) {
