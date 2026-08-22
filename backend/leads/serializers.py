@@ -174,9 +174,10 @@ class SOLeadUpdateSerializer(serializers.Serializer):
             from datetime import timedelta
             if follow_up_at > timezone.now() + timedelta(days=3):
                 raise serializers.ValidationError({"follow_up_at": "Follow-up cannot be scheduled more than 3 days in advance."})
+        follow_up_statuses = [Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.WALKIN]
         if next_status in [Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.WALKIN] and not follow_up_at:
             raise serializers.ValidationError({"follow_up_at": "This status requires a follow-up time."})
-        if follow_up_at and next_status not in [None, Lead.Status.FRESH, Lead.Status.RNR, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.WALKIN]:
+        if follow_up_at and next_status not in [None, Lead.Status.FRESH, *follow_up_statuses]:
             raise serializers.ValidationError({"follow_up_at": "Only callbacks and walk-ins can have an appointment."})
         return attrs
 

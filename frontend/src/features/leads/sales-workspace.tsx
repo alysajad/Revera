@@ -83,9 +83,7 @@ const localDateValue = (date: Date) => {
 };
 
 const minimumFollowUpDay = () => {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  return localDateValue(date);
+  return localDateValue(new Date());
 };
 
 const maximumFollowUpDay = () => {
@@ -96,7 +94,14 @@ const maximumFollowUpDay = () => {
 
 const followUpIso = (value: string) => {
   const date = toApiDate(value);
-  return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T09:00:00`).toISOString() : null;
+  return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T23:59:00`).toISOString() : null;
+};
+
+const pendingOutcomeFor = (reason: string) => {
+  if (reason === "Call me back") return { call_outcome: "Call Me Back", status: "CALLBACK" };
+  if (reason === "RNR") return { call_outcome: "RNR", status: "RNR" };
+  if (reason === "Switched Off") return { call_outcome: "Switch Off", status: "SWITCHED_OFF" };
+  return { call_outcome: "PENDING", status: "PENDING" };
 };
 
 function progressState(callCount: number, index: number) {
@@ -254,9 +259,10 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
     setSaving(true); setError("");
     try {
       const notes = ["Qualified lead", draft.profession && `Profession: ${draft.profession}`, (draft.city || draft.custom_location) && `Location: ${draft.custom_location || draft.city}`, draft.trade_in_note && `Trade in: ${draft.trade_in_note}`, draft.qualification.notes.trim()].filter(Boolean).join("\n");
+      const pendingOutcome = !isPs && draft.call_outcome === "PENDING" ? pendingOutcomeFor(draft.pending_reason) : null;
       const updated = await updateMyLead(detail.id, {
-        call_outcome: draft.call_outcome,
-        status: statusOptions[draft.call_outcome]?.[0] || detail.statusCode,
+        call_outcome: pendingOutcome?.call_outcome || draft.call_outcome,
+        status: pendingOutcome?.status || statusOptions[draft.call_outcome]?.[0] || detail.statusCode,
         category: draft.category,
         sales_outcome: draft.call_outcome === "Retail Done" ? "RETAILED" : draft.call_outcome === "Booking Done" ? "BOOKED" : ["Not Interested", "Already Booked", "Lost to Competition", "Finance Rejected", "Dropped", "Lost to co-dealer"].includes(draft.call_outcome) ? "LOST" : isPs ? "PENDING" : draft.call_outcome === "LOST" ? "LOST" : draft.call_outcome === "BOOKED" ? "BOOKED" : draft.call_outcome === "RETAILED" ? "RETAILED" : "PENDING",
         remarks,
