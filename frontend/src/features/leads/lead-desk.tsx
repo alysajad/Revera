@@ -49,15 +49,35 @@ const nextOutcomes: Record<string, { label: string; value: string }[]> = {
 
 const connectedOutcomes = ["Need Test Drive", "Showroom Visit", "Exchange Issue", "Booking Done", "Retail Done", "Need time", "Need SO Call", "Need More Details", "Discount Issue", "Not Interested", "Already Booked", "Lost to Competition", "Finance Rejected", "Dropped", "Lost to co-dealer"];
 const notConnectedOutcomes = ["RNR", "Switch Off", "Call Me Back", "Call Forwarding", "Line Busy", "Invalid Number"];
+const adminOutcomeStatus: Record<string, string> = {
+  "Need Test Drive": "PENDING",
+  "Showroom Visit": "PENDING",
+  "Exchange Issue": "PENDING",
+  "Booking Done": "WALKIN",
+  "Retail Done": "WON",
+  "Need time": "PENDING",
+  "Need SO Call": "PENDING",
+  "Need More Details": "PENDING",
+  "Discount Issue": "PENDING",
+  "Not Interested": "LOST",
+  "Already Booked": "LOST",
+  "Lost to Competition": "LOST",
+  "Finance Rejected": "LOST",
+  Dropped: "LOST",
+  "Lost to co-dealer": "LOST",
+  RNR: "RNR",
+  "Switch Off": "SWITCHED_OFF",
+  "Call Me Back": "CALLBACK",
+  "Call Forwarding": "PENDING",
+  "Line Busy": "PENDING",
+  "Invalid Number": "PENDING",
+};
+const adminFollowUpStatuses = ["CALLBACK", "PENDING", "WALKIN"];
 
 const resolveStatus = (outcome: string, currentStatus: string) => {
-  if (outcome === "Retail Done") return "WON";
-  if (["Not Interested", "Already Booked", "Lost to Competition", "Finance Rejected", "Dropped", "Lost to co-dealer", "Invalid Number"].includes(outcome)) return "LOST";
-  if (["RNR"].includes(outcome)) return "RNR";
-  if (["Switch Off"].includes(outcome)) return "SWITCHED_OFF";
-  if (["Call Me Back", "Call Forwarding", "Line Busy"].includes(outcome)) return "CALLBACK";
-  return "PENDING"; 
+  return adminOutcomeStatus[outcome] || currentStatus;
 };
+const adminNeedsFollowUp = (outcome: string) => adminFollowUpStatuses.includes(resolveStatus(outcome, ""));
 
 const sources = [["META", "Meta Ads"], ["WEBSITE", "Website"], ["CARWALE", "CarWale"], ["WALKIN", "Walk-in"], ["CAMPAIGN", "Campaign"], ["OTHER", "Other"], ["UNKNOWN", "Unknown"]];
 const models = ["R6 GT", "R7 City", "R8 Lite", "R8 Pro", "R9 Plus"];
@@ -177,7 +197,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   }, [officerMode]);
 
   const visible = useMemo(() => leads.filter(lead => `${lead.name} ${lead.phone}`.toLowerCase().includes(query.toLowerCase())), [leads, query]);
-  const needsAppointment = officerMode ? ["CALLBACK", "WALKIN", "PENDING"].includes(outcome) : ["Call Me Back", "Need time", "Need SO Call"].includes(outcome);
+  const needsAppointment = officerMode ? ["CALLBACK", "WALKIN", "PENDING"].includes(outcome) : adminNeedsFollowUp(outcome);
   const selectedBucketOfficers = useMemo(() => bucketOfficerIds.map(id => creUsers.find(officer => officer.id === id)).filter(Boolean) as Officer[], [bucketOfficerIds, creUsers]);
   const bucketName = useMemo(() => {
     const sourceLabel = sources.find(([value]) => value === activeFilters.source)?.[1];
@@ -245,6 +265,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     if (needsAppointment && !followUpAt) { setError("Select a follow-up time."); return; }
     const parsedFollowUpAt = followUpAt ? parseDateTime(followUpAt) || (Number.isNaN(new Date(followUpAt).getTime()) ? "" : new Date(followUpAt).toISOString()) : "";
     if (needsAppointment && !parsedFollowUpAt) { setError("Enter follow-up time as DD/MM/YYYY HH:mm."); return; }
+    setError("");
     setSavingCall(true);
     try {
       const normalizedFollowUpAt = parsedFollowUpAt;
@@ -261,6 +282,8 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
         await logCall(activeLead.id, { status: outcome, remarks, ...(normalizedFollowUpAt ? { follow_up_at: normalizedFollowUpAt } : {}) });
       }
       setNotice(`Call log saved for ${activeLead.name}.`); setActiveLead(null); setLeadDetail(null); setRemarks(""); setFollowUpAt(""); setTestDrive(""); setCallStatus("Connected"); await refresh();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Follow-up could not be updated.");
     } finally { setSavingCall(false); }
   };
 
@@ -499,7 +522,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
           <h3>Log follow-up F{leadDetail ? leadDetail.callHistory.length + 1 : 1}</h3>
           <div className="admin-follow-up-grid">
             <div style={{ gridColumn: "1 / -1" }}><h4>Call status *</h4><div className="sales-choice-row admin-outcome-row" style={{ display: "flex", gap: "0.5rem" }}><button type="button" className={callStatus === "Connected" ? "chosen" : ""} onClick={() => { setCallStatus("Connected"); setOutcome(""); }}>Connected</button><button type="button" className={callStatus === "Not Connected" ? "chosen" : ""} onClick={() => { setCallStatus("Not Connected"); setOutcome(""); }}>Not Connected</button></div></div>
-            <div style={{ gridColumn: "1 / -1" }}><h4>Outcome *</h4><div className="sales-choice-row admin-outcome-row" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>{(callStatus === "Connected" ? connectedOutcomes : notConnectedOutcomes).map(item => <button type="button" className={outcome === item ? "chosen" : ""} onClick={() => { setOutcome(item); if (!["Call Me Back", "Need time", "Need SO Call"].includes(item)) setFollowUpAt(""); }} key={item}>{item}</button>)}</div></div>
+            <div style={{ gridColumn: "1 / -1" }}><h4>Outcome *</h4><div className="sales-choice-row admin-outcome-row" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>{(callStatus === "Connected" ? connectedOutcomes : notConnectedOutcomes).map(item => <button type="button" className={outcome === item ? "chosen" : ""} onClick={() => { setOutcome(item); if (!adminNeedsFollowUp(item)) setFollowUpAt(""); }} key={item}>{item}</button>)}</div></div>
 
             <label className="sales-full-label" style={{ gridColumn: "1 / -1" }}>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Enter your call remarks…" /></label>
             {needsAppointment && <label className="admin-follow-up-date"><span><b>Next follow-up date</b> *</span><input type="text" required inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}[ ,]+([01]\d|2[0-3]):[0-5]\d" placeholder="DD/MM/YYYY HH:mm" value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>}
