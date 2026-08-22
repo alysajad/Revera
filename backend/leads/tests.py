@@ -253,40 +253,46 @@ class LeadAccessTests(TestCase):
         self.assertEqual(self.first_lead.status, Lead.Status.PENDING)
         self.assertTrue(FollowUp.objects.filter(lead=self.first_lead, resolved_at__isnull=True).exists())
 
-    def test_cre_pending_reasons_route_to_callback_or_pending_sections(self):
+    def test_cre_pending_reasons_route_to_todays_followups_or_pending_sections(self):
         rnr = Lead.objects.create(name="RNR Lead", phone="7305198424", assigned_so=self.first_so)
         switched_off = Lead.objects.create(name="Switch Lead", phone="7305198425", assigned_so=self.first_so)
         generic = Lead.objects.create(name="Generic Pending", phone="7305198426", assigned_so=self.first_so)
+        tomorrow_callback = Lead.objects.create(name="Tomorrow Callback", phone="7305198428", assigned_so=self.first_so)
         fixed_now = timezone.now().replace(hour=10, minute=0, second=0, microsecond=0)
         same_day_eod = fixed_now.replace(hour=23, minute=59)
+        tomorrow = fixed_now + timedelta(days=1)
         self.client.force_authenticate(self.first_so)
 
         with patch("django.utils.timezone.now", return_value=fixed_now):
-            callback = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "Call Me Back", "status": Lead.Status.CALLBACK, "remarks": "Pending reason: Call me back", "follow_up_at": same_day_eod.isoformat()}, format="json")
-            rnr_response = self.client.patch(f"/api/leads/{rnr.id}/so-update/", {"call_outcome": "RNR", "status": Lead.Status.RNR, "remarks": "Pending reason: RNR", "follow_up_at": same_day_eod.isoformat()}, format="json")
-            switched_response = self.client.patch(f"/api/leads/{switched_off.id}/so-update/", {"call_outcome": "Switch Off", "status": Lead.Status.SWITCHED_OFF, "remarks": "Pending reason: Switched Off", "follow_up_at": same_day_eod.isoformat()}, format="json")
+            callback = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "Call Me Back", "status": Lead.Status.PENDING, "remarks": "Pending reason: Call me back", "follow_up_at": same_day_eod.isoformat()}, format="json")
+            rnr_response = self.client.patch(f"/api/leads/{rnr.id}/so-update/", {"call_outcome": "RNR", "status": Lead.Status.PENDING, "remarks": "Pending reason: RNR", "follow_up_at": same_day_eod.isoformat()}, format="json")
+            switched_response = self.client.patch(f"/api/leads/{switched_off.id}/so-update/", {"call_outcome": "Switch Off", "status": Lead.Status.PENDING, "remarks": "Pending reason: Switched Off", "follow_up_at": same_day_eod.isoformat()}, format="json")
             generic_response = self.client.patch(f"/api/leads/{generic.id}/so-update/", {"call_outcome": "PENDING", "status": Lead.Status.PENDING, "remarks": "Pending reason: Busy", "follow_up_at": same_day_eod.isoformat()}, format="json")
+            tomorrow_response = self.client.patch(f"/api/leads/{tomorrow_callback.id}/so-update/", {"call_outcome": "Call Me Back", "status": Lead.Status.PENDING, "remarks": "Pending reason: Call me back tomorrow", "follow_up_at": tomorrow.isoformat()}, format="json")
 
         self.assertEqual(callback.status_code, 200)
         self.assertEqual(rnr_response.status_code, 200)
         self.assertEqual(switched_response.status_code, 200)
         self.assertEqual(generic_response.status_code, 200)
+        self.assertEqual(tomorrow_response.status_code, 200)
         self.first_lead.refresh_from_db()
         rnr.refresh_from_db()
         switched_off.refresh_from_db()
         generic.refresh_from_db()
-        self.assertEqual(self.first_lead.status, Lead.Status.CALLBACK)
-        self.assertEqual(rnr.status, Lead.Status.RNR)
-        self.assertEqual(switched_off.status, Lead.Status.SWITCHED_OFF)
+        tomorrow_callback.refresh_from_db()
+        self.assertEqual(self.first_lead.status, Lead.Status.PENDING)
+        self.assertEqual(rnr.status, Lead.Status.PENDING)
+        self.assertEqual(switched_off.status, Lead.Status.PENDING)
         self.assertEqual(generic.status, Lead.Status.PENDING)
+        self.assertEqual(tomorrow_callback.status, Lead.Status.PENDING)
 
         follow_ups = self.client.get("/api/leads/my-dashboard/?section=followups")
         pending = self.client.get("/api/leads/my-dashboard/?section=pending")
 
         self.assertEqual(follow_ups.data["summary"]["followups"], 1)
-        self.assertEqual(follow_ups.data["summary"]["pending"], 3)
+        self.assertEqual(follow_ups.data["summary"]["pending"], 4)
         self.assertEqual({lead["id"] for lead in follow_ups.data["results"]}, {self.first_lead.id})
-        self.assertEqual({lead["id"] for lead in pending.data["results"]}, {rnr.id, switched_off.id, generic.id})
+        self.assertEqual({lead["id"] for lead in pending.data["results"]}, {rnr.id, switched_off.id, generic.id, tomorrow_callback.id})
 
     def test_so_update_accepts_same_day_future_follow_up_and_rejects_past(self):
         past_lead = Lead.objects.create(name="Past Follow Up", phone="7305198427", assigned_so=self.first_so)
@@ -296,8 +302,8 @@ class LeadAccessTests(TestCase):
         self.client.force_authenticate(self.first_so)
 
         with patch("django.utils.timezone.now", return_value=fixed_now):
-            accepted = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "Call Me Back", "status": Lead.Status.CALLBACK, "follow_up_at": same_day_eod.isoformat()}, format="json")
-            rejected = self.client.patch(f"/api/leads/{past_lead.id}/so-update/", {"call_outcome": "RNR", "status": Lead.Status.RNR, "follow_up_at": same_day_past.isoformat()}, format="json")
+            accepted = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "Call Me Back", "status": Lead.Status.PENDING, "follow_up_at": same_day_eod.isoformat()}, format="json")
+            rejected = self.client.patch(f"/api/leads/{past_lead.id}/so-update/", {"call_outcome": "RNR", "status": Lead.Status.PENDING, "follow_up_at": same_day_past.isoformat()}, format="json")
 
         self.assertEqual(accepted.status_code, 200)
         self.assertEqual(rejected.status_code, 400)
@@ -394,11 +400,13 @@ class LeadAccessTests(TestCase):
 
     def test_follow_up_submission_moves_fresh_lead_to_follow_ups(self):
         self.client.force_authenticate(self.first_so)
-        future = timezone.now() + timedelta(days=2)
-        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"follow_up_at": future.isoformat()}, format="json")
+        fixed_now = timezone.now().replace(hour=10, minute=0, second=0, microsecond=0)
+        same_day_eod = fixed_now.replace(hour=23, minute=59)
+        with patch("django.utils.timezone.now", return_value=fixed_now):
+            response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "Call Me Back", "status": Lead.Status.PENDING, "follow_up_at": same_day_eod.isoformat()}, format="json")
         self.assertEqual(response.status_code, 200)
         self.first_lead.refresh_from_db()
-        self.assertEqual(self.first_lead.status, Lead.Status.CALLBACK)
+        self.assertEqual(self.first_lead.status, Lead.Status.PENDING)
         fresh = self.client.get("/api/leads/my-dashboard/?section=fresh")
         follow_ups = self.client.get("/api/leads/my-dashboard/?section=followups")
         self.assertNotIn(self.first_lead.id, [lead["id"] for lead in fresh.data["results"]])

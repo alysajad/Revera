@@ -6,6 +6,7 @@ import { formatDate, formatDateTime, parseDate, toApiDate } from "@/lib/dates";
 
 type Section = "all" | "fresh" | "followups" | "pending" | "qualified" | "walkin" | "won_lost" | "active";
 type FreshSubfilter = "untouched" | "called" | "scheduled";
+type WonLostFilter = "all" | "won" | "lost";
 type Draft = {
   status: string; category: string; sales_outcome: string; call_outcome: string; call_status: string; remarks: string; follow_up_at: string;
   model_interest: string; city: string; profession: string; custom_location: string; ps_officer_id: string; lost_reason: string; pending_reason: string; trade_in_note: string;
@@ -43,7 +44,7 @@ const soOutcomes = [...soConnectedOutcomes, ...soNotConnectedOutcomes];
 const sections: { key: Section; label: string; count: keyof SalesDashboard["summary"]; icon: string }[] = [
   { key: "all", label: "All leads", count: "total", icon: "☰" },
   { key: "fresh", label: "Fresh leads", count: "fresh", icon: "✦" },
-  { key: "followups", label: "Follow-ups", count: "followups", icon: "◷" },
+  { key: "followups", label: "Today's follow-ups", count: "followups", icon: "◷" },
   { key: "pending", label: "Pending leads", count: "pending", icon: "!" },
   { key: "qualified", label: "Qualified leads", count: "qualified", icon: "◎" },
   { key: "walkin", label: "Walk-in leads", count: "walkin", icon: "↗" },
@@ -98,9 +99,9 @@ const followUpIso = (value: string) => {
 };
 
 const pendingOutcomeFor = (reason: string) => {
-  if (reason === "Call me back") return { call_outcome: "Call Me Back", status: "CALLBACK" };
-  if (reason === "RNR") return { call_outcome: "RNR", status: "RNR" };
-  if (reason === "Switched Off") return { call_outcome: "Switch Off", status: "SWITCHED_OFF" };
+  if (reason === "Call me back") return { call_outcome: "Call Me Back", status: "PENDING" };
+  if (reason === "RNR") return { call_outcome: "RNR", status: "PENDING" };
+  if (reason === "Switched Off") return { call_outcome: "Switch Off", status: "PENDING" };
   return { call_outcome: "PENDING", status: "PENDING" };
 };
 
@@ -132,6 +133,7 @@ function LeadEditPanel({ fields, onChange, onClose, onSave, saving }: { fields: 
 export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: boolean }) {
   const [section, setSection] = useState<Section>(followUpsOnly ? "followups" : "fresh");
   const [freshSubfilter, setFreshSubfilter] = useState<FreshSubfilter>("untouched");
+  const [wonLostFilter, setWonLostFilter] = useState<WonLostFilter>("all");
   const [range, setRange] = useState("all");
   const [category, setCategory] = useState("");
   const [source, setSource] = useState("");
@@ -260,7 +262,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
     try {
       const notes = ["Qualified lead", draft.profession && `Profession: ${draft.profession}`, (draft.city || draft.custom_location) && `Location: ${draft.custom_location || draft.city}`, draft.trade_in_note && `Trade in: ${draft.trade_in_note}`, draft.qualification.notes.trim()].filter(Boolean).join("\n");
       const pendingOutcome = !isPs && draft.call_outcome === "PENDING" ? pendingOutcomeFor(draft.pending_reason) : null;
-      const updated = await updateMyLead(detail.id, {
+      await updateMyLead(detail.id, {
         call_outcome: pendingOutcome?.call_outcome || draft.call_outcome,
         status: pendingOutcome?.status || statusOptions[draft.call_outcome]?.[0] || detail.statusCode,
         category: draft.category,
@@ -272,8 +274,8 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
         ps_officer_id: !isPs && draft.call_outcome === "QUALIFIED" ? Number(draft.ps_officer_id) : undefined,
         qualification: !isPs && draft.call_outcome === "QUALIFIED" ? { ...draft.qualification, trade_in: draft.trade_in_note === "Yes" ? true : draft.trade_in_note ? false : null, notes } : undefined,
       });
-      if (isPs) { setDetail(null); setDraft(null); }
-      else { setDetail(updated); setDraft(draftFor(updated)); }
+      setDetail(null);
+      setDraft(null);
       setNotice("Lead updated and follow-up history saved."); await loadDashboard();
     } catch (requestError) { const message = requestError instanceof Error ? requestError.message : "Lead update could not be saved."; setError(message); setNotice(message); }
     finally { setSaving(false); }
@@ -335,11 +337,12 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
 
   const metrics = isPs
     ? [{label: followUpsOnly ? "OPEN FOLLOW-UPS" : "FRESH LEADS", value: followUpsOnly ? summary?.followups ?? 0 : summary?.fresh ?? 0, tone:"blue"}, {label:"BOOKED", value:summary?.walkin ?? 0, tone:"green"}, {label:"RETAILED", value:summary?.won ?? 0, tone:"green"}, {label:"LOST", value:summary?.lost ?? 0, tone:"red"}]
-    : [{label:"Fresh leads", value:summary?.fresh ?? 0, tone:"blue"}, {label:"Follow-ups", value:summary?.followups ?? 0, tone:"yellow"}, {label:"Pending leads", value:summary?.pending ?? 0, tone:"orange"}, {label:"Qualified leads", value:summary?.qualified ?? 0, tone:"green"}, {label:"Won leads", value:summary?.won ?? 0, tone:"mint"}, {label:"Lost leads", value:summary?.lost ?? 0, tone:"red"}];
+    : [{label:"Fresh leads", value:summary?.fresh ?? 0, tone:"blue"}, {label:"Today's follow-ups", value:summary?.followups ?? 0, tone:"yellow"}, {label:"Pending leads", value:summary?.pending ?? 0, tone:"orange"}, {label:"Qualified leads", value:summary?.qualified ?? 0, tone:"green"}, {label:"Won leads", value:summary?.won ?? 0, tone:"mint"}, {label:"Lost leads", value:summary?.lost ?? 0, tone:"red"}];
+  const displayStatus = (lead: SalesLead) => !isPs && ["RNR", "SWITCHED_OFF", "CALLBACK"].includes(lead.statusCode) ? "Pending" : lead.status;
+  const displayStatusClass = (lead: SalesLead) => !isPs && ["RNR", "SWITCHED_OFF", "CALLBACK"].includes(lead.statusCode) ? "pending" : lead.statusCode.toLowerCase();
 
   return <section className="page sales-workspace">
     <div className="sales-hero"><div><p className="eyebrow">{isPs ? "PS/SO WORKSPACE" : "CRE WORKSPACE"}</p><h1>My queue</h1><p className="subtext">Today, {formatDate(new Date())}</p></div><div className="sales-hero-actions"><button className="filter" onClick={() => void loadDashboard()}>↻ Refresh</button><a className="button primary" href="/my-analytics">View analytics →</a>{!isPs && <button className="button primary" onClick={() => { setAddLeadError(""); setAddingLead(true); }}>＋ Add lead</button>}</div></div>
-    {!isPs && <section className="sales-hero-banner"><div><p className="eyebrow">THE NEXT MOVE</p><h2>Every lead deserves a next move.</h2><p>Stay on top of your queue and guide every customer to their perfect ride.</p></div><div className="sales-hero-art" aria-hidden="true"><span>RIVER</span><i>↗</i></div></section>}
     <section className="sales-metrics">{metrics.map(metric => <article className={`sales-metric ${metric.tone}`} key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><small>Assigned to you</small></article>)}</section>
     
     {isPs ? (
@@ -356,7 +359,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
                    <span style={{ color: "var(--text-light)", fontSize: "0.9rem" }}>{lead.phone} · {lead.sourceCode}</span>
                    <span style={{ color: "var(--text-light)", fontSize: "0.85rem" }}>{lead.source} · {lead.status}</span>
                  </div>
-                 <span className={`sales-status ${lead.statusCode.toLowerCase()}`}>{lead.status}</span>
+                 <span className={`sales-status ${displayStatusClass(lead)}`}>{displayStatus(lead)}</span>
                </div>
                <div style={{ alignSelf: "flex-start", marginTop: "0.25rem" }}>
                  <button onClick={(e) => { e.stopPropagation(); void toggleFlag(lead); }} style={{ background: "transparent", border: "1px solid var(--orange)", color: "var(--orange)", padding: "0.35rem 0.75rem", borderRadius: "20px", fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.25rem", fontWeight: 600 }}>
@@ -370,7 +373,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
     ) : (
       <>
         <nav className="sales-tabs" aria-label="Lead status views">{visibleSections.map(item => <button key={item.key} className={section === item.key ? "active" : ""} onClick={() => setSection(item.key)}><i>{item.icon}</i><span>{item.label}</span><b>{summary?.[item.count] ?? 0}</b></button>)}</nav>
-        <section className="panel sales-table-panel"><header className="sales-table-heading"><div><p className="eyebrow">{sections.find(item => item.key === section)?.label.toUpperCase()}</p><h2>{loading ? "Loading your pipeline…" : `${dashboard?.results.length ?? 0} leads in this view`}</h2></div><div className="sales-filters"><select aria-label="Date range" value={range} onChange={event => setRange(event.target.value)}><option value="all">All time</option><option value="today">Today</option><option value="mtd">Month to date</option></select><select aria-label="Lead category" value={category} onChange={event => setCategory(event.target.value)}><option value="">All categories</option><option value="HOT">Hot</option><option value="WARM">Warm</option><option value="COLD">Cold</option></select><select aria-label="Lead source" value={source} onChange={event => setSource(event.target.value)}><option value="">All sources</option><option value="META">Meta Ads</option><option value="WEBSITE">Website</option><option value="CARWALE">CarWale</option><option value="CAMPAIGN">Campaign</option><option value="OTHER">Other</option></select><label className="sales-search">⌕<input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search name, phone, model" /></label></div></header><div className="sales-subfilters">{!isPs && section === "fresh" ? <><button className={freshSubfilter === "untouched" ? "selected" : ""} onClick={() => setFreshSubfilter("untouched")}>✦ Untouched <b>{summary?.untouched ?? 0}</b></button><button className={freshSubfilter === "called" ? "selected" : ""} onClick={() => setFreshSubfilter("called")}>☎ Called <b>{summary?.called ?? 0}</b></button><button className={freshSubfilter === "scheduled" ? "selected" : ""} onClick={() => setFreshSubfilter("scheduled")}>◷ Follow-up <b>{summary?.scheduled ?? 0}</b></button></> : !isPs && section === "pending" ? <><span>Lead category</span><button className={!category ? "selected" : ""} onClick={() => setCategory("")}>All</button><button className={category === "HOT" ? "selected hot" : "hot"} onClick={() => setCategory("HOT")}>Hot</button><button className={category === "WARM" ? "selected warm" : "warm"} onClick={() => setCategory("WARM")}>Warm</button><button className={category === "COLD" ? "selected cold" : "cold"} onClick={() => setCategory("COLD")}>Cold</button></> : <span>{summary?.total ?? 0} assigned leads in your workspace</span>}</div><div className="sales-table-scroll"><table className="sales-table"><thead><tr><th>Action</th><th>Status</th><th>Customer name</th><th>Mobile no.</th><th>Source</th></tr></thead><tbody>{loading ? <tr><td colSpan={5} className="sales-empty">Loading…</td></tr> : dashboard?.results.length ? dashboard.results.map(lead => <tr key={lead.id} onClick={() => void openLead(lead)}><td><button className="sales-row-action" onClick={event => { event.stopPropagation(); void openLead(lead); }}>↗ Open</button></td><td><span className={`sales-status ${lead.statusCode.toLowerCase()}`}>{lead.status}</span></td><td><b>{lead.name}</b><small>#{String(lead.id).padStart(6, "0")}</small></td><td>{lead.phone}</td><td>{lead.source}</td></tr>) : <tr><td colSpan={5} className="sales-empty"><strong>No leads in this view.</strong><span>New assignments and follow-ups will appear here automatically.</span></td></tr>}</tbody></table></div></section>
+        <section className="panel sales-table-panel"><header className="sales-table-heading"><div><p className="eyebrow">{sections.find(item => item.key === section)?.label.toUpperCase()}</p><h2>{loading ? "Loading your pipeline…" : `${dashboard?.results.length ?? 0} leads in this view`}</h2></div><div className="sales-filters"><select aria-label="Date range" value={range} onChange={event => setRange(event.target.value)}><option value="all">All time</option><option value="today">Today</option><option value="mtd">Month to date</option></select><select aria-label="Lead category" value={category} onChange={event => setCategory(event.target.value)}><option value="">All categories</option><option value="HOT">Hot</option><option value="WARM">Warm</option><option value="COLD">Cold</option></select><select aria-label="Lead source" value={source} onChange={event => setSource(event.target.value)}><option value="">All sources</option><option value="META">Meta Ads</option><option value="WEBSITE">Website</option><option value="CARWALE">CarWale</option><option value="CAMPAIGN">Campaign</option><option value="OTHER">Other</option></select><label className="sales-search">⌕<input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search name, phone, model" /></label></div></header><div className="sales-subfilters">{!isPs && section === "fresh" ? <><button className={freshSubfilter === "untouched" ? "selected" : ""} onClick={() => setFreshSubfilter("untouched")}>✦ Untouched <b>{summary?.untouched ?? 0}</b></button><button className={freshSubfilter === "called" ? "selected" : ""} onClick={() => setFreshSubfilter("called")}>☎ Called <b>{summary?.called ?? 0}</b></button><button className={freshSubfilter === "scheduled" ? "selected" : ""} onClick={() => setFreshSubfilter("scheduled")}>◷ Follow-up <b>{summary?.scheduled ?? 0}</b></button></> : !isPs && section === "won_lost" ? <><span>Status</span><button className={wonLostFilter === "all" ? "selected" : ""} onClick={() => setWonLostFilter("all")}>◇ All <b>{summary?.won_lost ?? 0}</b></button><button className={wonLostFilter === "won" ? "selected" : ""} onClick={() => setWonLostFilter("won")}>✓ Won <b>{summary?.won ?? 0}</b></button><button className={wonLostFilter === "lost" ? "selected" : ""} onClick={() => setWonLostFilter("lost")}>× Lost <b>{summary?.lost ?? 0}</b></button></> : !isPs && section === "pending" ? <><span>Lead category</span><button className={!category ? "selected" : ""} onClick={() => setCategory("")}>All</button><button className={category === "HOT" ? "selected hot" : "hot"} onClick={() => setCategory("HOT")}>Hot</button><button className={category === "WARM" ? "selected warm" : "warm"} onClick={() => setCategory("WARM")}>Warm</button><button className={category === "COLD" ? "selected cold" : "cold"} onClick={() => setCategory("COLD")}>Cold</button></> : <span>{summary?.total ?? 0} assigned leads in your workspace</span>}</div><div className="sales-table-scroll"><table className="sales-table"><thead><tr><th>Action</th><th>Status</th><th>Customer name</th><th>Mobile no.</th><th>Source</th></tr></thead><tbody>{loading ? <tr><td colSpan={5} className="sales-empty">Loading…</td></tr> : (() => { const filtered = section === "won_lost" && wonLostFilter !== "all" ? (dashboard?.results ?? []).filter(l => wonLostFilter === "won" ? l.statusCode === "WON" : l.statusCode === "LOST") : dashboard?.results ?? []; return filtered.length ? filtered.map(lead => <tr key={lead.id} onClick={() => void openLead(lead)}><td><button className="sales-row-action" onClick={event => { event.stopPropagation(); void openLead(lead); }}>↗ Open</button></td><td><span className={`sales-status ${displayStatusClass(lead)}`}>{displayStatus(lead)}</span></td><td><b>{lead.name}</b><small>#{String(lead.id).padStart(6, "0")}</small></td><td>{lead.phone}</td><td>{lead.source}</td></tr>) : <tr><td colSpan={5} className="sales-empty"><strong>No leads in this view.</strong><span>New assignments and follow-ups will appear here automatically.</span></td></tr>; })()}</tbody></table></div></section>
       </>
     )}
 
