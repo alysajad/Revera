@@ -6,6 +6,7 @@ import "./admin-follow-up.css";
 import "./sales-theme.css";
 import "./call-outcome.css";
 import "./responsive.css";
+import "./complaint.css";
 
 export const metadata: Metadata = {
   title: "River Lead Control",

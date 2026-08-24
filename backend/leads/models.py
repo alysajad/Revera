@@ -71,6 +71,7 @@ class CallLog(models.Model):
     call_status = models.CharField(max_length=20, blank=True)
     outcome = models.CharField(max_length=30, blank=True)
     remarks = models.CharField(max_length=500, blank=True)
+    other_so = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="other_so_call_logs")
     created_at = models.DateTimeField(auto_now_add=True)
 
 
