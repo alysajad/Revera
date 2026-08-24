@@ -127,7 +127,7 @@ export type Complaint = {
   id: number; uid: string; ticket_number: string;
   customer_name: string; customer_phone: string; customer_email: string;
   category: string; priority: string; status: string;
-  subject: string; description: string; model_interest: string; source: string;
+  subject: string; description: string; model_interest: string; branch: string; source: string;
   resolution_notes: string; resolved_at: string | null;
   logged_by: number; logged_by_name: string;
   assigned_to: number | null; assigned_to_name: string;
@@ -140,7 +140,7 @@ export type ComplaintNote = { id: number; author_name: string; content: string; 
 export type ComplaintInput = {
   customer_name: string; customer_phone: string; customer_email?: string;
   category: string; priority: string; subject: string; description: string;
-  model_interest?: string; source: string;
+  model_interest?: string; branch: string; source: string;
 };
 export type ComplaintFilters = {
   status?: string; category?: string; priority?: string; source?: string;

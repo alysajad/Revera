@@ -44,6 +44,7 @@ def run_tests():
         "priority": Complaint.Priority.HIGH,
         "subject": "Late service",
         "description": "The service was delayed by 2 days.",
+        "branch": "Kochi",
         "source": Complaint.Source.PHONE,
     }
     response = client.post('/api/complaints/', payload, content_type='application/json')
