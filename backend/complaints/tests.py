@@ -140,6 +140,12 @@ class ComplaintAccessTests(TestCase):
         self.assertEqual(resolver_row["resolution_rate"], 50.0)
         self.assertEqual(resolver_row["avg_resolution_hours"], 2.0)
 
+        self.client.force_authenticate(self.resolver)
+        resolver_analytics = self.client.get("/api/complaints/analytics/?range=all")
+        self.assertEqual(resolver_analytics.status_code, 200)
+        self.assertEqual(resolver_analytics.data["summary"]["total"], 3)
+        self.assertNotIn("by_resolution_team", resolver_analytics.data)
+
     def test_sales_and_receptionist_roles_have_no_complaint_access(self):
         complaint = self.complaint()
         for user in (self.so, self.receptionist):

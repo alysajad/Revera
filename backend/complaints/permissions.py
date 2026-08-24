@@ -19,11 +19,11 @@ class ComplaintPermission(BasePermission):
 
 
 class ComplaintAnalyticsPermission(BasePermission):
-    message = "Complaint analytics are available to admins."
+    message = "Complaint analytics are available to admins and complaints department users."
 
     def has_permission(self, request, view):
         return bool(
             request.user
             and request.user.is_authenticated
-            and request.user.is_admin
+            and (request.user.is_admin or request.user.role == User.Role.COMPLAINTS)
         )

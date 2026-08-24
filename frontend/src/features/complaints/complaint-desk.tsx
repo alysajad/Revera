@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  addComplaintNote, createComplaint, getComplaintAnalytics, getComplaintDetail, getComplaints,
+  createComplaint, getComplaintAnalytics, getComplaintDetail, getComplaints,
   getSystemConfig, updateComplaint,
   type Complaint, type ComplaintAnalytics, type ComplaintDetail, type ComplaintFilters, type ComplaintInput, type CurrentUser,
 } from "@/lib/crm";
@@ -121,8 +121,6 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
   const [newStatus, setNewStatus] = useState("");
   const [newPriority, setNewPriority] = useState("");
   const [resolutionNotes, setResolutionNotes] = useState("");
-  const [noteText, setNoteText] = useState("");
-  const [addingNote, setAddingNote] = useState(false);
   const [detailError, setDetailError] = useState("");
 
   // System config
@@ -213,10 +211,10 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
     setActiveComplaint(c);
     setNewStatus(c.status);
     setNewPriority(c.priority);
-    setResolutionNotes(c.resolution_notes || "");
-    setNoteText(""); setDetailError(""); setDetail(null);
+    setResolutionNotes("");
+    setDetailError(""); setDetail(null);
     setDetailLoading(true);
-    try { const d = await getComplaintDetail(c.id); setDetail(d); setResolutionNotes(d.resolution_notes || ""); }
+    try { const d = await getComplaintDetail(c.id); setDetail(d); }
     catch { /* modal still usable with list data */ }
     finally { setDetailLoading(false); }
   };
@@ -225,8 +223,8 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
 
   const saveUpdate = async () => {
     if (!activeComplaint || updatingStatus) return;
-    if ((newStatus === "RESOLVED" || newStatus === "CLOSED") && !resolutionNotes.trim()) {
-      setDetailError("Remarks are required when resolving a complaint."); return;
+    if (!resolutionNotes.trim()) {
+      setDetailError("Remarks are required before saving an update."); return;
     }
     setUpdatingStatus(true); setDetailError("");
     try {
@@ -244,20 +242,6 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
     finally { setUpdatingStatus(false); }
   };
 
-  // ── Add Note ───────────────────────────────────────────────────────────────
-
-  const submitNote = async () => {
-    if (!activeComplaint || !noteText.trim() || addingNote) return;
-    setAddingNote(true); setDetailError("");
-    try {
-      const note = await addComplaintNote(activeComplaint.id, noteText.trim());
-      if (detail) setDetail({ ...detail, notes: [note, ...(detail.notes || [])] });
-      setNoteText("");
-      setComplaints(cur => cur.map(c => c.id === activeComplaint.id ? { ...c, note_count: c.note_count + 1 } : c));
-    } catch (e) { setDetailError(e instanceof Error ? e.message : "Note could not be saved."); }
-    finally { setAddingNote(false); }
-  };
-
   // ── Analytics Helpers ──────────────────────────────────────────────────────
 
   const s = analytics?.summary;
@@ -265,8 +249,6 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
   const maxTrend = Math.max(...(analytics?.trend.map(x => x.opened) || [1]), 1);
   const priorityColors: Record<string, string> = { LOW: "blue", MEDIUM: "yellow", HIGH: "orange", CRITICAL: "red" };
   const statusColors: Record<string, string> = { OPEN: "open", IN_PROGRESS: "in-progress", ESCALATED: "escalated", RESOLVED: "resolved", CLOSED: "closed" };
-
-  const needsResolution = newStatus === "RESOLVED" || newStatus === "CLOSED";
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -570,12 +552,10 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
                     </select>
                   </label>
                 </div>
-                {needsResolution && (
-                  <label className="sales-full-label" style={{ marginTop: 12 }}>
-                    Remarks <span style={{ color: "#e04545" }}>*</span>
-                    <textarea id="resolution-notes" rows={3} value={resolutionNotes} onChange={e => setResolutionNotes(e.target.value)} placeholder="Add the resolution remark" />
-                  </label>
-                )}
+                <label className="sales-full-label" style={{ marginTop: 12 }}>
+                  Remarks <span style={{ color: "#e04545" }}>*</span>
+                  <textarea id="resolution-notes" rows={3} required value={resolutionNotes} onChange={e => setResolutionNotes(e.target.value)} placeholder="Add the progress remark" />
+                </label>
                 <footer style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
                   <button className="button primary" id="save-complaint-update" onClick={() => void saveUpdate()} disabled={updatingStatus}>
                     {updatingStatus ? "Saving…" : "Save update"}
@@ -586,12 +566,6 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
               {/* Remarks & Timeline */}
               <section className="sales-history">
                 <h3>Remarks & Timeline</h3>
-                {canResolve && <form className="complaint-note-form" onSubmit={e => { e.preventDefault(); void submitNote(); }}>
-                    <textarea rows={2} value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add a progress remark..." />
-                    <button className="filter" type="submit" disabled={addingNote || !noteText.trim()}>
-                      {addingNote ? "Saving…" : "Add remark"}
-                    </button>
-                  </form>}
 
                 {detailLoading && <p className="subtext" style={{ marginTop: 12 }}>Loading remarks...</p>}
 
@@ -601,8 +575,8 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
                       <div className="sales-history-row" key={n.id}>
                         <div className="history-dot" />
                         <div>
-                          <b>{n.author_name}</b>
-                          <p style={{ margin: "4px 0 0", fontSize: 11, color: "#4a5058" }}>{n.content}</p>
+                          <b>{n.content}</b>
+                          <small>{n.author_name}</small>
                           <time style={{ fontSize: 10, color: "#92979e" }}>{formatNoteTime(n.created_at)}</time>
                         </div>
                       </div>
@@ -611,7 +585,7 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
                 )}
 
                 {detail && detail.notes.length === 0 && !detailLoading && (
-                  <p className="subtext" style={{ marginTop: 12 }}>{canResolve ? "No remarks yet. Add one above." : "No remarks yet."}</p>
+                  <p className="subtext" style={{ marginTop: 12 }}>No remarks yet.</p>
                 )}
               </section>
             </div>
