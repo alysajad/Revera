@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { assignFilteredLeads, assignFilteredPsLeads, assignLead, assignPsLead, autoAssignLeads, commitUpload, createLead, distributeFilteredLeads, getAdminAnalytics, getCres, getLeadDetail, getLeadsPage, getOfficers, getUpload, logCall, resolveUploadDuplicates, sourceClass, statusName, toLead, toOfficer, updateMyLead, type CallHistory, type Lead, type LeadDetail, type LeadFilters, type LeadInput, type LeadQualification, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
+import { assignFilteredLeads, assignFilteredPsLeads, assignLead, assignPsLead, autoAssignLeads, commitUpload, createLead, distributeFilteredLeads, getAdminAnalytics, getCres, getLeadDetail, getLeadsPage, getOfficers, getSystemConfig, getUpload, logCall, resolveUploadDuplicates, sourceClass, statusName, toLead, toOfficer, updateMyLead, type CallHistory, type Lead, type LeadDetail, type LeadFilters, type LeadInput, type LeadQualification, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
 import { formatDate, formatDateTime, parseDate, parseDateTime, toApiDate } from "@/lib/dates";
 
 const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", SWITCHED_OFF: "Switch off", CALLBACK: "Callback", PENDING: "Pending", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
@@ -107,13 +107,16 @@ const resolveStatus = (outcome: string, currentStatus: string) => {
 const adminNeedsFollowUp = (outcome: string) => adminFollowUpStatuses.includes(resolveStatus(outcome, ""));
 
 const sources = [["META", "Meta Ads"], ["WEBSITE", "Website"], ["CARWALE", "CarWale"], ["WALKIN", "Walk-in"], ["CAMPAIGN", "Campaign"], ["OTHER", "Other"], ["UNKNOWN", "Unknown"]];
-const models = ["R6 GT", "R7 City", "R8 Lite", "R8 Pro", "R9 Plus"];
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const emptyLead = (): LeadInput => ({ name: "", phone: "", email: "", source: "OTHER", source_label: "", campaign: "", model_interest: "", city: "", enquiry_date: formatDate(new Date()) });
+const optionsWithCurrent = (options: string[], current = "") => {
+  const value = current.trim();
+  return value && !options.includes(value) ? [value, ...options] : options;
+};
 const leadSampleRows = [
   ["name", "phone", "email", "source", "campaign", "model", "city", "enquiry date"],
-  ["Aarav Sharma", "9876543210", "aarav@example.com", "meta", "August Meta Leads", "R8 Pro", "Kochi", "22/08/2026"],
-  ["Ananya Reddy", "9876543211", "ananya@example.com", "website", "Website Enquiry", "R7 City", "Thrissur", "22/08/2026"],
+  ["Aarav Sharma", "9876543210", "aarav@example.com", "meta", "August Meta Leads", "Admin model name", "Kochi", "22/08/2026"],
+  ["Ananya Reddy", "9876543211", "ananya@example.com", "website", "Website Enquiry", "Admin model name", "Thrissur", "22/08/2026"],
 ];
 const downloadLeadSample = () => {
   const csv = leadSampleRows.map(row => row.map(value => `"${value.replaceAll('"', '""')}"`).join(",")).join("\n");
@@ -178,6 +181,8 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const [importingUpload, setImportingUpload] = useState(false);
   const [submittedLead, setSubmittedLead] = useState<string | null>(null);
   const [filters, setFilters] = useState<LeadFilters>({});
+  const [models, setModels] = useState<string[]>([]);
+  const [colorVariantOptions, setColorVariantOptions] = useState<string[]>([]);
   const [activeFilters, setActiveFilters] = useState<LeadFilters>({});
   const [bulkOfficerId, setBulkOfficerId] = useState("");
   const [bulkAssigning, setBulkAssigning] = useState(false);
@@ -213,6 +218,15 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   }, [activeFilters, assignmentView, followUpsOnly, officerMode, page, searchFilter]);
 
   useEffect(() => { const timer = window.setTimeout(() => void refresh(), 0); return () => window.clearTimeout(timer); }, [refresh]);
+  useEffect(() => {
+    void getSystemConfig().then(config => {
+      setModels(config.lists?.models || []);
+      setColorVariantOptions(config.lists?.colorVariants || []);
+    }).catch(() => {
+      setModels([]);
+      setColorVariantOptions([]);
+    });
+  }, []);
   useEffect(() => { const timer = window.setTimeout(() => { setPage(1); setSearchFilter(query.trim()); }, 250); return () => window.clearTimeout(timer); }, [query]);
   useEffect(() => { const timer = window.setTimeout(() => { setPage(1); setActiveFilters(current => JSON.stringify(current) === JSON.stringify(filters) ? current : { ...filters }); }, 250); return () => window.clearTimeout(timer); }, [filters]);
   useEffect(() => { if (assignmentView !== "fresh") setBucketOfficerIds([]); }, [assignmentView]);
@@ -332,6 +346,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
 
   const saveCustomerDetails = async () => {
     if (!activeLead) return;
+    if (!editDetails.model) { setError("Select a vehicle model from Admin Lists."); return; }
     setSavingDetails(true);
     try {
       await updateMyLead(activeLead.id, {
@@ -379,6 +394,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     if (creatingLead) return;
     const email = newLead.email?.trim() || "";
     if (email && !emailPattern.test(email)) { setError("Enter a valid email address, such as name@example.com."); return; }
+    if (!newLead.model_interest) { setError("Select a vehicle model from Admin Lists."); return; }
     const enquiryDate = parseDate(newLead.enquiry_date || "");
     if (!enquiryDate) { setError("Enter the enquiry date as DD/MM/YYYY."); return; }
     const today = parseDate(formatDate(new Date()));
@@ -530,7 +546,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     </section>
     {!officerMode && <LeadPagination page={page} total={totalLeads} loading={loading} onPageChange={setPage} />}
     {notice && <div className="toast" role="status">{notice}<button aria-label="Dismiss" onClick={() => setNotice("")}>×</button></div>}
-    {addingLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-lead-title"><button className="modal-close" onClick={() => setAddingLead(false)} aria-label="Close">×</button><p className="eyebrow">LEAD INTAKE</p><h2 id="add-lead-title">Add a lead</h2><form className="lead-form" onSubmit={event => { event.preventDefault(); void saveLead(); }}><div className="form-grid"><label>Full name<input required maxLength={160} value={newLead.name} onChange={event => setNewLead(current => ({ ...current, name: event.target.value }))} placeholder="Customer name" /></label><label>Phone number<input required inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={newLead.phone} onChange={event => setNewLead(current => ({ ...current, phone: event.target.value.replace(/\D/g, "") }))} placeholder="10-digit mobile number" /></label><label>Email<input type="email" inputMode="email" pattern={emailPattern.source} title="Use a complete email such as name@example.com" value={newLead.email} onChange={event => setNewLead(current => ({ ...current, email: event.target.value }))} placeholder="name@example.com" /></label><label>City<input maxLength={100} value={newLead.city} onChange={event => setNewLead(current => ({ ...current, city: event.target.value }))} placeholder="City" /></label>{officerMode && <label>Lead source<select value={newLead.source} onChange={event => setNewLead(current => ({ ...current, source: event.target.value }))}>{sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}<label>Enquiry date<input required type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={newLead.enquiry_date} onChange={event => setNewLead(current => ({ ...current, enquiry_date: event.target.value }))} placeholder="DD/MM/YYYY" /></label><label>Vehicle interest<input list="vehicle-options" maxLength={100} value={newLead.model_interest} onChange={event => setNewLead(current => ({ ...current, model_interest: event.target.value }))} placeholder="Choose or type a model" /><datalist id="vehicle-options">{models.map(model => <option key={model} value={model} />)}</datalist></label><label>Campaign<input maxLength={160} value={newLead.campaign} onChange={event => setNewLead(current => ({ ...current, campaign: event.target.value }))} placeholder="Campaign name" /></label></div>{officerMode && <label style={{ marginTop: "13px", display: "block" }}>Source detail<input maxLength={100} value={newLead.source_label} onChange={event => setNewLead(current => ({ ...current, source_label: event.target.value }))} placeholder="Ad set, partner, referral, or other detail" /></label>}{error && <p className="form-error" role="alert">{error}</p>}<p className="subtext">New leads start as Fresh and appear unassigned, ready to hand to CRE.</p><footer><button type="button" className="filter" onClick={() => setAddingLead(false)}>Cancel</button><button className="button primary" disabled={creatingLead}>{creatingLead ? "Adding…" : "Add lead"}</button></footer></form></section></div>}
+    {addingLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-lead-title"><button className="modal-close" onClick={() => setAddingLead(false)} aria-label="Close">×</button><p className="eyebrow">LEAD INTAKE</p><h2 id="add-lead-title">Add a lead</h2><form className="lead-form" onSubmit={event => { event.preventDefault(); void saveLead(); }}><div className="form-grid"><label>Full name<input required maxLength={160} value={newLead.name} onChange={event => setNewLead(current => ({ ...current, name: event.target.value }))} placeholder="Customer name" /></label><label>Phone number<input required inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={newLead.phone} onChange={event => setNewLead(current => ({ ...current, phone: event.target.value.replace(/\D/g, "") }))} placeholder="10-digit mobile number" /></label><label>Email<input type="email" inputMode="email" pattern={emailPattern.source} title="Use a complete email such as name@example.com" value={newLead.email} onChange={event => setNewLead(current => ({ ...current, email: event.target.value }))} placeholder="name@example.com" /></label><label>City<input maxLength={100} value={newLead.city} onChange={event => setNewLead(current => ({ ...current, city: event.target.value }))} placeholder="City" /></label>{officerMode && <label>Lead source<select value={newLead.source} onChange={event => setNewLead(current => ({ ...current, source: event.target.value }))}>{sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}<label>Enquiry date<input required type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={newLead.enquiry_date} onChange={event => setNewLead(current => ({ ...current, enquiry_date: event.target.value }))} placeholder="DD/MM/YYYY" /></label><label>Vehicle interest<select required value={newLead.model_interest || ""} onChange={event => setNewLead(current => ({ ...current, model_interest: event.target.value }))} disabled={!models.length}><option value="">{models.length ? "Select model" : "Add models in Lists first"}</option>{models.map(model => <option key={model} value={model}>{model}</option>)}</select></label><label>Campaign<input maxLength={160} value={newLead.campaign} onChange={event => setNewLead(current => ({ ...current, campaign: event.target.value }))} placeholder="Campaign name" /></label></div>{officerMode && <label style={{ marginTop: "13px", display: "block" }}>Source detail<input maxLength={100} value={newLead.source_label} onChange={event => setNewLead(current => ({ ...current, source_label: event.target.value }))} placeholder="Ad set, partner, referral, or other detail" /></label>}{error && <p className="form-error" role="alert">{error}</p>}<p className="subtext">New leads start as Fresh and appear unassigned, ready to hand to CRE.</p><footer><button type="button" className="filter" onClick={() => setAddingLead(false)}>Cancel</button><button className="button primary" disabled={creatingLead}>{creatingLead ? "Adding…" : "Add lead"}</button></footer></form></section></div>}
     {submittedLead && <div className="modal-layer" role="presentation"><section className="modal success-modal" role="dialog" aria-modal="true" aria-labelledby="submitted-title"><button className="modal-close" onClick={() => setSubmittedLead(null)} aria-label="Close">×</button><div className="success-mark" aria-hidden="true">✓</div><p className="eyebrow">LEAD SUBMITTED</p><h2 id="submitted-title">Thank you, lead submitted.</h2><p className="subtext">{submittedLead} is now in the unassigned pool, ready for CRE assignment.</p><button className="button primary" onClick={() => setSubmittedLead(null)}>Done</button></section></div>}
     {activeLead && !officerMode && <div className="modal-layer admin-follow-up-layer" role="presentation"><section className="modal sales-detail-modal admin-follow-up-modal" role="dialog" aria-modal="true" aria-labelledby="call-title" style={{ maxWidth: "44rem" }}>
       <header className="sales-detail-header"><div><p className="eyebrow">LEAD UPDATE</p><h2 id="call-title">✎ Update Follow-up</h2><p className="subtext">Update the follow-up status and details for this lead.</p></div><button className="modal-close" onClick={() => { setActiveLead(null); setLeadDetail(null); }} aria-label="Close">×</button></header>
@@ -545,8 +561,8 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
             <div className="form-grid" style={{ marginTop: "1rem" }}>
               <label>Customer name<input value={editDetails.name} onChange={e => setEditDetails({ ...editDetails, name: e.target.value })} maxLength={160} /></label>
               <label>Mobile<input value={editDetails.phone} onChange={e => setEditDetails({ ...editDetails, phone: e.target.value.replace(/\D/g, "") })} maxLength={10} /></label>
-              <label>Model<input value={editDetails.model} onChange={e => setEditDetails({ ...editDetails, model: e.target.value })} maxLength={100} /></label>
-              <label>Variant<input value={editDetails.variant} onChange={e => setEditDetails({ ...editDetails, variant: e.target.value })} maxLength={100} /></label>
+              <label>Model<select value={editDetails.model} onChange={e => setEditDetails({ ...editDetails, model: e.target.value })} disabled={!models.length && !editDetails.model}><option value="">{models.length ? "Select model" : "Add models in Lists first"}</option>{optionsWithCurrent(models, editDetails.model).map(model => <option key={model} value={model}>{model}</option>)}</select></label>
+              <label>Color variant<select value={editDetails.variant} onChange={e => setEditDetails({ ...editDetails, variant: e.target.value })} disabled={!colorVariantOptions.length && !editDetails.variant}><option value="">{colorVariantOptions.length ? "Select color variant" : "Add color variants in Lists first"}</option>{optionsWithCurrent(colorVariantOptions, editDetails.variant).map(option => <option key={option} value={option}>{option}</option>)}</select></label>
               <label>Buying plan<input value={editDetails.buying_timeline} onChange={e => setEditDetails({ ...editDetails, buying_timeline: e.target.value })} maxLength={100} /></label>
               <label>Finance<input value={editDetails.finance_type} onChange={e => setEditDetails({ ...editDetails, finance_type: e.target.value })} maxLength={100} /></label>
               <label>Trade-in<select value={editDetails.trade_in === true ? "true" : editDetails.trade_in === false ? "false" : ""} onChange={e => setEditDetails({ ...editDetails, trade_in: e.target.value === "true" ? true : e.target.value === "false" ? false : null })}><option value="">—</option><option value="true">Yes</option><option value="false">No</option></select></label>
@@ -559,7 +575,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
                 <span><small>Customer name</small><b>{activeLead.name}</b></span>
                 <span><small>Mobile</small><b>{activeLead.phone}</b></span>
                 <span><small>Model</small><b>{activeLead.model}</b></span>
-                <span><small>Variant</small><b>{leadDetail?.qualification?.variant || "—"}</b></span>
+                <span><small>Color variant</small><b>{leadDetail?.qualification?.variant || "—"}</b></span>
                 <span><small>Buying plan</small><b>{leadDetail?.qualification?.buying_timeline || "—"}</b></span>
                 <span><small>Finance</small><b>{leadDetail?.qualification?.finance_type || "—"}</b></span>
               </div>
