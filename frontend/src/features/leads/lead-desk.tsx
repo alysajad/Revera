@@ -124,6 +124,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
   const [activeFilters, setActiveFilters] = useState<LeadFilters>({});
   const [bulkOfficerId, setBulkOfficerId] = useState("");
   const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [manualAssigning, setManualAssigning] = useState(false);
   const [bucketOfficerIds, setBucketOfficerIds] = useState<number[]>([]);
   const [bucketAssigning, setBucketAssigning] = useState(false);
   const [page, setPage] = useState(1);
@@ -243,6 +244,24 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
       setError(requestError instanceof Error ? requestError.message : "Bucket assignment failed.");
     } finally {
       setBucketAssigning(false);
+    }
+  };
+
+  const manualAssignCre = async (officerId: number) => {
+    if (!activeLead || !isAdminAllLeads || activeLead.assignedSoId || manualAssigning) return;
+    const officer = creUsers.find(item => item.id === officerId);
+    if (!officer) return;
+    setManualAssigning(true); setError("");
+    try {
+      await assignLead(activeLead.id, officer.id);
+      setActiveLead(current => current ? { ...current, assignedSoId: officer.id, assignedSoName: officer.name } : current);
+      setLeads(current => current.map(lead => lead.id === activeLead.id ? { ...lead, assignedSoId: officer.id, assignedSoName: officer.name } : lead));
+      setCreUsers(current => current.map(item => item.id === officer.id ? { ...item, assigned: item.assigned + 1 } : item));
+      setNotice(`${activeLead.name} assigned to ${officer.name}.`);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Manual assignment failed.");
+    } finally {
+      setManualAssigning(false);
     }
   };
 
@@ -508,6 +527,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
                 <span><small>Color variant</small><b>{leadDetail?.qualification?.variant || "—"}</b></span>
                 <span><small>Buying plan</small><b>{leadDetail?.qualification?.buying_timeline || "—"}</b></span>
                 <span><small>Finance</small><b>{leadDetail?.qualification?.finance_type || "—"}</b></span>
+                {isAdminAllLeads && <label className="admin-manual-assign">Manual CRE assignment<select value={activeLead.assignedSoId || ""} disabled={manualAssigning || Boolean(activeLead.assignedSoId)} onChange={event => { const officerId = Number(event.target.value); if (officerId) void manualAssignCre(officerId); }}><option value="">{manualAssigning ? "Assigning…" : activeLead.assignedSoId ? activeLead.assignedSoName || "Assigned" : "Assign to CRE…"}</option>{creUsers.map(officer => <option key={officer.id} value={officer.id}>{officer.name}</option>)}</select></label>}
               </div>
               <div className="sales-detail-meta"><span>Trade-in <b>{leadDetail?.qualification?.trade_in === true ? "Yes" : leadDetail?.qualification?.trade_in === false ? "No" : "—"}</b></span><span>Category <b className={`category-pill ${activeLead.category?.toLowerCase() || "warm"}`}>{activeLead.category || "WARM"}</b></span></div>
             </>

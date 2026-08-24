@@ -74,6 +74,27 @@
   font-size: 13px;
 }
 
+.admin-manual-assign {
+  display: grid;
+  gap: 6px;
+  color: #71809c;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.admin-manual-assign select {
+  min-height: 38px;
+  border: 1px solid #dfe3ea;
+  border-radius: 7px;
+  background: #fff;
+  color: #17233b;
+  font: 12px Arial, sans-serif;
+  padding: 9px 10px;
+  text-transform: none;
+}
+
 .admin-follow-up-modal .sales-detail-meta {
   margin-top: 18px;
   padding-top: 14px;
