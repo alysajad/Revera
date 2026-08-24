@@ -3,10 +3,6 @@
 import { useEffect, useState, FormEvent } from "react";
 import { createLead, getSystemConfig, getOfficers, toOfficer, sourceName, type Officer, type SystemConfig } from "@/lib/crm";
 
-const RIVER_MODELS = {
-  "Indie": ["Standard", "Pro", "Custom"]
-};
-
 export default function CaptureLeadPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -36,11 +32,7 @@ export default function CaptureLeadPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => {
-      const next = { ...prev, [name]: value };
-      if (name === "model_interest") next.variant = ""; // reset variant when model changes
-      return next;
-    });
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleClear = () => {
@@ -60,6 +52,8 @@ export default function CaptureLeadPage() {
     setSuccess(false);
 
     try {
+      if (!formData.model_interest) throw new Error("Select a vehicle model from Admin Lists.");
+      if (!formData.variant) throw new Error("Select a color variant from Admin Lists.");
       const payload = {
         name: formData.name,
         phone: formData.phone,
@@ -94,7 +88,8 @@ export default function CaptureLeadPage() {
     }
   };
 
-  const availableVariants = formData.model_interest ? RIVER_MODELS[formData.model_interest as keyof typeof RIVER_MODELS] || [] : [];
+  const modelOptions = config?.lists?.models || [];
+  const colorVariantOptions = config?.lists?.colorVariants || [];
 
   return (
     <div className="page capture-page">
@@ -160,18 +155,18 @@ export default function CaptureLeadPage() {
         <div className="capture-form-grid">
             <label>
               River Model Interested *
-              <select name="model_interest" value={formData.model_interest} onChange={handleChange} required>
-                <option value="">Select model</option>
-                {Object.keys(RIVER_MODELS).map(m => (
+              <select name="model_interest" value={formData.model_interest} onChange={handleChange} required disabled={!modelOptions.length}>
+                <option value="">{modelOptions.length ? "Select model" : "Add models in Lists first"}</option>
+                {modelOptions.map(m => (
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>
             </label>
             <label>
-              Variant *
-              <select name="variant" value={formData.variant} onChange={handleChange} required disabled={!formData.model_interest}>
-                <option value="">Select variant</option>
-                {availableVariants.map(v => (
+              Color variant *
+              <select name="variant" value={formData.variant} onChange={handleChange} required disabled={!colorVariantOptions.length}>
+                <option value="">{colorVariantOptions.length ? "Select color variant" : "Add color variants in Lists first"}</option>
+                {colorVariantOptions.map(v => (
                   <option key={v} value={v}>{v}</option>
                 ))}
               </select>

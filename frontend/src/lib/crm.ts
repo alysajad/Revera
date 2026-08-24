@@ -112,7 +112,7 @@ export const commitUpload = (id: number) => api<{ created: number; overwritten: 
 export type UploadRow = { id: number; row_number: number; data: { name?: string }; normalized_phone: string; validation_error: string; duplicate_of: number | null; existing_name: string; existing_status: string; duplicate_type: "CRM" | "FILE" | ""; resolution: "PENDING" | "SKIP" | "OVERWRITE" | "IMPORT" };
 export type UploadBatch = { id: number; status: "PARSING" | "READY" | "COMMITTED" | "FAILED"; total_rows: number; parsed_ok: number; duplicates_found: number; crm_duplicates_found: number; file_duplicates_found: number; removed_duplicates: number; pending_duplicates: number; skipped: number; error_message: string; rows?: UploadRow[] };
 
-export type SystemConfig = { lists: { branches?: string[]; sources?: string[]; activities?: string[]; models?: string[] }; updated_at?: string };
+export type SystemConfig = { lists: { branches?: string[]; sources?: string[]; activities?: string[]; models?: string[]; colorVariants?: string[] }; updated_at?: string };
 export const getSystemConfig = () => api<SystemConfig>("/api/system-config/");
 export const updateSystemConfig = (lists: SystemConfig["lists"]) => api<SystemConfig>("/api/system-config/", { method: "PUT", body: JSON.stringify({ lists }) });
 export const getUsers = async () => { const data = await api<any>("/api/auth/users/"); return (data.results || data) as CurrentUser[]; };

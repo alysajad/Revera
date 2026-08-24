@@ -4,6 +4,20 @@ from django.utils import timezone
 from accounts.models import User
 from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification, SystemConfig
 
+
+def configured_values(name):
+    lists = SystemConfig.objects.filter(id=1).values_list("lists", flat=True).first() or {}
+    return [str(value).strip() for value in lists.get(name, []) if str(value).strip()]
+
+
+def validate_configured_choice(value, list_name, label):
+    value = (value or "").strip()
+    allowed = configured_values(list_name)
+    if value and allowed and value not in allowed:
+        raise serializers.ValidationError(f"Choose a {label} from Admin Lists.")
+    return value
+
+
 PS_CALL_OUTCOME_STATUS_OPTIONS = {
     "Need Test Drive": {Lead.Status.PENDING},
     "Showroom Visit": {Lead.Status.PENDING},
@@ -37,7 +51,12 @@ CALL_OUTCOME_STATUS_OPTIONS = {
     "CALLBACK": {Lead.Status.CALLBACK},
     **PS_CALL_OUTCOME_STATUS_OPTIONS,
 }
+
+
 class QualificationSerializer(serializers.ModelSerializer):
+    def validate_variant(self, value):
+        return validate_configured_choice(value, "colorVariants", "color variant")
+
     class Meta:
         model = LeadQualification
         fields = ["variant", "buying_timeline", "finance_type", "trade_in", "test_drive", "notes", "updated_at"]
@@ -69,6 +88,9 @@ class LeadSerializer(serializers.ModelSerializer):
         if value and value > timezone.localdate():
             raise serializers.ValidationError("Enquiry date cannot be in the future.")
         return value
+
+    def validate_model_interest(self, value):
+        return validate_configured_choice(value, "models", "vehicle model")
 
     ps_officer_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True), source="assigned_ps", required=False, write_only=True)
 
@@ -157,6 +179,9 @@ class SOLeadUpdateSerializer(serializers.Serializer):
     qualification = QualificationSerializer(required=False)
     ps_officer_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True), source="ps_officer", required=False)
     flagged_to_manager = serializers.BooleanField(required=False)
+
+    def validate_model_interest(self, value):
+        return validate_configured_choice(value, "models", "vehicle model")
 
     def validate(self, attrs):
         enquiry_date = attrs.get("enquiry_date")

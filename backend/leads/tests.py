@@ -95,6 +95,22 @@ class LeadAccessTests(TestCase):
         self.assertIsNone(lead.assigned_so)
         self.assertEqual(lead.status, Lead.Status.FRESH)
 
+    def test_admin_models_limit_new_lead_models(self):
+        SystemConfig.objects.create(id=1, lists={"models": ["r7"]})
+        self.client.force_authenticate(self.admin)
+        response = self.client.post("/api/leads/", {"name": "Invalid model", "phone": "7006682310", "source": Lead.Source.WEBSITE, "model_interest": "R8 Pro"}, format="json")
+        self.assertEqual(response.status_code, 400)
+        response = self.client.post("/api/leads/", {"name": "Valid model", "phone": "7006682311", "source": Lead.Source.WEBSITE, "model_interest": "r7"}, format="json")
+        self.assertEqual(response.status_code, 201)
+
+    def test_admin_color_variants_limit_qualification_variants(self):
+        SystemConfig.objects.create(id=1, lists={"colorVariants": ["Red"]})
+        self.client.force_authenticate(self.first_so)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "QUALIFIED", "status": Lead.Status.QUALIFIED, "city": "Kochi", "ps_officer_id": self.ps_so.id, "qualification": {"variant": "Blue"}}, format="json")
+        self.assertEqual(response.status_code, 400)
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "QUALIFIED", "status": Lead.Status.QUALIFIED, "city": "Kochi", "ps_officer_id": self.ps_so.id, "qualification": {"variant": "Red"}}, format="json")
+        self.assertEqual(response.status_code, 200)
+
     def test_admin_cannot_add_a_lead_with_future_enquiry_date(self):
         self.client.force_authenticate(self.admin)
         response = self.client.post("/api/leads/", {"name": "Future lead", "phone": "7006682393", "source": Lead.Source.WEBSITE, "enquiry_date": (timezone.localdate() + timedelta(days=1)).isoformat()}, format="json")

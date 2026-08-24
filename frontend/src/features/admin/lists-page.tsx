@@ -8,6 +8,7 @@ const listSections: { title: string; name: keyof SystemConfig["lists"]; placehol
   { title: "Sources", name: "sources", placeholder: "Add source" },
   { title: "Activities", name: "activities", placeholder: "Add activity" },
   { title: "Model names", name: "models", placeholder: "Add model name" },
+  { title: "Color variants", name: "colorVariants", placeholder: "Add color variant" },
 ];
 
 export function ListsPage() {
@@ -91,7 +92,7 @@ export function ListsPage() {
       <div className="page-heading compact">
         <div>
           <h1>Lists <span>Administrator</span></h1>
-          <p className="subtext">Maintain lead branches, sources, activities, and models in one workspace.</p>
+          <p className="subtext">Maintain lead branches, sources, activities, models, and color variants in one workspace.</p>
         </div>
       </div>
       
@@ -109,7 +110,7 @@ export function ListsPage() {
         }
         .lists-workspace {
           display: grid;
-          grid-template-columns: repeat(2, minmax(320px, 1fr));
+          grid-template-columns: repeat(3, minmax(260px, 1fr));
           gap: 18px;
           align-items: stretch;
         }
@@ -181,7 +182,12 @@ export function ListsPage() {
           color: #868b91;
           font-size: 11px;
         }
-        @media (max-width: 1100px) {
+        @media (max-width: 1250px) {
+          .lists-workspace {
+            grid-template-columns: repeat(2, minmax(280px, 1fr));
+          }
+        }
+        @media (max-width: 820px) {
           .lists-workspace {
             grid-template-columns: 1fr;
           }
