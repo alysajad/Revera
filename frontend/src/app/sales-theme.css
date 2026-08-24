@@ -397,3 +397,22 @@
 .sales-shell.ps-shell .sales-model-line > div > i em {
   background: #d90000;
 }
+
+.sales-shell.complaints-shell .sales-metric,
+.sales-shell.complaints-shell .sales-metric.blue,
+.sales-shell.complaints-shell .sales-metric.yellow,
+.sales-shell.complaints-shell .sales-metric.orange,
+.sales-shell.complaints-shell .sales-metric.green,
+.sales-shell.complaints-shell .sales-metric.mint,
+.sales-shell.complaints-shell .sales-metric.red,
+.sales-shell.complaints-shell .sales-metric.violet,
+.sales-shell.complaints-shell .sales-metric.open-metric {
+  background: #050807 !important;
+  color: #ffffff !important;
+}
+
+.sales-shell.complaints-shell .sales-metric span,
+.sales-shell.complaints-shell .sales-metric strong,
+.sales-shell.complaints-shell .sales-metric small {
+  color: #ffffff !important;
+}
