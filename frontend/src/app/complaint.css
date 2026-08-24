@@ -64,11 +64,12 @@
 /* ── Complaint List ───────────────────────────────────────────────────────── */
 .complaint-list-panel{padding:0;overflow:hidden}
 .complaint-list{display:grid}
-.complaint-row{display:grid;grid-template-columns:auto 1fr 160px 90px 120px auto 80px;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid #f0efec;transition:background .15s}
+.complaint-row{display:grid;grid-template-columns:minmax(220px,1fr) auto auto auto auto auto;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid #f0efec;transition:background .15s}
 .complaint-row:hover{background:#fff8f4}
-.complaint-row-main{display:flex;align-items:center;gap:10px}
+.complaint-row-main{display:flex;align-items:center;gap:10px;min-width:0}
+.complaint-row-main>div{min-width:0}
 .complaint-row-main b{display:block;font-size:12px;color:#24272b}
-.complaint-row-main small{display:block;font-size:10px;color:#969ba1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:2px}
+.complaint-row-main small{display:block;font-size:10px;color:#969ba1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .complaint-ticket{font:10px ui-monospace,SFMono-Regular,Menlo,monospace;color:#8a9097;background:#f2f3f5;border-radius:5px;padding:4px 7px;white-space:nowrap;flex-shrink:0}
 .complaint-row-meta{display:flex;flex-direction:column;gap:3px;align-items:flex-end}
 .complaint-age{color:#92979e;font-size:10px;white-space:nowrap}
@@ -142,7 +143,7 @@
 }
 @media(max-width:900px){
   .complaint-analytics-row{grid-template-columns:1fr}
-  .complaint-row{grid-template-columns:auto 1fr 120px 80px;gap:8px}
+  .complaint-row{grid-template-columns:minmax(0,1fr) auto auto;gap:8px}
   .complaint-row .complaint-priority,.complaint-row .complaint-status,.complaint-row .complaint-row-meta{display:none}
 }
 @media(max-width:620px){
