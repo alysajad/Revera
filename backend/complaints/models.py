@@ -46,6 +46,7 @@ class Complaint(models.Model):
     subject = models.CharField(max_length=200)
     description = models.TextField()
     model_interest = models.CharField(max_length=100, blank=True)
+    branch = models.CharField(max_length=120, blank=True, default="")
     source = models.CharField(max_length=15, choices=Source.choices, default=Source.PHONE)
     resolution_notes = models.TextField(blank=True)
     resolved_at = models.DateTimeField(null=True, blank=True)

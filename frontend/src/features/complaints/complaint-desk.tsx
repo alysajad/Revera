@@ -50,7 +50,7 @@ const statusLabel = (v: string) => STATUSES.find(([k]) => k === v)?.[1] ?? v;
 const emptyInput = (): ComplaintInput => ({
   customer_name: "", customer_phone: "", customer_email: "",
   category: "", priority: "MEDIUM", subject: "", description: "",
-  model_interest: "", source: "PHONE",
+  model_interest: "", branch: "", source: "PHONE",
 });
 
 function timeAgo(dateStr: string) {
@@ -106,6 +106,7 @@ export function ComplaintDesk() {
 
   // System config
   const [models, setModels] = useState<string[]>([]);
+  const [branches, setBranches] = useState<string[]>([]);
 
   // Build query string
   const buildQuery = useCallback(() => {
@@ -149,7 +150,10 @@ export function ComplaintDesk() {
   }, [filters]);
 
   useEffect(() => {
-    void getSystemConfig().then(c => setModels(c.lists?.models || [])).catch(() => setModels([]));
+    void getSystemConfig().then(c => {
+      setModels(c.lists?.models || []);
+      setBranches(c.lists?.branches || []);
+    }).catch(() => { setModels([]); setBranches([]); });
   }, []);
 
   // Pagination
@@ -160,13 +164,14 @@ export function ComplaintDesk() {
 
   const submitComplaint = async () => {
     if (submitting) return;
-    const { customer_name, customer_phone, category, subject, description, source, priority } = newComplaint;
+    const { customer_name, customer_phone, category, subject, description, source, priority, branch } = newComplaint;
     if (!customer_name.trim()) { setFormError("Customer name is required."); return; }
     if (!/^\d{10}$/.test(customer_phone)) { setFormError("Enter a valid 10-digit phone number."); return; }
     if (!category) { setFormError("Select a complaint category."); return; }
     if (!subject.trim()) { setFormError("Enter a complaint subject."); return; }
     if (!description.trim()) { setFormError("Describe the complaint."); return; }
     if (!source) { setFormError("Select the complaint source."); return; }
+    if (!branch) { setFormError("Select the complaint branch."); return; }
     setSubmitting(true); setFormError("");
     try {
       const created = await createComplaint({ ...newComplaint, customer_name: customer_name.trim(), subject: subject.trim(), description: description.trim() });
@@ -423,6 +428,10 @@ export function ComplaintDesk() {
                 <label>Source<select required value={newComplaint.source} onChange={e => setNewComplaint(c => ({ ...c, source: e.target.value }))}>
                   {SOURCES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select></label>
+                <label>Branch<select required value={newComplaint.branch} onChange={e => setNewComplaint(c => ({ ...c, branch: e.target.value }))} disabled={!branches.length}>
+                  <option value="">{branches.length ? "Select branch" : "No branches configured"}</option>
+                  {branches.map(branch => <option key={branch} value={branch}>{branch}</option>)}
+                </select></label>
                 <label>Category<select required value={newComplaint.category} onChange={e => setNewComplaint(c => ({ ...c, category: e.target.value }))}>
                   <option value="">Select category</option>
                   {CATEGORIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -495,6 +504,7 @@ export function ComplaintDesk() {
                   <span><small>Phone</small><b>{activeComplaint.customer_phone}</b></span>
                   {activeComplaint.customer_email && <span><small>Email</small><b>{activeComplaint.customer_email}</b></span>}
                   <span><small>Source</small><b>{SOURCES.find(([v]) => v === activeComplaint.source)?.[1] ?? activeComplaint.source}</b></span>
+                  <span><small>Branch</small><b>{activeComplaint.branch}</b></span>
                   {activeComplaint.model_interest && <span><small>Vehicle</small><b>{activeComplaint.model_interest}</b></span>}
                   <span><small>Logged by</small><b>{activeComplaint.logged_by_name}</b></span>
                 </div>

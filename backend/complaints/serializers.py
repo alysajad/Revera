@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.utils import timezone
 
+from leads.serializers import validate_configured_choice
 from .models import Complaint, ComplaintNote
 
 
@@ -31,7 +32,7 @@ class ComplaintListSerializer(serializers.ModelSerializer):
         fields = [
             "id", "uid", "ticket_number", "customer_name", "customer_phone",
             "customer_email", "category", "priority", "status", "subject",
-            "description", "model_interest", "source", "resolution_notes",
+            "description", "model_interest", "branch", "source", "resolution_notes",
             "resolved_at", "logged_by", "logged_by_name", "assigned_to",
             "assigned_to_name", "note_count", "created_at", "updated_at",
         ]
@@ -48,12 +49,14 @@ class ComplaintDetailSerializer(ComplaintListSerializer):
 
 
 class ComplaintCreateSerializer(serializers.ModelSerializer):
+    branch = serializers.CharField(required=True, allow_blank=False, max_length=120)
+
     class Meta:
         model = Complaint
         fields = [
             "customer_name", "customer_phone", "customer_email",
             "category", "priority", "subject", "description",
-            "model_interest", "source",
+            "model_interest", "branch", "source",
         ]
 
     def validate_customer_phone(self, value):
@@ -64,6 +67,9 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
 
     def validate_customer_email(self, value):
         return (value or "").strip()
+
+    def validate_branch(self, value):
+        return validate_configured_choice(value, "branches", "branch")
 
 
 class ComplaintUpdateSerializer(serializers.Serializer):
