@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, FormEvent } from "react";
 import { getUsers, createUser, disableUser, getSystemConfig, type CurrentUser } from "@/lib/crm";
 
 const roleOptions = [
   { value: "ADMIN", label: "Administrator" },
   { value: "CRE", label: "Marketing" },
   { value: "SO", label: "Sales Manager" },
+  { value: "COMPLAINTS", label: "Complaints department" },
   { value: "RECEPTIONIST", label: "Receptionist" },
 ];
 
@@ -14,7 +15,7 @@ const noBranch = "__NO_BRANCH__";
 
 export function TeamPage() {
   const [usersRaw, setUsers] = useState<CurrentUser[]>([]);
-  const users = Array.isArray(usersRaw) ? usersRaw : ((usersRaw as any).results || []) as CurrentUser[];
+  const users = useMemo(() => Array.isArray(usersRaw) ? usersRaw : ((usersRaw as any).results || []) as CurrentUser[], [usersRaw]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
@@ -24,16 +25,16 @@ export function TeamPage() {
   const [statusFilter, setStatusFilter] = useState("ACTIVE");
   const [query, setQuery] = useState("");
 
-  useEffect(() => {
-    loadUsers();
-    getSystemConfig().then(config => setBranches(config.lists?.branches || []));
-  }, []);
-
-  const loadUsers = () => {
+  const loadUsers = useCallback(() => {
     getUsers()
       .then(setUsers)
       .catch(err => setError(err instanceof Error ? err.message : "Failed to load users."));
-  };
+  }, []);
+
+  useEffect(() => {
+    loadUsers();
+    getSystemConfig().then(config => setBranches(config.lists?.branches || []));
+  }, [loadUsers]);
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -47,6 +48,7 @@ export function TeamPage() {
     let backendRole = "ADMIN";
     if (uiRole === "Marketing") backendRole = "CRE";
     if (uiRole === "Sales Manager") backendRole = "SO";
+    if (uiRole === "Complaints department") backendRole = "COMPLAINTS";
     if (uiRole === "Receptionist") backendRole = "RECEPTIONIST";
 
     const payload: Record<string, string | boolean> = {
@@ -87,6 +89,7 @@ export function TeamPage() {
   const displayRole = (role: string) => {
     if (role === "CRE") return "Marketing";
     if (role === "SO") return "Sales Manager";
+    if (role === "COMPLAINTS") return "Complaints department";
     if (role === "RECEPTIONIST") return "Receptionist";
     return "Administrator";
   };
@@ -144,6 +147,7 @@ export function TeamPage() {
                   <option value="Admin">Admin</option>
                   <option value="Marketing">Marketing (CRE)</option>
                   <option value="Sales Manager">Sales Manager (SO)</option>
+                  <option value="Complaints department">Complaints department</option>
                   <option value="Receptionist">Receptionist</option>
                 </select>
               </label>

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   addComplaintNote, createComplaint, getComplaintAnalytics, getComplaintDetail, getComplaints,
   getSystemConfig, updateComplaint,
-  type Complaint, type ComplaintAnalytics, type ComplaintDetail, type ComplaintFilters, type ComplaintInput,
+  type Complaint, type ComplaintAnalytics, type ComplaintDetail, type ComplaintFilters, type ComplaintInput, type CurrentUser,
 } from "@/lib/crm";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ const statusLabel = (v: string) => STATUSES.find(([k]) => k === v)?.[1] ?? v;
 const emptyInput = (): ComplaintInput => ({
   customer_name: "", customer_phone: "", customer_email: "",
   category: "", priority: "MEDIUM", subject: "", description: "",
-  model_interest: "", branch: "", source: "PHONE",
+  model_interest: "", branch: "",
 });
 
 function timeAgo(dateStr: string) {
@@ -68,7 +68,28 @@ function formatNoteTime(dateStr: string) {
 
 // ── Complaint Desk ────────────────────────────────────────────────────────────
 
-export function ComplaintDesk() {
+export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: boolean; currentUser?: CurrentUser }) {
+  const userRole = currentUser?.role;
+  const canCreate = userRole === "CRE";
+  const canResolve = userRole === "COMPLAINTS";
+  const canUseAnalytics = adminView;
+  const heading = adminView
+    ? {
+      eyebrow: "COMPLAINT OVERSIGHT",
+      title: <>Keep every <span>complaint moving.</span></>,
+      subtext: "Monitor resolution health and complaints department ownership across every branch.",
+    }
+    : canResolve
+      ? {
+        eyebrow: "RESOLUTION QUEUE",
+        title: <>Resolve every <span>complaint.</span></>,
+        subtext: "Work the shared complaints department queue and keep customer updates moving.",
+      }
+      : {
+        eyebrow: "COMPLAINT INTAKE",
+        title: <>Log customer <span>complaints.</span></>,
+        subtext: "Register complaints and track tickets you logged.",
+      };
   // List state
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -123,7 +144,7 @@ export function ComplaintDesk() {
     try {
       const [data, analyticsData] = await Promise.all([
         getComplaints(buildQuery()),
-        analyticsLoaded.current ? Promise.resolve(null) : getComplaintAnalytics(analyticsRange),
+        canUseAnalytics && !analyticsLoaded.current ? getComplaintAnalytics(analyticsRange) : Promise.resolve(null),
       ]);
       setComplaints(data.results);
       setTotalCount(data.count);
@@ -131,7 +152,7 @@ export function ComplaintDesk() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to load complaints.");
     } finally { setLoading(false); }
-  }, [buildQuery, analyticsRange]);
+  }, [buildQuery, analyticsRange, canUseAnalytics]);
 
   useEffect(() => {
     const t = setTimeout(() => void refresh(), 0);
@@ -140,9 +161,10 @@ export function ComplaintDesk() {
 
   // Reload analytics when range changes
   useEffect(() => {
+    if (!canUseAnalytics) return;
     analyticsLoaded.current = false;
-    void getComplaintAnalytics(analyticsRange).then(setAnalytics).catch(() => null);
-  }, [analyticsRange]);
+    void getComplaintAnalytics(analyticsRange).then(data => { setAnalytics(data); analyticsLoaded.current = true; }).catch(() => null);
+  }, [analyticsRange, canUseAnalytics]);
 
   useEffect(() => {
     const t = setTimeout(() => setActiveFilters({ ...filters }), 250);
@@ -164,13 +186,12 @@ export function ComplaintDesk() {
 
   const submitComplaint = async () => {
     if (submitting) return;
-    const { customer_name, customer_phone, category, subject, description, source, priority, branch } = newComplaint;
+    const { customer_name, customer_phone, category, subject, description, priority, branch } = newComplaint;
     if (!customer_name.trim()) { setFormError("Customer name is required."); return; }
     if (!/^\d{10}$/.test(customer_phone)) { setFormError("Enter a valid 10-digit phone number."); return; }
     if (!category) { setFormError("Select a complaint category."); return; }
     if (!subject.trim()) { setFormError("Enter a complaint subject."); return; }
     if (!description.trim()) { setFormError("Describe the complaint."); return; }
-    if (!source) { setFormError("Select the complaint source."); return; }
     if (!branch) { setFormError("Select the complaint branch."); return; }
     setSubmitting(true); setFormError("");
     try {
@@ -181,7 +202,7 @@ export function ComplaintDesk() {
       setNewComplaint(emptyInput());
       setSubmittedTicket(created.ticket_number);
       analyticsLoaded.current = false;
-      void getComplaintAnalytics(analyticsRange).then(setAnalytics).catch(() => null);
+      if (canUseAnalytics) void getComplaintAnalytics(analyticsRange).then(setAnalytics).catch(() => null);
     } catch (e) { setFormError(e instanceof Error ? e.message : "Could not register complaint."); }
     finally { setSubmitting(false); }
   };
@@ -218,7 +239,7 @@ export function ComplaintDesk() {
       if (detail) setDetail({ ...detail, ...updated });
       setNotice(`${activeComplaint.ticket_number} updated.`);
       analyticsLoaded.current = false;
-      void getComplaintAnalytics(analyticsRange).then(setAnalytics).catch(() => null);
+      if (canUseAnalytics) void getComplaintAnalytics(analyticsRange).then(setAnalytics).catch(() => null);
     } catch (e) { setDetailError(e instanceof Error ? e.message : "Update failed."); }
     finally { setUpdatingStatus(false); }
   };
@@ -254,19 +275,19 @@ export function ComplaintDesk() {
       {/* Header */}
       <div className="complaint-heading">
         <div>
-          <p className="eyebrow">INBOUND COMPLAINTS</p>
-          <h1>Manage every <span>complaint.</span></h1>
-          <p className="subtext">Log, track and resolve inbound customer complaints in one place.</p>
+          <p className="eyebrow">{heading.eyebrow}</p>
+          <h1>{heading.title}</h1>
+          <p className="subtext">{heading.subtext}</p>
         </div>
         {/* Analytics range + add button */}
         <div className="complaint-heading-actions">
-          <select className="filter" value={analyticsRange} onChange={e => setAnalyticsRange(e.target.value)} aria-label="Analytics range">
+          {canUseAnalytics && <select className="filter" value={analyticsRange} onChange={e => setAnalyticsRange(e.target.value)} aria-label="Analytics range">
             <option value="today">Today</option>
             <option value="mtd">Month to date</option>
             <option value="week">Last 7 days</option>
             <option value="all">All time</option>
-          </select>
-          <button className="button primary" id="add-complaint-btn" onClick={() => { setFormError(""); setAddingComplaint(true); }}>⚑ Log complaint</button>
+          </select>}
+          {canCreate && <button className="button primary" id="add-complaint-btn" onClick={() => { setFormError(""); setAddingComplaint(true); }}>⚑ Log complaint</button>}
         </div>
       </div>
 
@@ -286,8 +307,8 @@ export function ComplaintDesk() {
       {analytics && (
         <section className="complaint-analytics-row">
           {/* Category breakdown */}
-          <article className="panel complaint-chart-card">
-            <header><div><p className="eyebrow">CATEGORY BREAKDOWN</p><h2>What they're calling about</h2></div></header>
+            <article className="panel complaint-chart-card">
+            <header><div><p className="eyebrow">CATEGORY BREAKDOWN</p><h2>What they&apos;re calling about</h2></div></header>
             <div className="complaint-category-list">
               {analytics.by_category.length ? analytics.by_category.map(item => (
                 <div className="complaint-cat-row" key={item.category}>
@@ -337,6 +358,29 @@ export function ComplaintDesk() {
         </section>
       )}
 
+      {adminView && analytics?.by_resolution_team && (
+        <section className="panel complaint-cre-performance">
+          <header className="panel-heading">
+            <div>
+              <p className="eyebrow">COMPLAINTS DEPARTMENT</p>
+              <h2>Resolution ownership</h2>
+            </div>
+          </header>
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Resolver</th><th>Total</th><th>Open</th><th>In progress</th><th>Escalated</th><th>Resolved</th><th>Rate</th><th>Avg resolution</th></tr></thead>
+              <tbody>
+                {analytics.by_resolution_team.length ? analytics.by_resolution_team.map(resolver => (
+                  <tr key={resolver.id}>
+                    <td><b>{resolver.name}</b></td><td>{resolver.total}</td><td>{resolver.open}</td><td>{resolver.in_progress}</td><td>{resolver.escalated}</td><td>{resolver.resolved + resolver.closed}</td><td><span className="status qualified">{resolver.resolution_rate}%</span></td><td>{resolver.avg_resolution_hours ? `${resolver.avg_resolution_hours}h` : "—"}</td>
+                  </tr>
+                )) : <tr><td colSpan={8}>No complaints department activity for this range.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       {/* Toolbar */}
       <section className="panel complaint-toolbar-panel">
         <div className="complaint-toolbar">
@@ -373,7 +417,7 @@ export function ComplaintDesk() {
         </header>
         <div className="complaint-list">
           {!loading && complaints.length === 0 && (
-            <div className="empty-state">No complaints match this view. Log one with the button above.</div>
+            <div className="empty-state">{canCreate ? "No complaints match this view. Log one with the button above." : "No complaints match this view."}</div>
           )}
           {complaints.map(c => (
             <div className="complaint-row" key={c.id} id={`complaint-row-${c.id}`}>
@@ -414,7 +458,7 @@ export function ComplaintDesk() {
       )}
 
       {/* ── Add Complaint Modal ───────────────────────────────────────────────── */}
-      {addingComplaint && (
+      {addingComplaint && canCreate && (
         <div className="modal-layer" role="presentation">
           <section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-complaint-title" style={{ maxWidth: "44rem" }}>
             <button className="modal-close" onClick={() => setAddingComplaint(false)} aria-label="Close">×</button>
@@ -425,9 +469,6 @@ export function ComplaintDesk() {
                 <label>Customer name<input required maxLength={160} value={newComplaint.customer_name} onChange={e => setNewComplaint(c => ({ ...c, customer_name: e.target.value }))} placeholder="Full name" /></label>
                 <label>Phone number<input required inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={newComplaint.customer_phone} onChange={e => setNewComplaint(c => ({ ...c, customer_phone: e.target.value.replace(/\D/g, "") }))} placeholder="10-digit mobile" /></label>
                 <label>Email <small style={{ fontWeight: 400 }}>(optional)</small><input type="email" value={newComplaint.customer_email} onChange={e => setNewComplaint(c => ({ ...c, customer_email: e.target.value }))} placeholder="customer@example.com" /></label>
-                <label>Source<select required value={newComplaint.source} onChange={e => setNewComplaint(c => ({ ...c, source: e.target.value }))}>
-                  {SOURCES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select></label>
                 <label>Branch<select required value={newComplaint.branch} onChange={e => setNewComplaint(c => ({ ...c, branch: e.target.value }))} disabled={!branches.length}>
                   <option value="">{branches.length ? "Select branch" : "No branches configured"}</option>
                   {branches.map(branch => <option key={branch} value={branch}>{branch}</option>)}
@@ -515,7 +556,7 @@ export function ComplaintDesk() {
               </section>
 
               {/* Status update card */}
-              <section className="sales-form-card">
+              {canResolve && <section className="sales-form-card">
                 <h3>Update complaint</h3>
                 <div className="sales-form-grid">
                   <label>Status
@@ -546,17 +587,24 @@ export function ComplaintDesk() {
                     {updatingStatus ? "Saving…" : "Save update"}
                   </button>
                 </footer>
-              </section>
+              </section>}
+
+              {!canResolve && activeComplaint.resolution_notes && (
+                <section className="sales-form-card">
+                  <h3>Resolution notes</h3>
+                  <p className="subtext" style={{ margin: 0 }}>{activeComplaint.resolution_notes}</p>
+                </section>
+              )}
 
               {/* Notes & Timeline */}
               <section className="sales-history">
                 <h3>Notes & Timeline</h3>
-                <form className="complaint-note-form" onSubmit={e => { e.preventDefault(); void submitNote(); }}>
-                  <textarea rows={2} value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add a follow-up note…" />
-                  <button className="filter" type="submit" disabled={addingNote || !noteText.trim()}>
-                    {addingNote ? "Saving…" : "Add note"}
-                  </button>
-                </form>
+                {canResolve && <form className="complaint-note-form" onSubmit={e => { e.preventDefault(); void submitNote(); }}>
+                    <textarea rows={2} value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add a follow-up note…" />
+                    <button className="filter" type="submit" disabled={addingNote || !noteText.trim()}>
+                      {addingNote ? "Saving…" : "Add note"}
+                    </button>
+                  </form>}
 
                 {detailLoading && <p className="subtext" style={{ marginTop: 12 }}>Loading notes…</p>}
 
@@ -576,7 +624,7 @@ export function ComplaintDesk() {
                 )}
 
                 {detail && detail.notes.length === 0 && !detailLoading && (
-                  <p className="subtext" style={{ marginTop: 12 }}>No notes yet. Add one above.</p>
+                  <p className="subtext" style={{ marginTop: 12 }}>{canResolve ? "No notes yet. Add one above." : "No notes yet."}</p>
                 )}
               </section>
             </div>

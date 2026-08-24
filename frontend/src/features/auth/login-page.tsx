@@ -16,7 +16,7 @@ export function LoginPage() {
     const formData = new FormData(event.currentTarget);
     const submittedEmail = String(formData.get("email") || "").trim();
     const submittedPassword = String(formData.get("password") || "");
-    try { const result = await login(submittedEmail, submittedPassword); router.push(result.user.role === "ADMIN" ? "/dashboard" : result.user.role === "RECEPTIONIST" ? "/capture" : "/my-leads"); }
+    try { const result = await login(submittedEmail, submittedPassword); router.push(result.user.role === "ADMIN" ? "/dashboard" : result.user.role === "RECEPTIONIST" ? "/capture" : result.user.role === "COMPLAINTS" ? "/complaints" : "/my-leads"); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to sign in."); }
     finally { setLoading(false); }
   };

@@ -1,4 +1,4 @@
-from django.db.models import Avg, Count, F, Q
+from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Q
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from rest_framework import status as http_status
@@ -10,6 +10,7 @@ from rest_framework.viewsets import ModelViewSet
 
 from accounts.models import User
 from .models import Complaint, ComplaintNote
+from .permissions import ComplaintAnalyticsPermission, ComplaintPermission
 from .serializers import (
     ComplaintCreateSerializer,
     ComplaintDetailSerializer,
@@ -26,12 +27,13 @@ class ComplaintPagination(PageNumberPagination):
 class ComplaintViewSet(ModelViewSet):
     pagination_class = ComplaintPagination
     serializer_class = ComplaintListSerializer
+    permission_classes = [ComplaintPermission]
 
     def get_queryset(self):
         user = self.request.user
         queryset = Complaint.objects.select_related("logged_by", "assigned_to")
 
-        # CRE users see only their own complaints; admins see all
+        # CRE users see only what they logged; admins and complaints department see the shared queue.
         if user.role == User.Role.CRE:
             queryset = queryset.filter(logged_by=user)
 
@@ -71,7 +73,7 @@ class ComplaintViewSet(ModelViewSet):
         return ComplaintListSerializer
 
     def perform_create(self, serializer):
-        serializer.save(logged_by=self.request.user, assigned_to=self.request.user)
+        serializer.save(logged_by=self.request.user)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -100,18 +102,7 @@ class ComplaintViewSet(ModelViewSet):
             complaint.priority = data["priority"]
         if "resolution_notes" in data:
             complaint.resolution_notes = data["resolution_notes"]
-        if "assigned_to" in data:
-            if data["assigned_to"] is None:
-                complaint.assigned_to = None
-            else:
-                try:
-                    complaint.assigned_to = User.objects.get(id=data["assigned_to"], is_active=True)
-                except User.DoesNotExist:
-                    return Response(
-                        {"assigned_to": "User not found."},
-                        status=http_status.HTTP_400_BAD_REQUEST,
-                    )
-
+        complaint.assigned_to = request.user
         complaint.save()
         output = ComplaintDetailSerializer(complaint).data
         return Response(output)
@@ -135,13 +126,10 @@ class ComplaintViewSet(ModelViewSet):
 
 
 class ComplaintAnalyticsView(APIView):
-    def get(self, request):
-        user = request.user
-        queryset = Complaint.objects.all()
+    permission_classes = [ComplaintAnalyticsPermission]
 
-        # CRE users see only their own analytics; admins see all
-        if user.role == User.Role.CRE:
-            queryset = queryset.filter(logged_by=user)
+    def get(self, request):
+        queryset = Complaint.objects.all()
 
         # Date range filter
         date_range = request.query_params.get("range", "mtd")
@@ -168,17 +156,7 @@ class ComplaintAnalyticsView(APIView):
             closed=Count("id", filter=Q(status=Complaint.Status.CLOSED)),
         )
 
-        # Average resolution time (in hours) for resolved/closed complaints
-        resolved_qs = queryset.filter(resolved_at__isnull=False)
-        avg_resolution = None
-        if resolved_qs.exists():
-            from django.db.models import ExpressionWrapper, DurationField
-            avg_duration = resolved_qs.annotate(
-                duration=ExpressionWrapper(F("resolved_at") - F("created_at"), output_field=DurationField())
-            ).aggregate(avg=Avg("duration"))
-            if avg_duration["avg"]:
-                avg_resolution = round(avg_duration["avg"].total_seconds() / 3600, 1)
-        summary["avg_resolution_hours"] = avg_resolution or 0
+        summary["avg_resolution_hours"] = _average_resolution_hours(queryset)
 
         # Breakdown by category
         by_category = list(
@@ -212,11 +190,58 @@ class ComplaintAnalyticsView(APIView):
             .order_by("date")
         )
 
-        return Response({
+        response = {
             "summary": summary,
             "by_category": by_category,
             "by_priority": by_priority,
             "by_status": by_status,
             "trend": trend,
             "generated_at": timezone.now(),
+        }
+        if request.user.is_admin:
+            response["by_resolution_team"] = _resolution_team_performance(queryset)
+        return Response(response)
+
+
+def _average_resolution_hours(queryset):
+    average = queryset.filter(resolved_at__isnull=False).annotate(
+        resolution_duration=ExpressionWrapper(
+            F("resolved_at") - F("created_at"), output_field=DurationField()
+        )
+    ).aggregate(value=Avg("resolution_duration"))["value"]
+    return round(average.total_seconds() / 3600, 1) if average else 0
+
+
+def _resolution_team_performance(queryset):
+    rows = queryset.filter(assigned_to__role=User.Role.COMPLAINTS).annotate(
+        resolution_duration=ExpressionWrapper(
+            F("resolved_at") - F("created_at"), output_field=DurationField()
+        )
+    ).values(
+        "assigned_to_id", "assigned_to__first_name", "assigned_to__last_name", "assigned_to__email"
+    ).annotate(
+        total=Count("id"),
+        open=Count("id", filter=Q(status=Complaint.Status.OPEN)),
+        in_progress=Count("id", filter=Q(status=Complaint.Status.IN_PROGRESS)),
+        escalated=Count("id", filter=Q(status=Complaint.Status.ESCALATED)),
+        resolved=Count("id", filter=Q(status=Complaint.Status.RESOLVED)),
+        closed=Count("id", filter=Q(status=Complaint.Status.CLOSED)),
+        avg_resolution_hours=Avg("resolution_duration"),
+    ).order_by("-total", "assigned_to__first_name", "assigned_to__last_name")
+    performance = []
+    for row in rows:
+        resolved_count = row["resolved"] + row["closed"]
+        average = row["avg_resolution_hours"]
+        performance.append({
+            "id": row["assigned_to_id"],
+            "name": " ".join(filter(None, [row["assigned_to__first_name"], row["assigned_to__last_name"]])) or row["assigned_to__email"],
+            "total": row["total"],
+            "open": row["open"],
+            "in_progress": row["in_progress"],
+            "escalated": row["escalated"],
+            "resolved": row["resolved"],
+            "closed": row["closed"],
+            "resolution_rate": round((resolved_count / row["total"]) * 100, 1) if row["total"] else 0,
+            "avg_resolution_hours": round(average.total_seconds() / 3600, 1) if average else 0,
         })
+    return performance
