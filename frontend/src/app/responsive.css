@@ -309,7 +309,7 @@ input[type="radio"] {
 }
 
 .admin-filter-band .lead-filters-grid {
-  grid-template-columns: repeat(6, minmax(100px, 1fr));
+  grid-template-columns: repeat(4, minmax(100px, 1fr));
   gap: 8px;
 }
 
