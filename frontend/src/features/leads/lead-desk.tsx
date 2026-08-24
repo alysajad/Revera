@@ -98,7 +98,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState<any>(null);
-  const [allLeadStatus, setAllLeadStatus] = useState<AllLeadStatusFilter>("all");
+  const [allLeadStatus, setAllLeadStatus] = useState<AllLeadStatusFilter>("fresh");
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [leadDetail, setLeadDetail] = useState<LeadDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
