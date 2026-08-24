@@ -26,6 +26,7 @@ class User(AbstractUser):
         CRE = "CRE", "CRE"
         SALES_OFFICER = "SO", "PS/SO"
         RECEPTIONIST = "RECEPTIONIST", "Receptionist"
+        COMPLAINTS = "COMPLAINTS", "Complaints department"
 
     username = None
     email = models.EmailField(unique=True)

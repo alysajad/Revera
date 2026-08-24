@@ -25,7 +25,7 @@ export type PersonalAnalytics = { range: string; summary: { total: number; assig
 export type Officer = { id: number; name: string; initials: string; color: "blue" | "green" | "violet" | "orange"; location: string; assigned: number; calls: number; qualified: number; won: number };
 export type Metrics = { total_assigned: number; total_called: number; calls_today?: number; qualified: number; walkins: number; won: number; lost: number; conversion_rate: number };
 export type Analytics = { summary: Metrics; source: { source: string; total: number; qualified: number; won: number }[]; cre: (Metrics & { id: number; name: string })[]; officers: (Metrics & { id: number; name: string })[] };
-export type CurrentUser = { id: number; first_name: string; last_name: string; email: string; role: "ADMIN" | "CRE" | "SO" | "RECEPTIONIST"; is_active?: boolean; location?: string };
+export type CurrentUser = { id: number; first_name: string; last_name: string; email: string; role: "ADMIN" | "CRE" | "SO" | "RECEPTIONIST" | "COMPLAINTS"; is_active?: boolean; location?: string };
 
 let csrfToken = "";
 
@@ -140,7 +140,7 @@ export type ComplaintNote = { id: number; author_name: string; content: string; 
 export type ComplaintInput = {
   customer_name: string; customer_phone: string; customer_email?: string;
   category: string; priority: string; subject: string; description: string;
-  model_interest?: string; branch: string; source: string;
+  model_interest?: string; branch: string; source?: string;
 };
 export type ComplaintFilters = {
   status?: string; category?: string; priority?: string; source?: string;
@@ -152,6 +152,7 @@ export type ComplaintAnalytics = {
   by_priority: { priority: string; count: number }[];
   by_status: { status: string; count: number }[];
   trend: { date: string; opened: number; resolved: number }[];
+  by_resolution_team?: { id: number; name: string; total: number; open: number; in_progress: number; escalated: number; resolved: number; closed: number; resolution_rate: number; avg_resolution_hours: number }[];
 };
 
 export async function getComplaints(query = "") {
@@ -162,7 +163,7 @@ export const createComplaint = (payload: ComplaintInput) =>
   api<Complaint>("/api/complaints/", { method: "POST", body: JSON.stringify(payload) });
 export const getComplaintDetail = (id: number) =>
   api<ComplaintDetail>(`/api/complaints/${id}/`);
-export const updateComplaint = (id: number, payload: Partial<{ status: string; priority: string; resolution_notes: string; assigned_to: number | null }>) =>
+export const updateComplaint = (id: number, payload: Partial<{ status: string; priority: string; resolution_notes: string }>) =>
   api<ComplaintDetail>(`/api/complaints/${id}/`, { method: "PATCH", body: JSON.stringify(payload) });
 export const addComplaintNote = (id: number, content: string) =>
   api<ComplaintNote>(`/api/complaints/${id}/add-note/`, { method: "POST", body: JSON.stringify({ content }) });

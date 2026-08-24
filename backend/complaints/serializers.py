@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from django.utils import timezone
 
 from leads.serializers import validate_configured_choice
 from .models import Complaint, ComplaintNote
@@ -76,15 +75,14 @@ class ComplaintUpdateSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=Complaint.Status.choices, required=False)
     priority = serializers.ChoiceField(choices=Complaint.Priority.choices, required=False)
     resolution_notes = serializers.CharField(required=False, allow_blank=True)
-    assigned_to = serializers.IntegerField(required=False, allow_null=True)
 
     def validate(self, attrs):
         status = attrs.get("status")
-        if status == Complaint.Status.RESOLVED and not attrs.get("resolution_notes"):
-            # Check if existing complaint already has resolution notes
+        if status in {Complaint.Status.RESOLVED, Complaint.Status.CLOSED}:
             complaint = self.context.get("complaint")
-            if complaint and not complaint.resolution_notes:
+            notes = attrs.get("resolution_notes", complaint.resolution_notes if complaint else "")
+            if not notes.strip():
                 raise serializers.ValidationError(
-                    {"resolution_notes": "Resolution notes are required when resolving a complaint."}
+                    {"resolution_notes": "Resolution notes are required when resolving or closing a complaint."}
                 )
         return attrs

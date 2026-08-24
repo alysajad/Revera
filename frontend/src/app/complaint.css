@@ -17,6 +17,9 @@
 .complaint-chart-card header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}
 .complaint-chart-card header .eyebrow{margin:0 0 6px}
 .complaint-chart-card h2{font-size:16px;margin:0}
+.complaint-cre-performance{margin-bottom:16px}
+.complaint-cre-performance .table-scroll{overflow-x:auto}
+.complaint-cre-performance table{margin-top:14px;min-width:820px}
 
 /* Category breakdown */
 .complaint-category-list{display:grid;gap:11px}
