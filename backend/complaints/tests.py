@@ -104,6 +104,16 @@ class ComplaintAccessTests(TestCase):
         self.assertEqual(other.assigned_to, self.resolver)
         self.assertIsNotNone(other.resolved_at)
 
+        self.client.force_authenticate(self.other_cre)
+        cre_detail = self.client.get(f"/api/complaints/{other.id}/")
+        self.assertEqual(cre_detail.status_code, 200)
+        self.assertEqual([item["content"] for item in cre_detail.data["notes"]], ["Vehicle delivered.", "Customer updated."])
+
+        self.client.force_authenticate(self.admin)
+        admin_detail = self.client.get(f"/api/complaints/{other.id}/")
+        self.assertEqual(admin_detail.status_code, 200)
+        self.assertEqual([item["content"] for item in admin_detail.data["notes"]], ["Vehicle delivered.", "Customer updated."])
+
     def test_admin_can_view_and_analyze_but_not_resolve(self):
         resolved = self.complaint(assigned_to=self.resolver, status=Complaint.Status.RESOLVED, resolved_at=timezone.now())
         resolved.created_at = timezone.now() - timedelta(hours=2)

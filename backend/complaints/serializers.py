@@ -83,6 +83,6 @@ class ComplaintUpdateSerializer(serializers.Serializer):
             notes = attrs.get("resolution_notes", complaint.resolution_notes if complaint else "")
             if not notes.strip():
                 raise serializers.ValidationError(
-                    {"resolution_notes": "Resolution notes are required when resolving or closing a complaint."}
+                    {"resolution_notes": "Remarks are required when resolving or closing a complaint."}
                 )
         return attrs

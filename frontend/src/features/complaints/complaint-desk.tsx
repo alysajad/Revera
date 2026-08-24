@@ -226,7 +226,7 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
   const saveUpdate = async () => {
     if (!activeComplaint || updatingStatus) return;
     if ((newStatus === "RESOLVED" || newStatus === "CLOSED") && !resolutionNotes.trim()) {
-      setDetailError("Resolution notes are required when resolving a complaint."); return;
+      setDetailError("Remarks are required when resolving a complaint."); return;
     }
     setUpdatingStatus(true); setDetailError("");
     try {
@@ -572,15 +572,9 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
                 </div>
                 {needsResolution && (
                   <label className="sales-full-label" style={{ marginTop: 12 }}>
-                    Resolution notes <span style={{ color: "#e04545" }}>*</span>
-                    <textarea id="resolution-notes" rows={3} value={resolutionNotes} onChange={e => setResolutionNotes(e.target.value)} placeholder="How was this complaint resolved?" />
+                    Remarks <span style={{ color: "#e04545" }}>*</span>
+                    <textarea id="resolution-notes" rows={3} value={resolutionNotes} onChange={e => setResolutionNotes(e.target.value)} placeholder="Add the resolution remark" />
                   </label>
-                )}
-                {!needsResolution && activeComplaint.resolution_notes && (
-                  <div className="complaint-resolution-preview">
-                    <small>Resolution notes</small>
-                    <p>{activeComplaint.resolution_notes}</p>
-                  </div>
                 )}
                 <footer style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
                   <button className="button primary" id="save-complaint-update" onClick={() => void saveUpdate()} disabled={updatingStatus}>
@@ -589,24 +583,17 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
                 </footer>
               </section>}
 
-              {!canResolve && activeComplaint.resolution_notes && (
-                <section className="sales-form-card">
-                  <h3>Resolution notes</h3>
-                  <p className="subtext" style={{ margin: 0 }}>{activeComplaint.resolution_notes}</p>
-                </section>
-              )}
-
-              {/* Notes & Timeline */}
+              {/* Remarks & Timeline */}
               <section className="sales-history">
-                <h3>Notes & Timeline</h3>
+                <h3>Remarks & Timeline</h3>
                 {canResolve && <form className="complaint-note-form" onSubmit={e => { e.preventDefault(); void submitNote(); }}>
-                    <textarea rows={2} value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add a follow-up note…" />
+                    <textarea rows={2} value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add a progress remark..." />
                     <button className="filter" type="submit" disabled={addingNote || !noteText.trim()}>
-                      {addingNote ? "Saving…" : "Add note"}
+                      {addingNote ? "Saving…" : "Add remark"}
                     </button>
                   </form>}
 
-                {detailLoading && <p className="subtext" style={{ marginTop: 12 }}>Loading notes…</p>}
+                {detailLoading && <p className="subtext" style={{ marginTop: 12 }}>Loading remarks...</p>}
 
                 {detail?.notes && detail.notes.length > 0 && (
                   <div style={{ marginTop: 14 }}>
@@ -624,7 +611,7 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
                 )}
 
                 {detail && detail.notes.length === 0 && !detailLoading && (
-                  <p className="subtext" style={{ marginTop: 12 }}>{canResolve ? "No notes yet. Add one above." : "No notes yet."}</p>
+                  <p className="subtext" style={{ marginTop: 12 }}>{canResolve ? "No remarks yet. Add one above." : "No remarks yet."}</p>
                 )}
               </section>
             </div>

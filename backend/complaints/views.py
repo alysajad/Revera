@@ -86,6 +86,7 @@ class ComplaintViewSet(ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         complaint = self.get_object()
+        previous_resolution_notes = complaint.resolution_notes
         serializer = ComplaintUpdateSerializer(
             data=request.data, context={"complaint": complaint}
         )
@@ -104,6 +105,16 @@ class ComplaintViewSet(ModelViewSet):
             complaint.resolution_notes = data["resolution_notes"]
         complaint.assigned_to = request.user
         complaint.save()
+        if (
+            "resolution_notes" in data
+            and data["resolution_notes"].strip()
+            and data["resolution_notes"].strip() != previous_resolution_notes.strip()
+        ):
+            ComplaintNote.objects.create(
+                complaint=complaint,
+                author=request.user,
+                content=data["resolution_notes"].strip(),
+            )
         output = ComplaintDetailSerializer(complaint).data
         return Response(output)
 
@@ -116,7 +127,7 @@ class ComplaintViewSet(ModelViewSet):
         content = request.data.get("content", "").strip()
         if not content:
             return Response(
-                {"content": "Note content is required."},
+                {"content": "Remark content is required."},
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
         note = ComplaintNote.objects.create(

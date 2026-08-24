@@ -124,9 +124,11 @@
 .sales-full-label{display:grid;gap:6px;color:#666b71;font-size:10px;font-weight:700}
 .sales-full-label textarea,.sales-full-label input{width:100%;border:1px solid #dededb;border-radius:7px;background:#fff;padding:11px;font:11px Arial;color:var(--ink);outline-color:var(--orange);resize:vertical}
 
-/* ── Add note form ───────────────────────────────────────────────────────── */
+/* ── Remarks timeline ────────────────────────────────────────────────────── */
 .complaint-note-form{display:flex;gap:8px;align-items:flex-start;margin-bottom:4px}
 .complaint-note-form textarea{flex:1;border:1px solid #dededb;border-radius:7px;background:#fff;padding:9px 11px;font:11px Arial;color:var(--ink);outline-color:var(--orange);resize:none}
+.complaint-page .sales-history-row .history-dot{flex:0 0 8px;width:8px;height:8px}
+.complaint-page .sales-history-row>div:not(.history-dot){flex:1;min-width:0}
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 @media(max-width:1200px){
