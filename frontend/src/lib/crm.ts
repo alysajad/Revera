@@ -121,3 +121,52 @@ export const disableUser = (userId: number) => api<void>(`/api/auth/users/${user
 
 export type ReceptionistAnalytics = { summary: { total: number; walkin: number; digital: number }; so_breakdown: { name: string; count: number }[] };
 export const getReceptionistAnalytics = () => api<ReceptionistAnalytics>("/api/analytics/receptionist/");
+
+// ── Complaints ────────────────────────────────────────────────────────────────
+export type Complaint = {
+  id: number; uid: string; ticket_number: string;
+  customer_name: string; customer_phone: string; customer_email: string;
+  category: string; priority: string; status: string;
+  subject: string; description: string; model_interest: string; source: string;
+  resolution_notes: string; resolved_at: string | null;
+  logged_by: number; logged_by_name: string;
+  assigned_to: number | null; assigned_to_name: string;
+  note_count: number; created_at: string; updated_at: string;
+};
+export type ComplaintDetail = Complaint & {
+  notes: ComplaintNote[];
+};
+export type ComplaintNote = { id: number; author_name: string; content: string; created_at: string };
+export type ComplaintInput = {
+  customer_name: string; customer_phone: string; customer_email?: string;
+  category: string; priority: string; subject: string; description: string;
+  model_interest?: string; source: string;
+};
+export type ComplaintFilters = {
+  status?: string; category?: string; priority?: string; source?: string;
+  date_from?: string; date_to?: string; q?: string;
+};
+export type ComplaintAnalytics = {
+  summary: { total: number; open: number; in_progress: number; escalated: number; resolved: number; closed: number; avg_resolution_hours: number };
+  by_category: { category: string; count: number }[];
+  by_priority: { priority: string; count: number }[];
+  by_status: { status: string; count: number }[];
+  trend: { date: string; opened: number; resolved: number }[];
+};
+
+export async function getComplaints(query = "") {
+  const data = await api<{ count?: number; results: Complaint[] }>(`/api/complaints/${query}`);
+  return { count: data.count ?? data.results.length, results: data.results };
+}
+export const createComplaint = (payload: ComplaintInput) =>
+  api<Complaint>("/api/complaints/", { method: "POST", body: JSON.stringify(payload) });
+export const getComplaintDetail = (id: number) =>
+  api<ComplaintDetail>(`/api/complaints/${id}/`);
+export const updateComplaint = (id: number, payload: Partial<{ status: string; priority: string; resolution_notes: string; assigned_to: number | null }>) =>
+  api<ComplaintDetail>(`/api/complaints/${id}/`, { method: "PATCH", body: JSON.stringify(payload) });
+export const addComplaintNote = (id: number, content: string) =>
+  api<ComplaintNote>(`/api/complaints/${id}/add-note/`, { method: "POST", body: JSON.stringify({ content }) });
+export const getComplaintAnalytics = (range = "mtd", dateFrom = "", dateTo = "") => {
+  const params = new URLSearchParams({ range, ...(dateFrom ? { date_from: dateFrom } : {}), ...(dateTo ? { date_to: dateTo } : {}) });
+  return api<ComplaintAnalytics>(`/api/complaints/analytics/?${params.toString()}`);
+};
