@@ -72,7 +72,7 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
   const userRole = currentUser?.role;
   const canCreate = userRole === "CRE";
   const canResolve = userRole === "COMPLAINTS";
-  const canUseAnalytics = adminView;
+  const canUseAnalytics = adminView || canResolve;
   const heading = adminView
     ? {
       eyebrow: "COMPLAINT OVERSIGHT",
@@ -304,7 +304,7 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
       )}
 
       {/* Analytics charts row */}
-      {analytics && (
+      {adminView && analytics && (
         <section className="complaint-analytics-row">
           {/* Category breakdown */}
             <article className="panel complaint-chart-card">

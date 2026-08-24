@@ -9,6 +9,10 @@
 
 /* ── Metrics Row ─────────────────────────────────────────────────────────── */
 .complaint-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:13px;margin-bottom:16px}
+.complaint-page .sales-metric{min-height:108px;padding:16px 18px;border:1px solid #dfe5e3;border-top-width:3px;background:#fff!important;color:#111817!important}
+.complaint-page .sales-metric span{color:#65716f!important;font-size:12px!important}
+.complaint-page .sales-metric strong{color:#082f2a!important;font-size:32px!important}
+.complaint-page .sales-metric small{color:#6f7a78!important;font-size:11px!important}
 .sales-metric.open-metric{background:#fff0e7;border-color:#ffd3b0}
 
 /* ── Analytics Charts Row ────────────────────────────────────────────────── */
