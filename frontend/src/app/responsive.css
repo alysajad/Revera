@@ -370,6 +370,29 @@ input[type="radio"] {
   overscroll-behavior: contain;
 }
 
+.admin-lead-pool .lead-row {
+  grid-template-columns: minmax(220px, 1.4fr) minmax(90px, 0.45fr) minmax(120px, 0.7fr) minmax(110px, 0.55fr) auto;
+}
+
+.admin-lead-pool .lead-row > div,
+.admin-lead-pool .lead-row .model {
+  min-width: 0;
+}
+
+.admin-lead-pool .lead-row b,
+.admin-lead-pool .lead-row small,
+.admin-lead-pool .lead-row .model {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-lead-pool .lead-row .badge,
+.admin-lead-pool .lead-row .status,
+.admin-lead-pool .lead-row .row-action {
+  justify-self: start;
+}
+
 @media (max-width: 1150px) {
   .lead-layout {
     grid-template-columns: 1fr;
