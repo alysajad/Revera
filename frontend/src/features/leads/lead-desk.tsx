@@ -1,11 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { assignFilteredLeads, assignFilteredPsLeads, assignLead, assignPsLead, autoAssignLeads, commitUpload, createLead, distributeFilteredLeads, getAdminAnalytics, getCres, getLeadDetail, getLeadsPage, getOfficers, getSystemConfig, getUpload, logCall, resolveUploadDuplicates, sourceClass, statusName, toLead, toOfficer, updateMyLead, type CallHistory, type Lead, type LeadDetail, type LeadFilters, type LeadInput, type LeadQualification, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
+import { assignFilteredLeads, assignFilteredPsLeads, assignLead, assignPsLead, autoAssignLeads, commitUpload, createLead, distributeFilteredLeads, getAdminAnalytics, getCres, getLeadDetail, getLeadsPage, getOfficers, getSystemConfig, getUpload, logCall, resolveUploadDuplicates, sourceClass, toLead, toOfficer, updateMyLead, type Lead, type LeadDetail, type LeadFilters, type LeadInput, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
 import { formatDate, formatDateTime, parseDate, parseDateTime, toApiDate } from "@/lib/dates";
-
-const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", SWITCHED_OFF: "Switch off", CALLBACK: "Callback", PENDING: "Pending", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
-const outcomeLabels: Record<string, string> = { CONNECTED: "Connected", NO_RESPONSE: "No response", CALLBACK: "Callback", QUALIFIED: "Qualified", WRONG_NUMBER: "Wrong number" };
 
 function formatCallDate(value: string) {
   return formatDateTime(value) || value;
@@ -14,33 +11,6 @@ function formatCallDate(value: string) {
 function localDateTimeValue(value: string | null) {
   return formatDateTime(value);
 }
-
-const localInputDate = (value: Date | string | null | undefined) => {
-  if (!value) return "";
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
-};
-
-const addDays = (days: number) => {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return date;
-};
-
-const adminFollowUpDateToIso = (value: string) => {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return "";
-  const [, year, month, day] = match;
-  const scheduled = new Date(Number(year), Number(month) - 1, Number(day), 10, 0, 0, 0);
-  const now = new Date();
-  if (scheduled <= now) scheduled.setTime(now.getTime() + 5 * 60_000);
-  const max = new Date(now.getTime() + 3 * 24 * 60 * 60_000 - 5 * 60_000);
-  if (scheduled > max) scheduled.setTime(max.getTime());
-  return scheduled.toISOString();
-};
 
 function followUpOptions() {
   const now = new Date();
@@ -73,38 +43,6 @@ const nextOutcomes: Record<string, { label: string; value: string }[]> = {
   Qualified: [{ label: "Book walk-in", value: "WALKIN" }, { label: "Won (Sold)", value: "WON" }, { label: "Lost", value: "LOST" }],
   "Walk-in": [{ label: "Won (Sold)", value: "WON" }, { label: "Lost", value: "LOST" }],
 };
-
-const connectedOutcomes = ["Need Test Drive", "Showroom Visit", "Exchange Issue", "Booking Done", "Retail Done", "Need time", "Need SO Call", "Need More Details", "Discount Issue", "Not Interested", "Already Booked", "Lost to Competition", "Finance Rejected", "Dropped", "Lost to co-dealer"];
-const notConnectedOutcomes = ["RNR", "Switch Off", "Call Me Back", "Call Forwarding", "Line Busy", "Invalid Number"];
-const adminOutcomeStatus: Record<string, string> = {
-  "Need Test Drive": "PENDING",
-  "Showroom Visit": "PENDING",
-  "Exchange Issue": "PENDING",
-  "Booking Done": "WALKIN",
-  "Retail Done": "WON",
-  "Need time": "PENDING",
-  "Need SO Call": "PENDING",
-  "Need More Details": "PENDING",
-  "Discount Issue": "PENDING",
-  "Not Interested": "LOST",
-  "Already Booked": "LOST",
-  "Lost to Competition": "LOST",
-  "Finance Rejected": "LOST",
-  Dropped: "LOST",
-  "Lost to co-dealer": "LOST",
-  RNR: "RNR",
-  "Switch Off": "SWITCHED_OFF",
-  "Call Me Back": "CALLBACK",
-  "Call Forwarding": "PENDING",
-  "Line Busy": "PENDING",
-  "Invalid Number": "PENDING",
-};
-const adminFollowUpStatuses = ["CALLBACK", "PENDING", "WALKIN"];
-
-const resolveStatus = (outcome: string, currentStatus: string) => {
-  return adminOutcomeStatus[outcome] || currentStatus;
-};
-const adminNeedsFollowUp = (outcome: string) => adminFollowUpStatuses.includes(resolveStatus(outcome, ""));
 
 const sources = [["META", "Meta Ads"], ["WEBSITE", "Website"], ["CARWALE", "CarWale"], ["WALKIN", "Walk-in"], ["CAMPAIGN", "Campaign"], ["OTHER", "Other"], ["UNKNOWN", "Unknown"]];
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -148,7 +86,9 @@ function LeadPagination({ page, total, loading, onPageChange }: { page: number; 
   return <nav className="lead-pagination" aria-label="Lead pages"><span>Showing {first}–{last} of {total} leads</span><div><button className="filter" disabled={loading || page <= 1} onClick={() => onPageChange(page - 1)} aria-label="Previous page">‹</button><b>Page {page} of {totalPages}</b><button className="filter" disabled={loading || page >= totalPages} onClick={() => onPageChange(page + 1)} aria-label="Next page">›</button></div></nav>;
 }
 
-export function LeadDesk({ officerMode = false, followUpsOnly = false }: { officerMode?: boolean; followUpsOnly?: boolean }) {
+type AdminMode = "assignment" | "all";
+
+export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode = "assignment" }: { officerMode?: boolean; followUpsOnly?: boolean; adminMode?: AdminMode }) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [creUsers, setCreUsers] = useState<Officer[]>([]);
   const [psUsers, setPsUsers] = useState<Officer[]>([]);
@@ -164,8 +104,6 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const [outcome, setOutcome] = useState("");
   const [remarks, setRemarks] = useState("");
   const [followUpAt, setFollowUpAt] = useState("");
-  const [testDrive, setTestDrive] = useState("");
-  const [callStatus, setCallStatus] = useState("Connected");
   const [editingCustomer, setEditingCustomer] = useState(false);
   const [editDetails, setEditDetails] = useState({ name: "", phone: "", model: "", variant: "", buying_timeline: "", finance_type: "", trade_in: null as boolean | null, category: "" });
   const [savingDetails, setSavingDetails] = useState(false);
@@ -192,13 +130,16 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const [searchFilter, setSearchFilter] = useState("");
   const [totalLeads, setTotalLeads] = useState(0);
   const supportLoaded = useRef(false);
-  const assignmentUsers = assignmentView === "qualified" ? psUsers : creUsers;
+  const isAdminAllLeads = !officerMode && adminMode === "all";
+  const isAssignmentDesk = !officerMode && adminMode === "assignment";
+  const leadView = isAdminAllLeads ? "all" : assignmentView;
+  const assignmentUsers = leadView === "qualified" ? psUsers : creUsers;
   const assignmentFilters = useMemo<LeadFilters>(() => ({ ...activeFilters, ...(searchFilter ? { q: searchFilter } : {}) }), [activeFilters, searchFilter]);
 
   const refresh = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const queryString = leadQuery(officerMode, followUpsOnly, activeFilters, page, searchFilter, assignmentView);
+      const queryString = leadQuery(officerMode, followUpsOnly, activeFilters, page, searchFilter, leadView);
       if (officerMode) { const result = await getLeadsPage(queryString); setLeads(result.results); setTotalLeads(result.count); }
       else {
         if (!supportLoaded.current) {
@@ -215,7 +156,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
       }
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to load CRM data."); }
     finally { setLoading(false); }
-  }, [activeFilters, assignmentView, followUpsOnly, officerMode, page, searchFilter]);
+  }, [activeFilters, followUpsOnly, leadView, officerMode, page, searchFilter]);
 
   useEffect(() => { const timer = window.setTimeout(() => void refresh(), 0); return () => window.clearTimeout(timer); }, [refresh]);
   useEffect(() => {
@@ -229,7 +170,11 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   }, []);
   useEffect(() => { const timer = window.setTimeout(() => { setPage(1); setSearchFilter(query.trim()); }, 250); return () => window.clearTimeout(timer); }, [query]);
   useEffect(() => { const timer = window.setTimeout(() => { setPage(1); setActiveFilters(current => JSON.stringify(current) === JSON.stringify(filters) ? current : { ...filters }); }, 250); return () => window.clearTimeout(timer); }, [filters]);
-  useEffect(() => { if (assignmentView !== "fresh") setBucketOfficerIds([]); }, [assignmentView]);
+  useEffect(() => {
+    if (assignmentView === "fresh") return;
+    const timer = window.setTimeout(() => setBucketOfficerIds([]), 0);
+    return () => window.clearTimeout(timer);
+  }, [assignmentView]);
   useEffect(() => {
     const open = () => setAddingLead(true);
     window.addEventListener("river:add-lead", open);
@@ -238,9 +183,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   }, [officerMode]);
 
   const visible = useMemo(() => leads.filter(lead => `${lead.name} ${lead.phone}`.toLowerCase().includes(query.toLowerCase())), [leads, query]);
-  const needsAppointment = officerMode ? ["CALLBACK", "WALKIN", "PENDING"].includes(outcome) : adminNeedsFollowUp(outcome);
-  const minAdminFollowUpDate = localInputDate(new Date());
-  const maxAdminFollowUpDate = localInputDate(addDays(3));
+  const needsAppointment = ["CALLBACK", "WALKIN", "PENDING"].includes(outcome);
   const selectedBucketOfficers = useMemo(() => bucketOfficerIds.map(id => creUsers.find(officer => officer.id === id)).filter(Boolean) as Officer[], [bucketOfficerIds, creUsers]);
   const bucketName = useMemo(() => {
     const sourceLabel = sources.find(([value]) => value === activeFilters.source)?.[1];
@@ -262,10 +205,10 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const assign = async (lead: Lead, officerId: number) => {
     const previousLeads = leads;
     const previousUsers = assignmentUsers;
-    const setUsers = assignmentView === "qualified" ? setPsUsers : setCreUsers;
+    const setUsers = leadView === "qualified" ? setPsUsers : setCreUsers;
     setLeads(current => current.filter(item => item.id !== lead.id));
     setUsers(current => current.map(officer => officer.id === officerId ? { ...officer, assigned: officer.assigned + 1 } : officer));
-    try { await (assignmentView === "qualified" ? assignPsLead : assignLead)(lead.id, officerId); setNotice(`${lead.name} assigned to ${assignmentView === "qualified" ? "PS/SO" : "CRE"}.`); }
+    try { await (leadView === "qualified" ? assignPsLead : assignLead)(lead.id, officerId); setNotice(`${lead.name} assigned to ${leadView === "qualified" ? "PS/SO" : "CRE"}.`); }
     catch (requestError) { setLeads(previousLeads); setUsers(previousUsers); setError(requestError instanceof Error ? requestError.message : "Assignment failed."); }
     finally { setDropTargetId(null); }
   };
@@ -280,7 +223,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     if (!officer || !leads.length || bulkAssigning) return;
     if (!window.confirm(`Assign all leads matching these filters to ${officer.name}?`)) return;
     setBulkAssigning(true); setError("");
-    try { const result = await (assignmentView === "qualified" ? assignFilteredPsLeads : assignFilteredLeads)(officer.id, assignmentFilters); setNotice(`${result.assigned} leads assigned to ${officer.name}.`); setBulkOfficerId(""); await refresh(); }
+    try { const result = await (leadView === "qualified" ? assignFilteredPsLeads : assignFilteredLeads)(officer.id, assignmentFilters); setNotice(`${result.assigned} leads assigned to ${officer.name}.`); setBulkOfficerId(""); await refresh(); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Bulk assignment failed."); }
     finally { setBulkAssigning(false); }
   };
@@ -304,27 +247,15 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   };
 
   const saveCall = async () => {
-    if (!activeLead || !outcome || savingCall) return;
-    if (needsAppointment && !followUpAt) { setError(officerMode ? "Select a follow-up time." : "Select a follow-up date."); return; }
-    const parsedFollowUpAt = followUpAt ? officerMode ? parseDateTime(followUpAt) || (Number.isNaN(new Date(followUpAt).getTime()) ? "" : new Date(followUpAt).toISOString()) : adminFollowUpDateToIso(followUpAt) : "";
-    if (needsAppointment && !parsedFollowUpAt) { setError(officerMode ? "Enter follow-up time as DD/MM/YYYY HH:mm." : "Select a valid follow-up date."); return; }
+    if (!officerMode || !activeLead || !outcome || savingCall) return;
+    if (needsAppointment && !followUpAt) { setError("Select a follow-up time."); return; }
+    const parsedFollowUpAt = followUpAt ? parseDateTime(followUpAt) || (Number.isNaN(new Date(followUpAt).getTime()) ? "" : new Date(followUpAt).toISOString()) : "";
+    if (needsAppointment && !parsedFollowUpAt) { setError("Enter follow-up time as DD/MM/YYYY HH:mm."); return; }
     setError("");
     setSavingCall(true);
     try {
-      const normalizedFollowUpAt = parsedFollowUpAt;
-      if (!officerMode && leadDetail) {
-        await updateMyLead(activeLead.id, {
-          status: resolveStatus(outcome, activeLead.status),
-          remarks,
-          call_status: callStatus,
-          call_outcome: outcome,
-          ...(normalizedFollowUpAt ? { follow_up_at: normalizedFollowUpAt } : {}),
-          ...(testDrive ? { qualification: { variant: leadDetail.qualification?.variant || "", buying_timeline: leadDetail.qualification?.buying_timeline || "", finance_type: leadDetail.qualification?.finance_type || "", trade_in: leadDetail.qualification?.trade_in ?? null, test_drive: testDrive, notes: leadDetail.qualification?.notes || "" } } : {}),
-        });
-      } else {
-        await logCall(activeLead.id, { status: outcome, remarks, ...(normalizedFollowUpAt ? { follow_up_at: normalizedFollowUpAt } : {}) });
-      }
-      setNotice(`Call log saved for ${activeLead.name}.`); setActiveLead(null); setLeadDetail(null); setRemarks(""); setFollowUpAt(""); setTestDrive(""); setCallStatus("Connected"); await refresh();
+      await logCall(activeLead.id, { status: outcome, remarks, ...(parsedFollowUpAt ? { follow_up_at: parsedFollowUpAt } : {}) });
+      setNotice(`Call log saved for ${activeLead.name}.`); setActiveLead(null); setLeadDetail(null); setRemarks(""); setFollowUpAt(""); await refresh();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Follow-up could not be updated.");
     } finally { setSavingCall(false); }
@@ -372,7 +303,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
         });
       }
       setEditingCustomer(false);
-      const newPool = await getLeadsPage(leadQuery(officerMode, followUpsOnly, activeFilters, page, searchFilter, assignmentView));
+      const newPool = await getLeadsPage(leadQuery(officerMode, followUpsOnly, activeFilters, page, searchFilter, leadView));
       setLeads(newPool.results);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Details could not be saved.");
@@ -380,11 +311,11 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   };
 
   const openLead = async (lead: Lead) => {
-    const initialOutcome = officerMode ? nextOutcomes[lead.status]?.[0]?.value || "" : lead.statusCode === "WON" ? "WON" : ["LOST", "UNQUALIFIED"].includes(lead.statusCode) ? "LOST" : lead.statusCode === "PENDING" || lead.nextFollowUp ? "PENDING" : "";
-    setActiveLead(lead); setOutcome(initialOutcome); setRemarks(""); setFollowUpAt(officerMode ? localDateTimeValue(lead.nextFollowUp) : localInputDate(lead.nextFollowUp)); setTestDrive(""); setCallStatus("Connected"); setEditingCustomer(false); setSavingCall(false); setError("");
+    const initialOutcome = officerMode ? nextOutcomes[lead.status]?.[0]?.value || "" : "";
+    setActiveLead(lead); setOutcome(initialOutcome); setRemarks(""); setFollowUpAt(officerMode ? localDateTimeValue(lead.nextFollowUp) : ""); setEditingCustomer(false); setSavingCall(false); setError("");
     if (!officerMode) {
       setDetailLoading(true);
-      try { const detail = await getLeadDetail(lead.id); setLeadDetail(detail); setFollowUpAt(localInputDate(detail.nextFollowUp)); setTestDrive(detail.qualification?.test_drive || ""); }
+      try { setLeadDetail(await getLeadDetail(lead.id)); }
       catch { /* detail fetch failed, modal still works with basic data */ }
       finally { setDetailLoading(false); }
     }
@@ -444,7 +375,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
       const duplicateNote = upload.removed_duplicates ? ` ${upload.removed_duplicates} duplicate ${upload.removed_duplicates === 1 ? "row was" : "rows were"} skipped.` : "";
       setUpload(null); setNotice(`${result.created} leads imported.${duplicateNote} Assign them from the pool.`);
       setLoading(true);
-      const pageResult = await getLeadsPage(leadQuery(false, false, activeFilters, page, searchFilter, assignmentView));
+      const pageResult = await getLeadsPage(leadQuery(false, false, activeFilters, page, searchFilter, leadView));
       setLeads(pageResult.results); setTotalLeads(pageResult.count);
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Import failed."); }
     finally { setImportingUpload(false); setLoading(false); }
@@ -452,9 +383,11 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
   const duplicateRows = upload?.rows?.filter(row => row.duplicate_type && row.resolution === "PENDING") || [];
   const removedDuplicateRows = upload?.rows?.filter(row => row.duplicate_type && row.resolution === "SKIP") || [];
   const importableRows = upload?.rows ? upload.rows.filter(row => !row.validation_error && row.resolution !== "SKIP").length : upload?.parsed_ok;
-  const targetLabel = assignmentView === "qualified" ? "PS/SO" : "CRE";
-  const poolLabel = assignmentView === "fresh" ? "Fresh lead pool" : assignmentView === "qualified" ? "Qualified handoff pool" : "All leads";
-  const heading = followUpsOnly ? "Follow-ups" : officerMode ? "My queue" : "Assignment desk";
+  const targetLabel = leadView === "qualified" ? "PS/SO" : "CRE";
+  const poolLabel = leadView === "fresh" ? "Fresh lead pool" : leadView === "qualified" ? "Qualified handoff pool" : "All leads";
+  const heading = followUpsOnly ? "Follow-ups" : officerMode ? "My queue" : isAdminAllLeads ? "All leads" : "Assignment desk";
+  const adminTitle = isAdminAllLeads ? <>All <span>leads.</span></> : <>Lead <span>assignment.</span></>;
+  const adminSubtext = isAdminAllLeads ? "Filter and review every lead in the CRM." : "Assign fresh and qualified leads to the right team.";
   const adminMetrics = !officerMode && analytics?.summary ? (
     <section className="admin-leads-metrics">
       <article className="sales-metric blue">
@@ -548,8 +481,8 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
     {notice && <div className="toast" role="status">{notice}<button aria-label="Dismiss" onClick={() => setNotice("")}>×</button></div>}
     {addingLead && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-lead-title"><button className="modal-close" onClick={() => setAddingLead(false)} aria-label="Close">×</button><p className="eyebrow">LEAD INTAKE</p><h2 id="add-lead-title">Add a lead</h2><form className="lead-form" onSubmit={event => { event.preventDefault(); void saveLead(); }}><div className="form-grid"><label>Full name<input required maxLength={160} value={newLead.name} onChange={event => setNewLead(current => ({ ...current, name: event.target.value }))} placeholder="Customer name" /></label><label>Phone number<input required inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={newLead.phone} onChange={event => setNewLead(current => ({ ...current, phone: event.target.value.replace(/\D/g, "") }))} placeholder="10-digit mobile number" /></label><label>Email<input type="email" inputMode="email" pattern={emailPattern.source} title="Use a complete email such as name@example.com" value={newLead.email} onChange={event => setNewLead(current => ({ ...current, email: event.target.value }))} placeholder="name@example.com" /></label><label>City<input maxLength={100} value={newLead.city} onChange={event => setNewLead(current => ({ ...current, city: event.target.value }))} placeholder="City" /></label>{officerMode && <label>Lead source<select value={newLead.source} onChange={event => setNewLead(current => ({ ...current, source: event.target.value }))}>{sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}<label>Enquiry date<input required type="text" inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" value={newLead.enquiry_date} onChange={event => setNewLead(current => ({ ...current, enquiry_date: event.target.value }))} placeholder="DD/MM/YYYY" /></label><label>Vehicle interest<select required value={newLead.model_interest || ""} onChange={event => setNewLead(current => ({ ...current, model_interest: event.target.value }))} disabled={!models.length}><option value="">{models.length ? "Select model" : "Add models in Lists first"}</option>{models.map(model => <option key={model} value={model}>{model}</option>)}</select></label><label>Campaign<input maxLength={160} value={newLead.campaign} onChange={event => setNewLead(current => ({ ...current, campaign: event.target.value }))} placeholder="Campaign name" /></label></div>{officerMode && <label style={{ marginTop: "13px", display: "block" }}>Source detail<input maxLength={100} value={newLead.source_label} onChange={event => setNewLead(current => ({ ...current, source_label: event.target.value }))} placeholder="Ad set, partner, referral, or other detail" /></label>}{error && <p className="form-error" role="alert">{error}</p>}<p className="subtext">New leads start as Fresh and appear unassigned, ready to hand to CRE.</p><footer><button type="button" className="filter" onClick={() => setAddingLead(false)}>Cancel</button><button className="button primary" disabled={creatingLead}>{creatingLead ? "Adding…" : "Add lead"}</button></footer></form></section></div>}
     {submittedLead && <div className="modal-layer" role="presentation"><section className="modal success-modal" role="dialog" aria-modal="true" aria-labelledby="submitted-title"><button className="modal-close" onClick={() => setSubmittedLead(null)} aria-label="Close">×</button><div className="success-mark" aria-hidden="true">✓</div><p className="eyebrow">LEAD SUBMITTED</p><h2 id="submitted-title">Thank you, lead submitted.</h2><p className="subtext">{submittedLead} is now in the unassigned pool, ready for CRE assignment.</p><button className="button primary" onClick={() => setSubmittedLead(null)}>Done</button></section></div>}
-    {activeLead && !officerMode && <div className="modal-layer admin-follow-up-layer" role="presentation"><section className="modal sales-detail-modal admin-follow-up-modal" role="dialog" aria-modal="true" aria-labelledby="call-title" style={{ maxWidth: "44rem" }}>
-      <header className="sales-detail-header"><div><p className="eyebrow">LEAD UPDATE</p><h2 id="call-title">✎ Update Follow-up</h2><p className="subtext">Update the follow-up status and details for this lead.</p></div><button className="modal-close" onClick={() => { setActiveLead(null); setLeadDetail(null); }} aria-label="Close">×</button></header>
+    {activeLead && !officerMode && <div className="modal-layer admin-follow-up-layer" role="presentation"><section className="modal sales-detail-modal admin-follow-up-modal" role="dialog" aria-modal="true" aria-labelledby="lead-detail-title" style={{ maxWidth: "44rem" }}>
+      <header className="sales-detail-header"><div><p className="eyebrow">LEAD DETAILS</p><h2 id="lead-detail-title">Lead details</h2><p className="subtext">Review customer information and update saved lead details.</p></div><button className="modal-close" onClick={() => { setActiveLead(null); setLeadDetail(null); }} aria-label="Close">×</button></header>
       <div className="sales-detail-scroll">
         {error && <p className="form-error" role="alert">{error}</p>}
         <section className="sales-info-card admin-customer-card">
@@ -585,22 +518,11 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false }: { offic
 
         </section>
         {(detailLoading || leadDetail?.callHistory.length) ? <section className="sales-form-card admin-call-history">
-          <h3>Call history</h3>
+          <h3>Sales call history</h3>
           {detailLoading ? <p className="subtext">Loading call history…</p> : <div className="admin-history-list">{leadDetail?.callHistory.map((call, index) => <div className="sales-history-row" key={`call-${call.id}`}><div><b>Call #{leadDetail.callHistory.length - index} · {call.so_name || "Admin"}</b><small>{call.remarks || "No remarks"}</small><div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap", marginTop: "0.25rem" }}>{call.call_status && <span className="admin-history-outcome" style={{ background: "#e2e8f0", color: "#1e293b" }}>{call.call_status}</span>}{call.outcome && <span className="admin-history-outcome">{call.outcome}</span>}</div></div><time>{formatCallDate(call.created_at)}</time></div>)}</div>}
         </section> : null}
-        <section className="sales-form-card admin-call-card">
-          <h3>Log follow-up F{leadDetail ? leadDetail.callHistory.length + 1 : 1}</h3>
-          <div className="admin-follow-up-grid">
-            <div style={{ gridColumn: "1 / -1" }}><h4>Call status *</h4><div className="sales-choice-row admin-outcome-row" style={{ display: "flex", gap: "0.5rem" }}><button type="button" className={callStatus === "Connected" ? "chosen" : ""} onClick={() => { setCallStatus("Connected"); setOutcome(""); }}>Connected</button><button type="button" className={callStatus === "Not Connected" ? "chosen" : ""} onClick={() => { setCallStatus("Not Connected"); setOutcome(""); }}>Not Connected</button></div></div>
-            <div style={{ gridColumn: "1 / -1" }}><h4>Outcome *</h4><div className="sales-choice-row admin-outcome-row" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>{(callStatus === "Connected" ? connectedOutcomes : notConnectedOutcomes).map(item => <button type="button" className={outcome === item ? "chosen" : ""} onClick={() => { setOutcome(item); if (!adminNeedsFollowUp(item)) setFollowUpAt(""); }} key={item}>{item}</button>)}</div></div>
-
-            <label className="sales-full-label" style={{ gridColumn: "1 / -1" }}>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Enter your call remarks…" /></label>
-            {needsAppointment && <label className="admin-follow-up-date"><span><b>Next follow-up date</b> *</span><input type="date" required min={minAdminFollowUpDate} max={maxAdminFollowUpDate} value={followUpAt} onChange={event => setFollowUpAt(event.target.value)} /></label>}
-            <div><h4>Test drive</h4><label className="admin-checkbox-card"><input type="checkbox" checked={testDrive === "Completed"} onChange={event => setTestDrive(event.target.checked ? "Completed" : "")} /> <span>Mark test drive as done</span></label></div>
-          </div>
-        </section>
       </div>
-      <footer className="sales-detail-footer"><button className="filter" onClick={() => { setActiveLead(null); setLeadDetail(null); }}>Cancel</button><button className="button primary" disabled={savingCall || (needsAppointment && !followUpAt) || !outcome} onClick={() => void saveCall()}>{savingCall ? "Saving…" : "Update Follow-up"}</button></footer>
+      <footer className="sales-detail-footer"><button className="filter" onClick={() => { setActiveLead(null); setLeadDetail(null); }}>Close</button></footer>
     </section></div>}
     {activeLead && officerMode && <div className="modal-layer" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="call-title-so"><button className="modal-close" onClick={() => setActiveLead(null)} aria-label="Close">×</button><p className="eyebrow">CALL LOG</p><h2 id="call-title-so">Update {activeLead.name}</h2><div className="lead-summary"><b>#{activeLead.id} · {activeLead.model}</b><span>{activeLead.source} lead</span><small>{activeLead.phone} · {activeLead.city || "—"}</small></div>{nextOutcomes[activeLead.status]?.length ? <><div className="form-grid"><label>Next outcome<select value={outcome} onChange={event => { setOutcome(event.target.value); if (!["CALLBACK", "WALKIN"].includes(event.target.value)) setFollowUpAt(""); }}>{nextOutcomes[activeLead.status].map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{needsAppointment && <label>{outcome === "WALKIN" ? "Walk-in appointment" : "Follow-up time"}<select required value={followUpAt} onChange={event => setFollowUpAt(event.target.value)}><option value="">Select time</option>{followUpOptions().map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></label>}</div><label>Remarks<textarea maxLength={500} value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Add a clear note from the conversation" /></label><footer><button className="filter" onClick={() => setActiveLead(null)}>Cancel</button><button className="button primary" disabled={savingCall || (needsAppointment && !followUpAt) || !outcome} onClick={() => void saveCall()}>{savingCall ? "Saving…" : "Save call log"}</button></footer></> : <p className="subtext">This lead is closed. Reopen it before recording another outcome.</p>}</section></div>}
   </section>;
