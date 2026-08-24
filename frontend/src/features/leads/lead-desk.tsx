@@ -424,8 +424,8 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
         <div className="lead-filters-grid">
           <label>Source<select value={filters.source || ""} onChange={event => setFilters(current => ({ ...current, source: event.target.value || undefined }))}><option value="">All sources</option>{sources.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>Model<select value={filters.model || ""} onChange={event => setFilters(current => ({ ...current, model: event.target.value || undefined }))} disabled={!models.length}><option value="">{models.length ? "Any model" : "Add models in Lists first"}</option>{models.map(model => <option key={model} value={model}>{model}</option>)}</select></label>
-          <label>From<input type="date" value={filters.date_from || ""} onChange={event => setFilters(current => ({ ...current, date_from: event.target.value || undefined }))} /></label>
-          <label>To<input type="date" value={filters.date_to || ""} onChange={event => setFilters(current => ({ ...current, date_to: event.target.value || undefined }))} /></label>
+          <label>From<input type="date" value={filters.date_from || ""} max={filters.date_to || undefined} onChange={event => setFilters(current => { const value = event.target.value || undefined; return { ...current, date_from: value, date_to: value && current.date_to && current.date_to < value ? value : current.date_to }; })} /></label>
+          <label>To<input type="date" value={filters.date_to || ""} min={filters.date_from || undefined} onChange={event => setFilters(current => { const value = event.target.value || undefined; return { ...current, date_to: value, date_from: value && current.date_from && current.date_from > value ? value : current.date_from }; })} /></label>
         </div>
         <footer className="lead-filters-actions">
           <span>{Object.values(activeFilters).filter(Boolean).length || searchFilter ? `Filtered ${poolLabel.toLowerCase()}` : `All ${poolLabel.toLowerCase()}`}</span>
