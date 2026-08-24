@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { assignFilteredLeads, assignFilteredPsLeads, assignLead, assignPsLead, autoAssignLeads, commitUpload, createLead, distributeFilteredLeads, getAdminAnalytics, getCres, getLeadDetail, getLeadsPage, getOfficers, getSystemConfig, getUpload, logCall, resolveUploadDuplicates, sourceClass, toLead, toOfficer, updateMyLead, type Lead, type LeadDetail, type LeadFilters, type LeadInput, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
+import { assignLead, autoAssignLeads, commitUpload, createLead, distributeFilteredLeads, getAdminAnalytics, getCres, getLeadDetail, getLeadsPage, getSystemConfig, getUpload, logCall, resolveUploadDuplicates, sourceClass, toLead, toOfficer, updateMyLead, type Lead, type LeadDetail, type LeadFilters, type LeadInput, type Officer, type UploadBatch, uploadLeads } from "@/lib/crm";
 import { formatDate, formatDateTime, parseDate, parseDateTime, toApiDate } from "@/lib/dates";
 
 function formatCallDate(value: string) {
@@ -87,17 +87,18 @@ function LeadPagination({ page, total, loading, onPageChange }: { page: number; 
 }
 
 type AdminMode = "assignment" | "all";
+type AllLeadStatusFilter = "all" | "fresh" | "qualified";
+const allLeadStatusFilters: { value: AllLeadStatusFilter; label: string; status?: string }[] = [{ value: "all", label: "All leads" }, { value: "fresh", label: "Fresh", status: "FRESH" }, { value: "qualified", label: "Qualified", status: "QUALIFIED" }];
 
 export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode = "assignment" }: { officerMode?: boolean; followUpsOnly?: boolean; adminMode?: AdminMode }) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [creUsers, setCreUsers] = useState<Officer[]>([]);
-  const [psUsers, setPsUsers] = useState<Officer[]>([]);
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState<any>(null);
-  const [assignmentView, setAssignmentView] = useState<"fresh" | "qualified" | "all">("fresh");
+  const [allLeadStatus, setAllLeadStatus] = useState<AllLeadStatusFilter>("all");
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [leadDetail, setLeadDetail] = useState<LeadDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -122,8 +123,6 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
   const [models, setModels] = useState<string[]>([]);
   const [colorVariantOptions, setColorVariantOptions] = useState<string[]>([]);
   const [activeFilters, setActiveFilters] = useState<LeadFilters>({});
-  const [bulkOfficerId, setBulkOfficerId] = useState("");
-  const [bulkAssigning, setBulkAssigning] = useState(false);
   const [manualAssigning, setManualAssigning] = useState(false);
   const [bucketOfficerIds, setBucketOfficerIds] = useState<number[]>([]);
   const [bucketAssigning, setBucketAssigning] = useState(false);
@@ -133,21 +132,24 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
   const supportLoaded = useRef(false);
   const isAdminAllLeads = !officerMode && adminMode === "all";
   const isAssignmentDesk = !officerMode && adminMode === "assignment";
-  const leadView = isAdminAllLeads ? "all" : assignmentView;
-  const assignmentUsers = leadView === "qualified" ? psUsers : creUsers;
+  const leadView = isAdminAllLeads ? "all" : "fresh";
+  const assignmentUsers = creUsers;
+  const effectiveActiveFilters = useMemo<LeadFilters>(() => {
+    const status = allLeadStatusFilters.find(item => item.value === allLeadStatus)?.status;
+    return isAdminAllLeads && status ? { ...activeFilters, status } : activeFilters;
+  }, [activeFilters, allLeadStatus, isAdminAllLeads]);
   const assignmentFilters = useMemo<LeadFilters>(() => ({ ...activeFilters, ...(searchFilter ? { q: searchFilter } : {}) }), [activeFilters, searchFilter]);
 
   const refresh = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const queryString = leadQuery(officerMode, followUpsOnly, activeFilters, page, searchFilter, leadView);
+      const queryString = leadQuery(officerMode, followUpsOnly, effectiveActiveFilters, page, searchFilter, leadView);
       if (officerMode) { const result = await getLeadsPage(queryString); setLeads(result.results); setTotalLeads(result.count); }
       else {
         if (!supportLoaded.current) {
-          const [pool, creRecords, psRecords, analyticsResult] = await Promise.all([getLeadsPage(queryString), getCres(), getOfficers(), getAdminAnalytics()]);
+          const [pool, creRecords, analyticsResult] = await Promise.all([getLeadsPage(queryString), getCres(), getAdminAnalytics()]);
           setLeads(pool.results); setTotalLeads(pool.count);
           setCreUsers(creRecords.map(officer => toOfficer(officer, analyticsResult.cre.find(item => item.id === officer.id))));
-          setPsUsers(psRecords.map(officer => toOfficer(officer, analyticsResult.officers.find(item => item.id === officer.id))));
           setAnalytics(analyticsResult);
           supportLoaded.current = true;
         } else {
@@ -157,7 +159,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
       }
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to load CRM data."); }
     finally { setLoading(false); }
-  }, [activeFilters, followUpsOnly, leadView, officerMode, page, searchFilter]);
+  }, [effectiveActiveFilters, followUpsOnly, leadView, officerMode, page, searchFilter]);
 
   useEffect(() => { const timer = window.setTimeout(() => void refresh(), 0); return () => window.clearTimeout(timer); }, [refresh]);
   useEffect(() => {
@@ -171,11 +173,6 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
   }, []);
   useEffect(() => { const timer = window.setTimeout(() => { setPage(1); setSearchFilter(query.trim()); }, 250); return () => window.clearTimeout(timer); }, [query]);
   useEffect(() => { const timer = window.setTimeout(() => { setPage(1); setActiveFilters(current => JSON.stringify(current) === JSON.stringify(filters) ? current : { ...filters }); }, 250); return () => window.clearTimeout(timer); }, [filters]);
-  useEffect(() => {
-    if (assignmentView === "fresh") return;
-    const timer = window.setTimeout(() => setBucketOfficerIds([]), 0);
-    return () => window.clearTimeout(timer);
-  }, [assignmentView]);
   useEffect(() => {
     const open = () => setAddingLead(true);
     window.addEventListener("river:add-lead", open);
@@ -199,17 +196,16 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
   }, [selectedBucketOfficers, totalLeads]);
 
   const toggleBucketOfficer = (officerId: number) => {
-    if (assignmentView !== "fresh") return;
     setBucketOfficerIds(current => current.includes(officerId) ? current.filter(id => id !== officerId) : [...current, officerId]);
   };
 
   const assign = async (lead: Lead, officerId: number) => {
     const previousLeads = leads;
     const previousUsers = assignmentUsers;
-    const setUsers = leadView === "qualified" ? setPsUsers : setCreUsers;
+    const setUsers = setCreUsers;
     setLeads(current => current.filter(item => item.id !== lead.id));
     setUsers(current => current.map(officer => officer.id === officerId ? { ...officer, assigned: officer.assigned + 1 } : officer));
-    try { await (leadView === "qualified" ? assignPsLead : assignLead)(lead.id, officerId); setNotice(`${lead.name} assigned to ${leadView === "qualified" ? "PS/SO" : "CRE"}.`); }
+    try { await assignLead(lead.id, officerId); setNotice(`${lead.name} assigned to CRE.`); }
     catch (requestError) { setLeads(previousLeads); setUsers(previousUsers); setError(requestError instanceof Error ? requestError.message : "Assignment failed."); }
     finally { setDropTargetId(null); }
   };
@@ -219,18 +215,8 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Auto-assignment failed."); }
   };
 
-  const bulkAssign = async () => {
-    const officer = assignmentUsers.find(item => item.id === Number(bulkOfficerId));
-    if (!officer || !leads.length || bulkAssigning) return;
-    if (!window.confirm(`Assign all leads matching these filters to ${officer.name}?`)) return;
-    setBulkAssigning(true); setError("");
-    try { const result = await (leadView === "qualified" ? assignFilteredPsLeads : assignFilteredLeads)(officer.id, assignmentFilters); setNotice(`${result.assigned} leads assigned to ${officer.name}.`); setBulkOfficerId(""); await refresh(); }
-    catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Bulk assignment failed."); }
-    finally { setBulkAssigning(false); }
-  };
-
   const assignBucket = async () => {
-    if (assignmentView !== "fresh" || !bucketOfficerIds.length || !totalLeads || bucketAssigning) return;
+    if (!bucketOfficerIds.length || !totalLeads || bucketAssigning) return;
     if (!window.confirm(`Assign ${totalLeads} matching fresh leads across ${bucketOfficerIds.length} CREs?`)) return;
     setBucketAssigning(true); setError("");
     try {
@@ -394,7 +380,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
       const duplicateNote = upload.removed_duplicates ? ` ${upload.removed_duplicates} duplicate ${upload.removed_duplicates === 1 ? "row was" : "rows were"} skipped.` : "";
       setUpload(null); setNotice(`${result.created} leads imported.${duplicateNote} Assign them from the pool.`);
       setLoading(true);
-      const pageResult = await getLeadsPage(leadQuery(false, false, activeFilters, page, searchFilter, leadView));
+      const pageResult = await getLeadsPage(leadQuery(false, false, effectiveActiveFilters, page, searchFilter, leadView));
       setLeads(pageResult.results); setTotalLeads(pageResult.count);
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Import failed."); }
     finally { setImportingUpload(false); setLoading(false); }
@@ -402,11 +388,11 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
   const duplicateRows = upload?.rows?.filter(row => row.duplicate_type && row.resolution === "PENDING") || [];
   const removedDuplicateRows = upload?.rows?.filter(row => row.duplicate_type && row.resolution === "SKIP") || [];
   const importableRows = upload?.rows ? upload.rows.filter(row => !row.validation_error && row.resolution !== "SKIP").length : upload?.parsed_ok;
-  const targetLabel = leadView === "qualified" ? "PS/SO" : "CRE";
-  const poolLabel = leadView === "fresh" ? "Fresh lead pool" : leadView === "qualified" ? "Qualified handoff pool" : "All leads";
+  const targetLabel = "CRE";
+  const poolLabel = isAdminAllLeads ? allLeadStatus === "fresh" ? "Fresh leads" : allLeadStatus === "qualified" ? "Qualified leads" : "All leads" : "Fresh lead pool";
   const heading = followUpsOnly ? "Follow-ups" : officerMode ? "My queue" : isAdminAllLeads ? "All leads" : "Assignment desk";
   const adminTitle = isAdminAllLeads ? <>All <span>leads.</span></> : <>Lead <span>assignment.</span></>;
-  const adminSubtext = isAdminAllLeads ? "Filter and review every lead in the CRM." : "Assign fresh and qualified leads to the right team.";
+  const adminSubtext = isAdminAllLeads ? "Filter and review every lead in the CRM." : "Assign fresh unassigned leads to CREs.";
   const adminMetrics = !officerMode && analytics?.summary ? (
     <section className="admin-leads-metrics">
       <article className="sales-metric blue">
@@ -451,7 +437,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
           <div>
             <button className="filter" onClick={() => { setFilters({}); setActiveFilters({}); setQuery(""); }}>Clear</button>
             <button className="filter" onClick={() => setActiveFilters({ ...filters })}>Apply filters</button>
-            {isAssignmentDesk && (assignmentView === "fresh" ? <section className="bucket-assignment"><p className="eyebrow">BUCKET</p><b>{bucketName}</b><span>{totalLeads} matching fresh lead{totalLeads === 1 ? "" : "s"}</span>{bucketSplit.length ? <div>{bucketSplit.map(item => <small key={item.officer.id}>{item.officer.name}: <b>{item.count}</b></small>)}</div> : <small>Select CRE cards above to split this bucket.</small>}<button className="button primary" onClick={() => void assignBucket()} disabled={!bucketOfficerIds.length || !totalLeads || bucketAssigning}>{bucketAssigning ? "Assigning…" : "Assign bucket"}</button></section> : <><select className="filter" aria-label={`Assign filtered leads to ${targetLabel}`} value={bulkOfficerId} onChange={event => setBulkOfficerId(event.target.value)}><option value="">Assign to {targetLabel}…</option>{assignmentUsers.map(officer => <option key={officer.id} value={officer.id}>{officer.name}</option>)}</select><button className="button primary" onClick={() => void bulkAssign()} disabled={!bulkOfficerId || !leads.length || bulkAssigning}>{bulkAssigning ? "Assigning…" : "Assign matching leads"}</button></>)}
+            {isAssignmentDesk && <section className="bucket-assignment"><p className="eyebrow">BUCKET</p><b>{bucketName}</b><span>{totalLeads} matching fresh lead{totalLeads === 1 ? "" : "s"}</span>{bucketSplit.length ? <div>{bucketSplit.map(item => <small key={item.officer.id}>{item.officer.name}: <b>{item.count}</b></small>)}</div> : <small>Select CRE cards above to split this bucket.</small>}<button className="button primary" onClick={() => void assignBucket()} disabled={!bucketOfficerIds.length || !totalLeads || bucketAssigning}>{bucketAssigning ? "Assigning…" : "Assign bucket"}</button></section>}
           </div>
         </footer>
       </section>
@@ -459,13 +445,8 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
   ) : null;
 
   return <section className="page">
-    {officerMode ? <div className="page-heading compact"><div><p className="eyebrow">{heading.toUpperCase()}</p><h1>Keep the <span>promise.</span></h1><p className="subtext">Your assigned conversations and follow-ups.</p></div></div> : <div className="admin-leads-heading"><div className="admin-heading-main"><p className="eyebrow">{heading.toUpperCase()}</p><h1>{adminTitle}</h1><p className="subtext">{adminSubtext}</p></div>{adminMetrics}<div className="admin-heading-actions">{isAssignmentDesk && assignmentView === "fresh" && <button className="button primary" onClick={autoAssign} disabled={!leads.length}>↻ Auto assign {leads.length} leads</button>}</div></div>}
-    {isAssignmentDesk && (
-      <div className="admin-lead-tabs">
-        <button className={assignmentView === "fresh" ? "active" : ""} onClick={() => { setAssignmentView("fresh"); setPage(1); }}>Fresh unassigned</button>
-        <button className={assignmentView === "qualified" ? "active" : ""} onClick={() => { setAssignmentView("qualified"); setPage(1); }}>Qualified unassigned</button>
-      </div>
-    )}
+    {officerMode ? <div className="page-heading compact"><div><p className="eyebrow">{heading.toUpperCase()}</p><h1>Keep the <span>promise.</span></h1><p className="subtext">Your assigned conversations and follow-ups.</p></div></div> : <div className="admin-leads-heading"><div className="admin-heading-main"><p className="eyebrow">{heading.toUpperCase()}</p><h1>{adminTitle}</h1><p className="subtext">{adminSubtext}</p></div>{adminMetrics}<div className="admin-heading-actions">{isAssignmentDesk && <button className="button primary" onClick={autoAssign} disabled={!leads.length}>↻ Auto assign {leads.length} leads</button>}</div></div>}
+    {isAdminAllLeads && <div className="admin-lead-tabs">{allLeadStatusFilters.map(item => <button key={item.value} className={allLeadStatus === item.value ? "active" : ""} onClick={() => { setAllLeadStatus(item.value); setPage(1); }}>{item.label}</button>)}</div>}
     {adminFilterBand}
     {officerMode && <section className="lead-toolbar"><label className="search" style={{ flex: 1 }}><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search by name or mobile..." /></label><button className="button primary" onClick={() => { setError(""); setAddingLead(true); }}>＋ Add lead</button></section>}
     {upload && (
@@ -489,7 +470,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
       </section>
     )}
     {error && <div className="empty-state">{error}</div>}
-    {isAssignmentDesk && <aside className="officer-rail officer-grid"><header><p className="eyebrow">ACTIVE {targetLabel}</p><span>{assignmentView === "fresh" ? "Select CREs for bucket assignment" : `Choose a ${targetLabel} for filtered assignment`}</span></header>{assignmentUsers.map(officer => <div className={`officer-card ${draggedOfficerId === officer.id ? "dragging" : ""} ${assignmentView === "fresh" && bucketOfficerIds.includes(officer.id) ? "selected" : ""}`} key={officer.id} draggable onClick={() => toggleBucketOfficer(officer.id)} onDragStart={event => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/river-officer", String(officer.id)); setDraggedOfficerId(officer.id); }} onDragEnd={() => { setDraggedOfficerId(null); setDropTargetId(null); }}><span className={`avatar ${officer.color}`}>{officer.initials}</span><span><b>{officer.name}</b><small>{targetLabel}</small></span><span className="officer-load"><small>LEAD LOAD</small><b>{officer.assigned}</b><small>CALLS TODAY</small><b>{officer.calls}</b></span></div>)}</aside>}
+    {isAssignmentDesk && <aside className="officer-rail officer-grid"><header><p className="eyebrow">ACTIVE {targetLabel}</p><span>Select CREs for bucket assignment</span></header>{assignmentUsers.map(officer => <div className={`officer-card ${draggedOfficerId === officer.id ? "dragging" : ""} ${bucketOfficerIds.includes(officer.id) ? "selected" : ""}`} key={officer.id} draggable onClick={() => toggleBucketOfficer(officer.id)} onDragStart={event => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/river-officer", String(officer.id)); setDraggedOfficerId(officer.id); }} onDragEnd={() => { setDraggedOfficerId(null); setDropTargetId(null); }}><span className={`avatar ${officer.color}`}>{officer.initials}</span><span><b>{officer.name}</b><small>{targetLabel}</small></span><span className="officer-load"><small>LEAD LOAD</small><b>{officer.assigned}</b><small>CALLS TODAY</small><b>{officer.calls}</b></span></div>)}</aside>}
     {(officerMode || isAdminAllLeads) && <section className={officerMode ? "lead-layout one-column" : "lead-layout admin-lead-layout"}>
       <article className={officerMode ? "panel lead-pool" : "panel lead-pool admin-lead-pool"}><header className="panel-heading"><div><p className="eyebrow">{officerMode ? "ACTIVE LEADS" : poolLabel.toUpperCase()}</p><h2>{loading ? "Loading leads…" : `${leads.length} leads in pool`}</h2></div></header><div className="lead-list">{!loading && visible.length ? visible.map(lead => <div className={`lead-row ${dropTargetId === lead.id ? "drop-target" : ""}`} key={lead.id} onDragOver={event => { if (isAssignmentDesk) { event.preventDefault(); setDropTargetId(lead.id); } }} onDragLeave={() => setDropTargetId(null)} onDrop={event => { event.preventDefault(); const officerId = Number(event.dataTransfer.getData("application/river-officer")) || draggedOfficerId; if (officerId) void assign(lead, officerId); setDraggedOfficerId(null); }}>{isAssignmentDesk && <span className="drag-slot">↓</span>}<div><b>{lead.name}</b><small>{lead.phone} · #{lead.id}</small></div><span className={`badge ${sourceClass(lead.source)}`}>{lead.source}</span><span className="model">{lead.model}</span><span className={`status ${lead.status.toLowerCase().replaceAll(" ", "-")}`}>{lead.status}</span>{isAssignmentDesk && <select className="mobile-assign" aria-label={`Assign ${lead.name} to ${targetLabel}`} value="" onChange={event => { const officerId = Number(event.target.value); if (officerId) void assign(lead, officerId); }}><option value="">Assign to {targetLabel}…</option>{assignmentUsers.map(officer => <option key={officer.id} value={officer.id}>{officer.name}</option>)}</select>}<button className="row-action" onClick={() => openLead(lead)}>{officerMode ? "Log call →" : "Open →"}</button></div>) : !loading && <div className="empty-state">No leads match this view.</div>}</div></article>
     </section>}
@@ -527,7 +508,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
                 <span><small>Color variant</small><b>{leadDetail?.qualification?.variant || "—"}</b></span>
                 <span><small>Buying plan</small><b>{leadDetail?.qualification?.buying_timeline || "—"}</b></span>
                 <span><small>Finance</small><b>{leadDetail?.qualification?.finance_type || "—"}</b></span>
-                {isAdminAllLeads && <label className="admin-manual-assign">Manual CRE assignment<select value={activeLead.assignedSoId || ""} disabled={manualAssigning || Boolean(activeLead.assignedSoId)} onChange={event => { const officerId = Number(event.target.value); if (officerId) void manualAssignCre(officerId); }}><option value="">{manualAssigning ? "Assigning…" : activeLead.assignedSoId ? activeLead.assignedSoName || "Assigned" : "Assign to CRE…"}</option>{creUsers.map(officer => <option key={officer.id} value={officer.id}>{officer.name}</option>)}</select></label>}
+                {isAdminAllLeads && (activeLead.assignedSoId ? <div className="admin-manual-assign"><span>Manual CRE assignment</span><b>Lead has already been assigned to {activeLead.assignedSoName || "CRE"}</b></div> : <label className="admin-manual-assign">Manual CRE assignment<select value="" disabled={manualAssigning} onChange={event => { const officerId = Number(event.target.value); if (officerId) void manualAssignCre(officerId); }}><option value="">{manualAssigning ? "Assigning…" : "Assign to CRE…"}</option>{creUsers.map(officer => <option key={officer.id} value={officer.id}>{officer.name}</option>)}</select></label>)}
               </div>
               <div className="sales-detail-meta"><span>Trade-in <b>{leadDetail?.qualification?.trade_in === true ? "Yes" : leadDetail?.qualification?.trade_in === false ? "No" : "—"}</b></span><span>Category <b className={`category-pill ${activeLead.category?.toLowerCase() || "warm"}`}>{activeLead.category || "WARM"}</b></span></div>
             </>

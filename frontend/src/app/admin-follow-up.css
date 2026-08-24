@@ -95,6 +95,13 @@
   text-transform: none;
 }
 
+.admin-manual-assign b {
+  color: #17233b;
+  font-size: 12px;
+  line-height: 1.35;
+  text-transform: none;
+}
+
 .admin-follow-up-modal .sales-detail-meta {
   margin-top: 18px;
   padding-top: 14px;

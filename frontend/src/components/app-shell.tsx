@@ -76,7 +76,7 @@ export function AppShell({ children, role }: AppShellProps) {
 
   if (sessionConflict) {
     const actualRole = sessionConflict.role === "ADMIN" ? "Admin" : sessionConflict.role === "RECEPTIONIST" ? "Receptionist" : sessionConflict.role === "CRE" ? "CRE" : sessionConflict.role === "COMPLAINTS" ? "Complaints department" : "PS/SO";
-    const actualHome = sessionConflict.role === "ADMIN" ? "/dashboard" : sessionConflict.role === "RECEPTIONIST" ? "/capture" : sessionConflict.role === "COMPLAINTS" ? "/complaints" : "/my-leads";
+    const actualHome = sessionConflict.role === "ADMIN" ? "/leads" : sessionConflict.role === "RECEPTIONIST" ? "/capture" : sessionConflict.role === "COMPLAINTS" ? "/complaints" : "/my-leads";
     const actualName = `${sessionConflict.first_name} ${sessionConflict.last_name}`.trim() || sessionConflict.email;
     return (
       <main className="page" style={{ maxWidth: "32rem", margin: "6rem auto", textAlign: "center" }}>
@@ -96,7 +96,7 @@ export function AppShell({ children, role }: AppShellProps) {
     );
   }
 
-  const homeHref = role === "Admin" ? "/dashboard" : role === "Receptionist" ? "/capture" : user?.role === "COMPLAINTS" ? "/complaints" : "/my-leads";
+  const homeHref = role === "Admin" ? "/leads" : role === "Receptionist" ? "/capture" : user?.role === "COMPLAINTS" ? "/complaints" : "/my-leads";
 
   return <div className={`app-shell ${role === "Sales officer" ? "sales-shell" : ""} ${shellRoleClass}`}>
     <aside className="sidebar">
