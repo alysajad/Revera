@@ -92,6 +92,22 @@ input[type="radio"] {
   outline: 0;
 }
 
+.sales-shell .user-card button,
+.sales-shell.ps-shell .user-card button {
+  background: var(--sales-primary);
+  border-color: var(--sales-primary);
+  color: #fff;
+}
+
+.sales-shell .user-card button:hover,
+.sales-shell .user-card button:focus-visible,
+.sales-shell.ps-shell .user-card button:hover,
+.sales-shell.ps-shell .user-card button:focus-visible {
+  background: var(--sales-primary-container);
+  border-color: var(--sales-primary-container);
+  color: #fff;
+}
+
 .mobile-assign {
   display: none;
 }
