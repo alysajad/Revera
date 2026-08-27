@@ -292,7 +292,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
 
     setSaving(true); setError("");
     try {
-      const notes = ["Qualified lead", draft.profession && `Profession: ${draft.profession}`, draft.city && `Preferred branch: ${draft.city}`, draft.trade_in_note && `Trade in: ${draft.trade_in_note}`, draft.qualification.notes.trim()].filter(Boolean).join("\n");
+      const notes = draft.qualification.notes.trim();
       const pendingOutcome = !isPs && draft.call_outcome === "PENDING" ? pendingOutcomeFor(draft.pending_reason) : null;
       await updateMyLead(detail.id, {
         call_outcome: pendingOutcome?.call_outcome || draft.call_outcome,
