@@ -369,6 +369,14 @@ class LeadAccessTests(TestCase):
         self.client.force_authenticate(self.ps_so)
         future = timezone.now() + timedelta(days=1)
 
+        invalid_callback = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {
+            "call_status": "Not Connected",
+            "call_outcome": "Call Me Back",
+            "status": Lead.Status.CALLBACK,
+            "remarks": "Customer cannot ask for a callback on an unconnected call.",
+            "follow_up_at": future.isoformat(),
+        }, format="json")
+
         response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {
             "call_status": "Connected",
             "call_outcome": "Need Test Drive",
@@ -378,6 +386,7 @@ class LeadAccessTests(TestCase):
             "follow_up_at": future.isoformat(),
         }, format="json")
 
+        self.assertEqual(invalid_callback.status_code, 400)
         self.assertEqual(response.status_code, 200)
         self.first_lead.refresh_from_db()
         self.assertEqual(self.first_lead.status, Lead.Status.PENDING)

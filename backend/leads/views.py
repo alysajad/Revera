@@ -189,6 +189,8 @@ class LeadViewSet(viewsets.ModelViewSet):
                 return Response({"detail": "Choose a lead status that matches the call outcome."}, status=status.HTTP_400_BAD_REQUEST)
         else:
             next_status = call_status.get(call_outcome) if call_outcome else data.get("status") or sales_status.get(data.get("sales_outcome"), lead.status)
+        if request.user.role == User.Role.SALES_OFFICER and data.get("call_status") == "Not Connected" and call_outcome == "Call Me Back":
+            return Response({"detail": "Call Me Back requires a connected call."}, status=status.HTTP_400_BAD_REQUEST)
         if call_outcome == "PENDING" and not data.get("follow_up_at"):
             return Response({"detail": "Pending calls require a follow-up time."}, status=status.HTTP_400_BAD_REQUEST)
         follow_up_statuses = {Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.WALKIN}

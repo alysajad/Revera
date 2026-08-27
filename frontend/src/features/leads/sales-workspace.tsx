@@ -20,6 +20,7 @@ const soConnectedOutcomes = [
   { label: "Exchange Issue", tone: "blue", status: "PENDING" },
   { label: "Booking Done", tone: "green", status: "WALKIN" },
   { label: "Retail Done", tone: "green", status: "WON" },
+  { label: "Call Me Back", tone: "blue", status: "CALLBACK" },
   { label: "Need time", tone: "blue", status: "PENDING" },
   { label: "Need SO Call", tone: "blue", status: "PENDING" },
   { label: "Need More Details", tone: "blue", status: "PENDING" },
@@ -34,7 +35,6 @@ const soConnectedOutcomes = [
 const soNotConnectedOutcomes = [
   { label: "RNR", tone: "blue", status: "RNR" },
   { label: "Switch Off", tone: "blue", status: "SWITCHED_OFF" },
-  { label: "Call Me Back", tone: "blue", status: "CALLBACK" },
   { label: "Call Forwarding", tone: "blue", status: "PENDING" },
   { label: "Line Busy", tone: "blue", status: "PENDING" },
   { label: "Invalid Number", tone: "blue", status: "PENDING" }
