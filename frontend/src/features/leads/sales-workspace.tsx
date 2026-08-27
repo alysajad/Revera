@@ -106,6 +106,12 @@ const followUpIso = (value: string) => {
   return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T23:59:00`).toISOString() : null;
 };
 
+const creNoteText = (notes = "") => notes
+  .split(/\r?\n/)
+  .map(line => line.trim())
+  .filter(line => line && line !== "Qualified lead" && !/^(Profession|Preferred branch|Trade in):/i.test(line))
+  .join("\n");
+
 const pendingOutcomeFor = (reason: string) => {
   if (reason === "Call me back") return { call_outcome: "Call Me Back", status: "PENDING" };
   if (reason === "RNR") return { call_outcome: "RNR", status: "PENDING" };
@@ -120,6 +126,7 @@ function progressState(callCount: number, index: number) {
 
 function draftFor(lead: LeadDetail): Draft {
   const { updated_at: _updatedAt, ...qualification } = lead.qualification || emptyQualification();
+  qualification.notes = creNoteText(qualification.notes);
   const latestOutcome = lead.callHistory[0]?.outcome;
   const call_outcome = ["PENDING", "QUALIFIED", "LOST"].includes(latestOutcome || "") ? latestOutcome : lead.statusCode === "PENDING" ? "PENDING" : lead.statusCode === "QUALIFIED" ? "QUALIFIED" : lead.statusCode === "LOST" ? "LOST" : "";
   return { status: lead.statusCode, category: lead.category || "WARM", sales_outcome: lead.salesOutcome || "PENDING", call_outcome, call_status: "", remarks: "", follow_up_at: "", model_interest: lead.model === "—" ? "" : lead.model, city: lead.city, profession: "", custom_location: "", ps_officer_id: lead.assignedPsId ? String(lead.assignedPsId) : "", lost_reason: "", pending_reason: "", trade_in_note: "", qualification };
@@ -405,7 +412,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
         {error && <p className="form-error" role="alert">{error}</p>}
 
         <section className="sales-info-card"><h3>Customer information <button type="button" className="row-action" onClick={() => { setLeadFields(leadFieldsFor(detail)); setEditingLead(true); }}>Edit fields</button></h3><div className="sales-info-grid"><span><small>Name</small><b>{detail.name}</b></span><span><small>Phone</small><b>{detail.phone}</b></span><span><small>Email</small><b>{detail.email || "—"}</b></span><span><small>Source</small><b>{detail.source}</b></span><span><small>Source detail</small><b>{detail.sourceLabel || "—"}</b></span><span><small>Model</small><b>{detail.model}</b></span><span><small>City</small><b>{detail.city || "—"}</b></span><span><small>Enquiry date</small><b>{detail.enquiredAt}</b></span><span><small>Campaign</small><b>{detail.campaign || "—"}</b></span><span><small>Branch</small><b>{detail.branch || "—"}</b></span></div><div className="sales-detail-meta"><span>Category <b className={`category-pill ${draft.category.toLowerCase()}`}>{draft.category}</b></span><span>Calls <b>{detail.callCount}</b></span></div></section>
-        {detail.qualification && <section className="sales-info-card"><h3>CRE qualification</h3><div className="sales-info-grid"><span><small>Color variant</small><b>{detail.qualification.variant || "—"}</b></span><span><small>Buying plan</small><b>{detail.qualification.buying_timeline || "—"}</b></span><span><small>Finance</small><b>{detail.qualification.finance_type || "—"}</b></span><span><small>Test drive</small><b>{detail.qualification.test_drive || "—"}</b></span><span><small>Trade-in</small><b>{detail.qualification.trade_in === true ? "Yes" : detail.qualification.trade_in === false ? "No" : "—"}</b></span><span><small>Notes</small><b>{detail.qualification.notes || "—"}</b></span></div></section>}
+        {detail.qualification && <section className="sales-info-card"><h3>CRE qualification</h3><div className="sales-info-grid"><span><small>Color variant</small><b>{detail.qualification.variant || "—"}</b></span><span><small>Buying plan</small><b>{detail.qualification.buying_timeline || "—"}</b></span><span><small>Finance</small><b>{detail.qualification.finance_type || "—"}</b></span><span><small>Test drive</small><b>{detail.qualification.test_drive || "—"}</b></span><span><small>Trade-in</small><b>{detail.qualification.trade_in === true ? "Yes" : detail.qualification.trade_in === false ? "No" : "—"}</b></span><span><small>Notes</small><b style={{ whiteSpace: "pre-line" }}>{creNoteText(detail.qualification.notes) || "—"}</b></span></div></section>}
         <section className="sales-form-card sales-outcome-card"><h3>Lead Status Update</h3><div className="sales-stepper">{["F1", "F2", "F3", "F4", "F5"].map((step, index) => <span className={progressState(detail.callCount, index)} key={step}>{index < Math.min(detail.callCount, 4) ? "✓" : index === Math.min(detail.callCount, 4) ? "○" : "▣"} {step}</span>)}</div>
           {isPs ? (
              <div style={{ marginTop: "1rem" }}>
