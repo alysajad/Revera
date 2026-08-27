@@ -359,16 +359,6 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   const chooseQualification = (field: keyof LeadQualification, value: string | boolean | null) => setDraft(current => current ? { ...current, qualification: { ...current.qualification, [field]: value } } : current);
   const submitLabel = draft?.call_outcome === "QUALIFIED" ? "Qualify Lead" : draft?.call_outcome === "LOST" ? "Mark as Lost" : draft?.call_outcome === "PENDING" ? "Mark as Pending" : draft?.call_outcome === "BOOKED" ? "Book Follow-up" : draft?.call_outcome === "RETAILED" ? "Mark Retailed" : "Save follow-up";
   const visibleSections = isPs ? sections.filter(item => !["all", "fresh", "pending"].includes(item.key)) : sections;
-  const toggleFlag = async (lead: SalesLead) => {
-    try {
-      await updateMyLead(lead.id, { flagged_to_manager: !lead.flagged_to_manager });
-      setDashboard(current => current ? { ...current, results: current.results.map(l => l.id === lead.id ? { ...l, flagged_to_manager: !l.flagged_to_manager } : l) } : current);
-      setNotice(`Lead ${lead.flagged_to_manager ? "unflagged" : "flagged"} successfully.`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to flag lead.");
-    }
-  };
-
   const metrics = isPs
     ? [{label: followUpsOnly ? "TODAY'S FOLLOW-UPS" : "FRESH LEADS", value: followUpsOnly ? summary?.followups ?? 0 : summary?.fresh ?? 0, tone:"blue"}, {label:"BOOKED", value:summary?.walkin ?? 0, tone:"green"}, {label:"RETAILED", value:summary?.won ?? 0, tone:"green"}, {label:"LOST", value:summary?.lost ?? 0, tone:"red"}]
     : [{label:"Fresh leads", value:summary?.fresh ?? 0, tone:"blue"}, {label:"Today's follow-ups", value:summary?.followups ?? 0, tone:"yellow"}, {label:"Pending leads", value:summary?.pending ?? 0, tone:"orange"}, {label:"Qualified leads", value:summary?.qualified ?? 0, tone:"green"}, {label:"Won leads", value:summary?.won ?? 0, tone:"mint"}, {label:"Lost leads", value:summary?.lost ?? 0, tone:"red"}];
@@ -394,11 +384,6 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
                    <span style={{ color: "var(--text-light)", fontSize: "0.85rem" }}>{lead.source} · {lead.status}</span>
                  </div>
                  <span className={`sales-status ${displayStatusClass(lead)}`}>{displayStatus(lead)}</span>
-               </div>
-               <div style={{ alignSelf: "flex-start", marginTop: "0.25rem" }}>
-                 <button onClick={(e) => { e.stopPropagation(); void toggleFlag(lead); }} style={{ background: "transparent", border: "1px solid var(--orange)", color: "var(--orange)", padding: "0.35rem 0.75rem", borderRadius: "20px", fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.25rem", fontWeight: 600 }}>
-                   {lead.flagged_to_manager ? "⚑ Flagged to SM/TL" : "⚐ Flag to SM/TL"}
-                 </button>
                </div>
             </div>
           )) : <div className="sales-empty"><strong>No leads in this view.</strong><span>New assignments and follow-ups will appear here automatically.</span></div>}
