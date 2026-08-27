@@ -187,11 +187,16 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   }, [followUpsOnly]);
 
   useEffect(() => {
-    if (newLead.branch) {
-      void getOfficers(newLead.branch).then(records => setAddLeadPsOptions(records.map(r => toOfficer(r))));
-    } else {
-      setAddLeadPsOptions([]);
-    }
+    let cancelled = false;
+    void (async () => {
+      if (!newLead.branch) {
+        if (!cancelled) setAddLeadPsOptions([]);
+        return;
+      }
+      const records = await getOfficers(newLead.branch);
+      if (!cancelled) setAddLeadPsOptions(records.map(r => toOfficer(r)));
+    })();
+    return () => { cancelled = true; };
   }, [newLead.branch]);
 
   const loadDashboard = useCallback(async () => {
@@ -205,17 +210,23 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   useEffect(() => { if (!authChecked || !user) return; const timer = window.setTimeout(() => void loadDashboard(), query ? 250 : 0); return () => window.clearTimeout(timer); }, [authChecked, loadDashboard, query, user]);
 
   useEffect(() => {
-    if (isPs || draft?.call_outcome !== "QUALIFIED" || !selectedLocation) { setPsOptions([]); return; }
     let cancelled = false;
-    setPsOptions([]);
-    setPsLoading(true);
-    void getOfficers(selectedLocation).then(records => {
-      if (!cancelled) setPsOptions(records.map(record => toOfficer(record)));
-    }).catch(() => {
-      if (!cancelled) setPsOptions([]);
-    }).finally(() => {
-      if (!cancelled) setPsLoading(false);
-    });
+    void (async () => {
+      if (isPs || draft?.call_outcome !== "QUALIFIED" || !selectedLocation) {
+        if (!cancelled) setPsOptions([]);
+        return;
+      }
+      setPsOptions([]);
+      setPsLoading(true);
+      try {
+        const records = await getOfficers(selectedLocation);
+        if (!cancelled) setPsOptions(records.map(record => toOfficer(record)));
+      } catch {
+        if (!cancelled) setPsOptions([]);
+      } finally {
+        if (!cancelled) setPsLoading(false);
+      }
+    })();
     return () => { cancelled = true; };
   }, [draft?.call_outcome, isPs, selectedLocation]);
 
@@ -225,6 +236,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
       const fullLead = await getLeadDetail(lead.id);
       const nextDraft = draftFor(fullLead);
       if (isPs) nextDraft.call_outcome = fullLead.statusCode === "WALKIN" ? "BOOKED" : fullLead.statusCode === "WON" ? "RETAILED" : fullLead.statusCode === "LOST" ? "LOST" : "";
+      else if (fullLead.statusCode === "QUALIFIED") nextDraft.call_outcome = "";
       setDetail(fullLead); setDraft(nextDraft); setLeadFields(leadFieldsFor(fullLead)); setEditingLead(false);
     }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to open this lead."); }
@@ -348,7 +360,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   };
 
   const metrics = isPs
-    ? [{label: followUpsOnly ? "OPEN FOLLOW-UPS" : "FRESH LEADS", value: followUpsOnly ? summary?.followups ?? 0 : summary?.fresh ?? 0, tone:"blue"}, {label:"BOOKED", value:summary?.walkin ?? 0, tone:"green"}, {label:"RETAILED", value:summary?.won ?? 0, tone:"green"}, {label:"LOST", value:summary?.lost ?? 0, tone:"red"}]
+    ? [{label: followUpsOnly ? "TODAY'S FOLLOW-UPS" : "FRESH LEADS", value: followUpsOnly ? summary?.followups ?? 0 : summary?.fresh ?? 0, tone:"blue"}, {label:"BOOKED", value:summary?.walkin ?? 0, tone:"green"}, {label:"RETAILED", value:summary?.won ?? 0, tone:"green"}, {label:"LOST", value:summary?.lost ?? 0, tone:"red"}]
     : [{label:"Fresh leads", value:summary?.fresh ?? 0, tone:"blue"}, {label:"Today's follow-ups", value:summary?.followups ?? 0, tone:"yellow"}, {label:"Pending leads", value:summary?.pending ?? 0, tone:"orange"}, {label:"Qualified leads", value:summary?.qualified ?? 0, tone:"green"}, {label:"Won leads", value:summary?.won ?? 0, tone:"mint"}, {label:"Lost leads", value:summary?.lost ?? 0, tone:"red"}];
   const displayStatus = (lead: SalesLead) => !isPs && ["RNR", "SWITCHED_OFF", "CALLBACK"].includes(lead.statusCode) ? "Pending" : lead.status;
   const displayStatusClass = (lead: SalesLead) => !isPs && ["RNR", "SWITCHED_OFF", "CALLBACK"].includes(lead.statusCode) ? "pending" : lead.statusCode.toLowerCase();

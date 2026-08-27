@@ -199,8 +199,9 @@ class LeadAccessTests(TestCase):
         self.assertTrue(FollowUp.objects.filter(lead=self.first_lead, so=self.first_so, scheduled_for=future, resolved_at__isnull=True).exists())
 
     def test_fresh_dashboard_subfilters_return_matching_rows(self):
-        called = Lead.objects.create(name="Called", phone="7305198422", assigned_so=self.first_so, status=Lead.Status.QUALIFIED)
+        called = Lead.objects.create(name="Called", phone="7305198422", assigned_so=self.first_so, status=Lead.Status.RNR)
         scheduled = Lead.objects.create(name="Scheduled", phone="7305198423", assigned_so=self.first_so, status=Lead.Status.PENDING)
+        qualified = Lead.objects.create(name="Qualified", phone="7305198424", assigned_so=self.first_so, status=Lead.Status.QUALIFIED)
         FollowUp.objects.create(lead=scheduled, so=self.first_so, scheduled_for=timezone.now() + timedelta(days=1))
         self.client.force_authenticate(self.first_so)
 
@@ -208,7 +209,8 @@ class LeadAccessTests(TestCase):
         self.assertEqual([lead["id"] for lead in response.data["results"]], [self.first_lead.id])
 
         response = self.client.get("/api/leads/my-dashboard/?section=fresh&subfilter=called")
-        self.assertEqual({lead["id"] for lead in response.data["results"]}, {called.id, scheduled.id})
+        self.assertEqual([lead["id"] for lead in response.data["results"]], [called.id])
+        self.assertNotIn(qualified.id, [lead["id"] for lead in response.data["results"]])
 
         response = self.client.get("/api/leads/my-dashboard/?section=fresh&subfilter=scheduled")
         self.assertEqual([lead["id"] for lead in response.data["results"]], [scheduled.id])
@@ -224,6 +226,10 @@ class LeadAccessTests(TestCase):
         self.assertEqual(CallLog.objects.get(lead=self.first_lead).outcome, "QUALIFIED")
         self.assertFalse(FollowUp.objects.filter(lead=self.first_lead, resolved_at__isnull=True).exists())
         self.assertEqual(LeadQualification.objects.get(lead=self.first_lead).variant, "R8 Pro")
+
+        duplicate = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "QUALIFIED", "status": Lead.Status.QUALIFIED, "city": "Kochi", "ps_officer_id": self.ps_so.id, "qualification": {"variant": "R8 Pro"}}, format="json")
+        self.assertEqual(duplicate.status_code, 400)
+        self.assertEqual(CallLog.objects.filter(lead=self.first_lead).count(), 1)
 
     def test_cre_sees_ps_options_for_customer_location(self):
         other_ps = User.objects.create_user(email="north@example.com", password="password-12345", role=User.Role.SALES_OFFICER, location="Kannur")
@@ -284,9 +290,13 @@ class LeadAccessTests(TestCase):
         switched_off = Lead.objects.create(name="Switch Lead", phone="7305198425", assigned_so=self.first_so)
         generic = Lead.objects.create(name="Generic Pending", phone="7305198426", assigned_so=self.first_so)
         tomorrow_callback = Lead.objects.create(name="Tomorrow Callback", phone="7305198428", assigned_so=self.first_so)
+        overdue_callback = Lead.objects.create(name="Overdue Callback", phone="7305198429", assigned_so=self.first_so, status=Lead.Status.PENDING)
         fixed_now = timezone.now().replace(hour=10, minute=0, second=0, microsecond=0)
         same_day_eod = fixed_now.replace(hour=23, minute=59)
         tomorrow = fixed_now + timedelta(days=1)
+        yesterday = fixed_now - timedelta(days=1)
+        FollowUp.objects.create(lead=overdue_callback, so=self.first_so, scheduled_for=yesterday)
+        CallLog.objects.create(lead=overdue_callback, so=self.first_so, status=Lead.Status.PENDING, outcome="Call Me Back")
         self.client.force_authenticate(self.first_so)
 
         with patch("django.utils.timezone.now", return_value=fixed_now):
@@ -315,10 +325,27 @@ class LeadAccessTests(TestCase):
         follow_ups = self.client.get("/api/leads/my-dashboard/?section=followups")
         pending = self.client.get("/api/leads/my-dashboard/?section=pending")
 
-        self.assertEqual(follow_ups.data["summary"]["followups"], 1)
+        self.assertEqual(follow_ups.data["summary"]["followups"], 2)
         self.assertEqual(follow_ups.data["summary"]["pending"], 4)
-        self.assertEqual({lead["id"] for lead in follow_ups.data["results"]}, {self.first_lead.id})
+        self.assertEqual({lead["id"] for lead in follow_ups.data["results"]}, {self.first_lead.id, overdue_callback.id})
         self.assertEqual({lead["id"] for lead in pending.data["results"]}, {rnr.id, switched_off.id, generic.id, tomorrow_callback.id})
+
+    def test_ps_followups_include_due_open_items_only(self):
+        yesterday = Lead.objects.create(name="Yesterday PS", phone="7305198430", assigned_ps=self.ps_so, status=Lead.Status.PENDING)
+        today = Lead.objects.create(name="Today PS", phone="7305198431", assigned_ps=self.ps_so, status=Lead.Status.PENDING)
+        tomorrow = Lead.objects.create(name="Tomorrow PS", phone="7305198432", assigned_ps=self.ps_so, status=Lead.Status.PENDING)
+        resolved = Lead.objects.create(name="Resolved PS", phone="7305198433", assigned_ps=self.ps_so, status=Lead.Status.PENDING)
+        now = timezone.now()
+        FollowUp.objects.create(lead=yesterday, so=self.ps_so, scheduled_for=now - timedelta(days=1))
+        FollowUp.objects.create(lead=today, so=self.ps_so, scheduled_for=now)
+        FollowUp.objects.create(lead=tomorrow, so=self.ps_so, scheduled_for=now + timedelta(days=1))
+        FollowUp.objects.create(lead=resolved, so=self.ps_so, scheduled_for=now, resolved_at=now)
+        self.client.force_authenticate(self.ps_so)
+
+        response = self.client.get("/api/leads/my-dashboard/?section=followups")
+
+        self.assertEqual(response.data["summary"]["followups"], 2)
+        self.assertEqual({lead["id"] for lead in response.data["results"]}, {yesterday.id, today.id})
 
     def test_so_update_accepts_same_day_future_follow_up_and_rejects_past(self):
         past_lead = Lead.objects.create(name="Past Follow Up", phone="7305198427", assigned_so=self.first_so)
