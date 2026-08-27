@@ -53,6 +53,45 @@ input[type="radio"] {
   display: none;
 }
 
+.user-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 10px;
+  padding-inline: 5px;
+}
+
+.user-card p {
+  min-width: 0;
+}
+
+.user-card p b,
+.user-card p small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-card button {
+  grid-column: 2;
+  width: 100%;
+  min-height: 34px;
+  margin-left: 0;
+  border: 1px solid #3f4249;
+  border-radius: 7px;
+  background: #282a2f;
+  color: #fff;
+  cursor: pointer;
+  text-align: center;
+}
+
+.user-card button:hover,
+.user-card button:focus-visible {
+  border-color: var(--orange);
+  color: #fff;
+  outline: 0;
+}
+
 .mobile-assign {
   display: none;
 }

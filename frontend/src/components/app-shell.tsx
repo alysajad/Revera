@@ -3,10 +3,16 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { getCurrentUser, logout, type CurrentUser } from "@/lib/crm";
+import { cacheCurrentUser, clearCachedCurrentUser, getCachedCurrentUser, getCurrentUser, logout, type CurrentUser } from "@/lib/crm";
 import { formatDate } from "@/lib/dates";
 
 type AppShellProps = { children: ReactNode; role: "Admin" | "Sales officer" | "Receptionist" };
+
+function roleType(user: CurrentUser) {
+  if (user.role === "ADMIN") return "Admin";
+  if (user.role === "RECEPTIONIST") return "Receptionist";
+  return "Sales officer";
+}
 
 const adminLinks = [
   ["/analytics", "Analytics", "◱"],
@@ -38,12 +44,15 @@ const receptionistLinks = [
 export function AppShell({ children, role }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [user, setUser] = useState<CurrentUser | null>(null);
-  const [checkingAccess, setCheckingAccess] = useState(true);
+  const cachedUser = getCachedCurrentUser();
+  const cachedUserMatches = cachedUser && roleType(cachedUser) === role;
+  const [user, setUser] = useState<CurrentUser | null>(cachedUserMatches ? cachedUser : null);
+  const [checkingAccess, setCheckingAccess] = useState(!cachedUserMatches);
   const [sessionConflict, setSessionConflict] = useState<CurrentUser | null>(null);
   useEffect(() => {
     void getCurrentUser().then(result => {
       const actual = result.user;
+      cacheCurrentUser(actual);
       if (role === "Sales officer" && actual.role === "SO" && pathname === "/complaints") {
         router.replace("/my-leads");
         return;
@@ -52,15 +61,12 @@ export function AppShell({ children, role }: AppShellProps) {
         router.replace("/complaints");
         return;
       }
-      let actualRoleType = "Sales officer";
-      if (actual.role === "ADMIN") actualRoleType = "Admin";
-      if (actual.role === "RECEPTIONIST") actualRoleType = "Receptionist";
-      if (role !== actualRoleType) {
+      if (role !== roleType(actual)) {
         setSessionConflict(actual);
       } else {
         setUser(actual);
       }
-    }).catch(() => router.replace("/")).finally(() => setCheckingAccess(false));
+    }).catch(() => { clearCachedCurrentUser(); router.replace("/"); }).finally(() => setCheckingAccess(false));
   }, [pathname, role, router]);
   const displayName = user ? `${user.first_name} ${user.last_name}`.trim() || user.email : "Sign in";
   const initials = user ? `${user.first_name[0] || ""}${user.last_name[0] || ""}` || user.email.slice(0, 2).toUpperCase() : "?";
@@ -69,7 +75,7 @@ export function AppShell({ children, role }: AppShellProps) {
   const shellRoleClass = role === "Sales officer" ? user?.role === "SO" ? "ps-shell" : user?.role === "COMPLAINTS" ? "complaints-shell" : "cre-shell" : role === "Receptionist" ? "receptionist-shell" : "";
   const signOut = async () => {
     try { await logout(); }
-    finally { router.replace("/"); }
+    finally { clearCachedCurrentUser(); router.replace("/"); }
   };
 
   if (checkingAccess) return null;

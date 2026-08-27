@@ -26,8 +26,24 @@ export type Officer = { id: number; name: string; initials: string; color: "blue
 export type Metrics = { total_assigned: number; total_called: number; calls_today?: number; qualified: number; walkins: number; won: number; lost: number; conversion_rate: number };
 export type Analytics = { summary: Metrics; source: { source: string; total: number; qualified: number; won: number }[]; cre: (Metrics & { id: number; name: string })[]; officers: (Metrics & { id: number; name: string })[] };
 export type CurrentUser = { id: number; first_name: string; last_name: string; email: string; role: "ADMIN" | "CRE" | "SO" | "RECEPTIONIST" | "COMPLAINTS"; is_active?: boolean; location?: string };
+type ApiOptions = RequestInit & { skipCsrf?: boolean };
 
 let csrfToken = "";
+const currentUserCacheKey = "river.currentUser";
+
+export function cacheCurrentUser(user: CurrentUser) {
+  if (typeof window !== "undefined") sessionStorage.setItem(currentUserCacheKey, JSON.stringify(user));
+}
+
+export function getCachedCurrentUser() {
+  if (typeof window === "undefined") return null;
+  try { return JSON.parse(sessionStorage.getItem(currentUserCacheKey) || "null") as CurrentUser | null; }
+  catch { return null; }
+}
+
+export function clearCachedCurrentUser() {
+  if (typeof window !== "undefined") sessionStorage.removeItem(currentUserCacheKey);
+}
 
 function responseError(body: unknown, fallback: string) {
   if (!body || typeof body !== "object") return fallback;
@@ -48,12 +64,13 @@ async function csrf() {
   return csrfToken;
 }
 
-export async function api<T>(path: string, options: RequestInit = {}, didRefresh = false): Promise<T> {
+export async function api<T>(path: string, options: ApiOptions = {}, didRefresh = false): Promise<T> {
   const method = options.method?.toUpperCase() || "GET";
   const headers = new Headers(options.headers);
+  const { skipCsrf, ...fetchOptions } = options;
   if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
-  if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers.set("X-CSRFToken", await csrf());
-  const response = await fetch(`${API_URL}${path}`, { ...options, headers, credentials: "include" });
+  if (!skipCsrf && !["GET", "HEAD", "OPTIONS"].includes(method)) headers.set("X-CSRFToken", await csrf());
+  const response = await fetch(`${API_URL}${path}`, { ...fetchOptions, headers, credentials: "include" });
   if (!response.ok) {
     if (response.status === 401 && !didRefresh && await refreshSession()) return api<T>(path, options, true);
     const body = await response.json().catch(() => ({}));
@@ -102,7 +119,7 @@ export const assignFilteredPsLeads = (officerId: number, filters: LeadFilters) =
 export const distributeFilteredLeads = (officerIds: number[], filters: LeadFilters) => api<{ assigned: number; distribution: { sales_officer_id: number; name: string; assigned: number }[] }>("/api/leads/bulk-distribute/", { method: "POST", body: JSON.stringify({ sales_officer_ids: officerIds, filters: withApiDateFilters(filters) }) });
 export const autoAssignLeads = () => api<{ assigned: number }>("/api/leads/auto-assign/", { method: "POST", body: JSON.stringify({}) });
 export const logCall = (leadId: number, payload: { status: string; remarks?: string; follow_up_at?: string }) => api<Lead>(`/api/leads/${leadId}/log-call/`, { method: "POST", body: JSON.stringify(payload) });
-export const login = (email: string, password: string) => api<{ user: CurrentUser }>("/api/auth/login/", { method: "POST", body: JSON.stringify({ email, password }) });
+export const login = (email: string, password: string) => api<{ user: CurrentUser }>("/api/auth/login/", { method: "POST", body: JSON.stringify({ email, password }), skipCsrf: true });
 export const logout = () => api<void>("/api/auth/logout/", { method: "POST" });
 export const getCurrentUser = () => api<{ user: CurrentUser }>("/api/auth/me/");
 export const uploadLeads = (file: File) => { const body = new FormData(); body.append("file", file); return api<UploadBatch>("/api/uploads/", { method: "POST", body }); };
