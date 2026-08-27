@@ -57,6 +57,7 @@ soOutcomes.forEach(o => { allOutcomeLabels[o.label] = o.label; });
 
 const statusOptions: Record<string, string[]> = { QUALIFIED: ["QUALIFIED"], LOST: ["LOST"], PENDING: ["PENDING"], BOOKED: ["WALKIN"], RETAILED: ["WON"] };
 soOutcomes.forEach(o => { statusOptions[o.label] = [o.status]; });
+const autoNextDayFollowUpOutcomes = new Set(["RNR", "Switch Off", "Call Forwarding", "Line Busy"]);
 const sourceOptions = [{ value: "META", label: "Meta Ads" }, { value: "WEBSITE", label: "Website" }, { value: "CARWALE", label: "CarWale" }, { value: "WALKIN", label: "Walk-in" }, { value: "CAMPAIGN", label: "Campaign" }, { value: "OTHER", label: "Other" }, { value: "UNKNOWN", label: "Unknown" }];
 const professionOptions = ["Salaried", "Business", "Self Employed", "Doctor", "Govt Employee"];
 const buyingPlanOptions = ["Immediate", "1–2 Months", "2–3 Months", "Greater than 3 months"];
@@ -86,6 +87,12 @@ const localDateValue = (date: Date) => {
 
 const minimumFollowUpDay = () => {
   return localDateValue(new Date());
+};
+
+const tomorrowFollowUpDay = () => {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return localDateValue(date);
 };
 
 const maximumFollowUpDay = () => {
@@ -254,7 +261,10 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
       if (!draft.call_outcome) return setNotice("Choose a call outcome.");
       if (!draft.remarks.trim()) return setNotice("Remarks are required.");
       const nextStatus = statusOptions[draft.call_outcome]?.[0] || "";
-      if (["PENDING", "WALKIN", "CALLBACK"].includes(nextStatus)) {
+      if (autoNextDayFollowUpOutcomes.has(draft.call_outcome)) {
+        followUpAt = followUpIso(draft.follow_up_at || tomorrowFollowUpDay());
+        if (!followUpAt) return setNotice("Choose a valid follow-up date.");
+      } else if (["PENDING", "WALKIN", "CALLBACK"].includes(nextStatus)) {
         if (!draft.follow_up_at) return setNotice("Choose a follow-up date for this outcome.");
         followUpAt = followUpIso(draft.follow_up_at);
         if (!followUpAt) return setNotice("Choose a valid follow-up date.");
@@ -344,7 +354,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   };
 
   const summary = dashboard?.summary;
-  const selectCallOutcome = (call_outcome: string) => setDraft(current => current ? { ...current, call_outcome, status: statusOptions[call_outcome]?.[0] || "", follow_up_at: "" } : current);
+  const selectCallOutcome = (call_outcome: string) => setDraft(current => current ? { ...current, call_outcome, status: statusOptions[call_outcome]?.[0] || "", follow_up_at: autoNextDayFollowUpOutcomes.has(call_outcome) ? tomorrowFollowUpDay() : "" } : current);
   const choose = <K extends keyof Draft>(field: K, value: Draft[K]) => setDraft(current => current ? { ...current, [field]: value } : current);
   const chooseQualification = (field: keyof LeadQualification, value: string | boolean | null) => setDraft(current => current ? { ...current, qualification: { ...current.qualification, [field]: value } } : current);
   const submitLabel = draft?.call_outcome === "QUALIFIED" ? "Qualify Lead" : draft?.call_outcome === "LOST" ? "Mark as Lost" : draft?.call_outcome === "PENDING" ? "Mark as Pending" : draft?.call_outcome === "BOOKED" ? "Book Follow-up" : draft?.call_outcome === "RETAILED" ? "Mark Retailed" : "Save follow-up";

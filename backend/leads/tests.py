@@ -15,6 +15,7 @@ class LeadAccessTests(TestCase):
         self.first_so = User.objects.create_user(email="first@example.com", password="password-12345", role=User.Role.CRE)
         self.second_so = User.objects.create_user(email="second@example.com", password="password-12345", role=User.Role.CRE)
         self.ps_so = User.objects.create_user(email="ps@example.com", password="password-12345", role=User.Role.SALES_OFFICER)
+        self.receptionist = User.objects.create_user(email="frontdesk@example.com", password="password-12345", role=User.Role.RECEPTIONIST)
         self.ps_so.location = "Kochi"
         self.ps_so.save(update_fields=["location"])
         self.first_lead = Lead.objects.create(name="Aarav", phone="7305198421", assigned_so=self.first_so)
@@ -382,6 +383,149 @@ class LeadAccessTests(TestCase):
         self.assertEqual(self.first_lead.status, Lead.Status.PENDING)
         self.assertTrue(FollowUp.objects.filter(lead=self.first_lead, so=self.ps_so, scheduled_for=future, resolved_at__isnull=True).exists())
         self.assertEqual(CallLog.objects.get(lead=self.first_lead).outcome, "Need Test Drive")
+
+    def test_full_admin_to_cre_to_ps_lead_journey_with_five_followups(self):
+        self.client.force_authenticate(self.admin)
+        create = self.client.post("/api/leads/", {
+            "name": "Nisha Random",
+            "phone": "8123456789",
+            "email": "nisha.random@example.com",
+            "source": Lead.Source.WEBSITE,
+            "campaign": "Random August Test",
+            "model_interest": "River Indie",
+            "city": "Kochi",
+            "category": Lead.Category.WARM,
+        }, format="json")
+        self.assertEqual(create.status_code, 201)
+        lead_id = create.data["id"]
+
+        assign = self.client.post(f"/api/leads/{lead_id}/assign/", {"sales_officer_id": self.first_so.id}, format="json")
+        self.assertEqual(assign.status_code, 200)
+
+        self.client.force_authenticate(self.first_so)
+        qualify = self.client.patch(f"/api/leads/{lead_id}/so-update/", {
+            "call_outcome": "QUALIFIED",
+            "status": Lead.Status.QUALIFIED,
+            "category": Lead.Category.HOT,
+            "city": "Kochi",
+            "branch": "Kochi",
+            "ps_officer_id": self.ps_so.id,
+            "remarks": "Random CRE remark: customer wants a proper PS call.",
+            "qualification": {
+                "variant": "Matte Blue",
+                "buying_timeline": "1-2 months",
+                "finance_type": "Outright",
+                "trade_in": False,
+                "test_drive": "Showroom visit",
+                "notes": "Random qualification note from CRE.",
+            },
+        }, format="json")
+        self.assertEqual(qualify.status_code, 200)
+
+        self.client.force_authenticate(self.ps_so)
+        follow_up_at = timezone.now() + timedelta(days=1)
+        ps_calls = [
+            ("Not Connected", "RNR", Lead.Status.RNR, "Random PS remark 1: no response on first attempt."),
+            ("Not Connected", "Switch Off", Lead.Status.SWITCHED_OFF, "Random PS remark 2: phone switched off."),
+            ("Not Connected", "Call Forwarding", Lead.Status.PENDING, "Random PS remark 3: call forwarding active."),
+            ("Not Connected", "Line Busy", Lead.Status.PENDING, "Random PS remark 4: line busy, retry tomorrow."),
+            ("Connected", "Need Test Drive", Lead.Status.PENDING, "Random PS remark 5: customer asked for test drive."),
+        ]
+        for call_status, outcome, status_value, remark in ps_calls:
+            response = self.client.patch(f"/api/leads/{lead_id}/so-update/", {
+                "call_status": call_status,
+                "call_outcome": outcome,
+                "status": status_value,
+                "sales_outcome": Lead.SalesOutcome.PENDING,
+                "remarks": remark,
+                "follow_up_at": follow_up_at.isoformat(),
+            }, format="json")
+            self.assertEqual(response.status_code, 200, response.data)
+
+        close = self.client.patch(f"/api/leads/{lead_id}/so-update/", {
+            "call_status": "Connected",
+            "call_outcome": "Retail Done",
+            "status": Lead.Status.WON,
+            "sales_outcome": Lead.SalesOutcome.RETAILED,
+            "remarks": "Random PS closing remark: customer retailed after five follow-ups.",
+        }, format="json")
+        self.assertEqual(close.status_code, 200, close.data)
+
+        lead = Lead.objects.get(pk=lead_id)
+        self.assertEqual(lead.assigned_so, self.first_so)
+        self.assertEqual(lead.assigned_ps, self.ps_so)
+        self.assertEqual(lead.status, Lead.Status.WON)
+        self.assertEqual(lead.sales_outcome, Lead.SalesOutcome.RETAILED)
+        self.assertEqual(CallLog.objects.filter(lead=lead).count(), 7)
+        self.assertEqual(FollowUp.objects.filter(lead=lead).count(), 5)
+        self.assertFalse(FollowUp.objects.filter(lead=lead, resolved_at__isnull=True).exists())
+        self.assertEqual(LeadQualification.objects.get(lead=lead).variant, "Matte Blue")
+
+    def test_receptionist_walkin_to_ps_retail_journey(self):
+        self.client.force_authenticate(self.receptionist)
+        create = self.client.post("/api/leads/", {
+            "name": "Reception Random",
+            "phone": "8234567890",
+            "email": "reception.random@example.com",
+            "profession": "Business",
+            "source": Lead.Source.WALKIN,
+            "model_interest": "River Indie",
+            "ps_officer_id": self.ps_so.id,
+            "qualification_input": {
+                "variant": "Sunset Red",
+                "buying_timeline": "Immediate",
+                "finance_type": "",
+                "test_drive": "",
+                "notes": "Random receptionist walk-in note.",
+            },
+        }, format="json")
+        self.assertEqual(create.status_code, 201, create.data)
+        lead_id = create.data["id"]
+        lead = Lead.objects.get(pk=lead_id)
+        self.assertEqual(lead.status, Lead.Status.QUALIFIED)
+        self.assertIsNone(lead.assigned_so)
+        self.assertEqual(lead.assigned_ps, self.ps_so)
+        self.assertEqual(LeadQualification.objects.get(lead=lead).variant, "Sunset Red")
+
+        analytics = self.client.get("/api/analytics/receptionist/")
+        self.assertEqual(analytics.status_code, 200)
+        self.assertEqual(analytics.data["summary"], {"total": 1, "walkin": 1, "digital": 0})
+        self.assertEqual(analytics.data["so_breakdown"], [{"name": self.ps_so.email, "count": 1}])
+
+        self.client.force_authenticate(self.ps_so)
+        follow_up_at = timezone.now() + timedelta(days=1)
+        for call_status, outcome, status_value, remark in [
+            ("Not Connected", "RNR", Lead.Status.RNR, "Reception random PS remark 1: RNR."),
+            ("Not Connected", "Call Forwarding", Lead.Status.PENDING, "Reception random PS remark 2: call forwarding."),
+            ("Not Connected", "Line Busy", Lead.Status.PENDING, "Reception random PS remark 3: line busy."),
+            ("Connected", "Need More Details", Lead.Status.PENDING, "Reception random PS remark 4: needs pricing detail."),
+            ("Connected", "Booking Done", Lead.Status.WALKIN, "Reception random PS remark 5: booking follow-up done."),
+        ]:
+            response = self.client.patch(f"/api/leads/{lead_id}/so-update/", {
+                "call_status": call_status,
+                "call_outcome": outcome,
+                "status": status_value,
+                "sales_outcome": Lead.SalesOutcome.PENDING,
+                "remarks": remark,
+                "follow_up_at": follow_up_at.isoformat(),
+            }, format="json")
+            self.assertEqual(response.status_code, 200, response.data)
+
+        close = self.client.patch(f"/api/leads/{lead_id}/so-update/", {
+            "call_status": "Connected",
+            "call_outcome": "Retail Done",
+            "status": Lead.Status.WON,
+            "sales_outcome": Lead.SalesOutcome.RETAILED,
+            "remarks": "Reception random PS closing remark: retailed.",
+        }, format="json")
+        self.assertEqual(close.status_code, 200, close.data)
+
+        lead.refresh_from_db()
+        self.assertEqual(lead.status, Lead.Status.WON)
+        self.assertEqual(lead.sales_outcome, Lead.SalesOutcome.RETAILED)
+        self.assertEqual(CallLog.objects.filter(lead=lead).count(), 6)
+        self.assertEqual(FollowUp.objects.filter(lead=lead).count(), 5)
+        self.assertFalse(FollowUp.objects.filter(lead=lead, resolved_at__isnull=True).exists())
 
     def test_direct_qualified_and_lost_outcomes_set_matching_statuses(self):
         self.client.force_authenticate(self.first_so)
