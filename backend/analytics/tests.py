@@ -56,6 +56,22 @@ class SalesManagerAnalyticsTests(TestCase):
         self.branch_lead.refresh_from_db()
         self.assertEqual(self.branch_lead.name, "Branch lead")
 
+    def test_manager_lead_person_drilldowns_combine_with_date_filters(self):
+        today = timezone.localdate()
+        other_cre = User.objects.create_user(email="other-cre@example.com", password="password-12345", role=User.Role.CRE)
+        other_ps = User.objects.create_user(email="other-ps@example.com", password="password-12345", role=User.Role.SALES_OFFICER, location="Mount Road")
+        Lead.objects.create(name="Other owners", phone="9000000004", branch="Mount Road", enquiry_date=today, assigned_so=other_cre, assigned_ps=other_ps)
+        Lead.objects.create(name="Old owners", phone="9000000005", branch="Mount Road", enquiry_date=today - timedelta(days=45), assigned_so=self.cre, assigned_ps=self.ps)
+        self.client.force_authenticate(self.manager)
+        dates = f"date_from={today.isoformat()}&date_to={today.isoformat()}"
+
+        cre = self.client.get(f"/api/leads/manager-leads/?cre={self.cre.id}&{dates}")
+        ps = self.client.get(f"/api/leads/manager-leads/?ps={self.ps.id}&{dates}")
+
+        expected = {self.branch_lead.id, self.retailed.id}
+        self.assertEqual({lead["id"] for lead in cre.data["results"]}, expected)
+        self.assertEqual({lead["id"] for lead in ps.data["results"]}, expected)
+
     def test_manager_lead_flagged_filter_keeps_branch_scope(self):
         self.branch_lead.flagged_to_manager = True
         self.branch_lead.save(update_fields=["flagged_to_manager"])
