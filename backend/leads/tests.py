@@ -355,6 +355,24 @@ class LeadAccessTests(TestCase):
         self.assertEqual(response.data["summary"]["followups"], 2)
         self.assertEqual({lead["id"] for lead in response.data["results"]}, {yesterday.id, today.id})
 
+    def test_ps_dashboard_filters_all_fresh_booked_retailed_and_lost(self):
+        fresh = Lead.objects.create(name="Fresh PS", phone="7305198434", assigned_ps=self.ps_so, status=Lead.Status.FRESH)
+        booked = Lead.objects.create(name="Booked PS", phone="7305198435", assigned_ps=self.ps_so, status=Lead.Status.WALKIN)
+        retailed = Lead.objects.create(name="Retailed PS", phone="7305198436", assigned_ps=self.ps_so, status=Lead.Status.WON)
+        lost = Lead.objects.create(name="Lost PS", phone="7305198437", assigned_ps=self.ps_so, status=Lead.Status.LOST)
+        self.client.force_authenticate(self.ps_so)
+
+        sections = {
+            "all": {fresh.id, booked.id, retailed.id, lost.id},
+            "fresh": {fresh.id},
+            "walkin": {booked.id},
+            "won": {retailed.id},
+            "lost": {lost.id},
+        }
+        for section, expected_ids in sections.items():
+            response = self.client.get(f"/api/leads/my-dashboard/?section={section}")
+            self.assertEqual({lead["id"] for lead in response.data["results"]}, expected_ids)
+
     def test_so_update_accepts_same_day_future_follow_up_and_rejects_past(self):
         past_lead = Lead.objects.create(name="Past Follow Up", phone="7305198427", assigned_so=self.first_so)
         fixed_now = timezone.localtime(timezone.now()).replace(hour=10, minute=0, second=0, microsecond=0)

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createLead, getCurrentUser, getLeadDetail, getMyDashboard, getOfficers, toOfficer, updateMyLead, type CurrentUser, type LeadDetail, type LeadInput, type LeadQualification, type Officer, type SalesDashboard, type SalesLead, getSystemConfig } from "@/lib/crm";
 import { formatDate, formatDateTime, parseDate, toApiDate } from "@/lib/dates";
 
-type Section = "all" | "fresh" | "followups" | "pending" | "qualified" | "won_lost" | "active";
+type Section = "all" | "fresh" | "followups" | "pending" | "qualified" | "walkin" | "won" | "lost" | "won_lost" | "active";
 type WonLostFilter = "all" | "won" | "lost";
 type Draft = {
   status: string; category: string; sales_outcome: string; call_outcome: string; call_status: string; remarks: string; follow_up_at: string;
@@ -47,6 +47,13 @@ const sections: { key: Section; label: string; count: keyof SalesDashboard["summ
   { key: "pending", label: "Pending leads", count: "pending", icon: "!" },
   { key: "qualified", label: "Qualified leads", count: "qualified", icon: "◎" },
   { key: "won_lost", label: "Won / lost", count: "won_lost", icon: "◇" },
+];
+const psSections: { key: Section; label: string; count: keyof SalesDashboard["summary"]; icon: string }[] = [
+  { key: "all", label: "All leads", count: "total", icon: "☰" },
+  { key: "fresh", label: "Fresh leads", count: "fresh", icon: "✦" },
+  { key: "walkin", label: "Booked", count: "walkin", icon: "◷" },
+  { key: "won", label: "Retailed", count: "won", icon: "✓" },
+  { key: "lost", label: "Lost", count: "lost", icon: "×" },
 ];
 const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", SWITCHED_OFF: "Switch off", CALLBACK: "Callback", PENDING: "Pending", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
 const outcomeLabels: Record<string, string> = { QUALIFIED: "Qualified", LOST: "Lost", PENDING: "Pending" };
@@ -182,7 +189,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   useEffect(() => {
     void getCurrentUser().then(result => {
       setUser(result.user);
-      if (result.user.role === "SO" && !followUpsOnly) setSection("active");
+      if (result.user.role === "SO" && !followUpsOnly) setSection("all");
     }).catch(() => setUser(null)).finally(() => setAuthChecked(true));
     void getSystemConfig()
       .then(config => {
@@ -376,6 +383,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
     
     {isPs ? (
       <section className="panel sales-table-panel" style={{ background: "transparent", border: "none", boxShadow: "none", padding: 0 }}>
+        {!followUpsOnly && <nav className="sales-tabs" aria-label="Lead status views">{psSections.map(item => <button key={item.key} className={section === item.key ? "active" : ""} onClick={() => setSection(item.key)}><i>{item.icon}</i><span>{item.label}</span><b>{summary?.[item.count] ?? 0}</b></button>)}</nav>}
         <div className="sales-filters" style={{ marginBottom: "1rem" }}>
           <label className="sales-search" style={{ width: "100%", background: "#fff" }}>⌕<input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search by name or mobile..." /></label>
         </div>

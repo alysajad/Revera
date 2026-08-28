@@ -153,6 +153,8 @@ class LeadViewSet(viewsets.ModelViewSet):
             "pending": pending_status,
             "qualified": Q(status=Lead.Status.QUALIFIED),
             "walkin": Q(status=Lead.Status.WALKIN),
+            "won": Q(status=Lead.Status.WON),
+            "lost": Q(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED]),
             "won_lost": Q(status__in=[Lead.Status.WON, Lead.Status.LOST, Lead.Status.UNQUALIFIED]),
             "active": ~Q(status__in=[Lead.Status.WON, Lead.Status.LOST, Lead.Status.UNQUALIFIED]),
         }
