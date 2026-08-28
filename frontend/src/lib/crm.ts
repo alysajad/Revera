@@ -86,6 +86,24 @@ async function refreshSession() {
   return response.ok;
 }
 
+async function download(path: string, filename: string) {
+  const fetchFile = () => fetch(`${API_URL}${path}`, { credentials: "include" });
+  let response = await fetchFile();
+  if (response.status === 401 && await refreshSession()) response = await fetchFile();
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(responseError(body, `Download failed (${response.status}).`));
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 const sourceNames: Record<string, string> = { META: "Meta Ads", WEBSITE: "Website", CARWALE: "CarWale", WALKIN: "Walk-in", CAMPAIGN: "Campaign", OTHER: "Other", UNKNOWN: "Unknown" };
 const statusNames: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", SWITCHED_OFF: "Switch off", CALLBACK: "Callback", PENDING: "Pending", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
 const colors: Officer["color"][] = ["blue", "green", "violet", "orange"];
@@ -110,7 +128,7 @@ export async function getOfficers(location = "") { const query = location ? `?${
 export const getAdminAnalytics = () => api<Analytics>("/api/analytics/admin/");
 export const getMyAnalytics = () => api<Metrics>("/api/analytics/me/");
 export async function getMyAnalyticsDashboard(range = "mtd", dateFrom = "", dateTo = "") { const query = new URLSearchParams({ range, ...(dateFrom ? { date_from: toApiDate(dateFrom) || dateFrom } : {}), ...(dateTo ? { date_to: toApiDate(dateTo) || dateTo } : {}) }).toString(); return api<PersonalAnalytics>(`/api/analytics/me/?${query}`); }
-export async function exportMyAnalytics() { const response = await fetch(`${API_URL}/api/analytics/me/export/`, { credentials: "include" }); if (!response.ok) throw new Error("Analytics export could not be created."); const link = document.createElement("a"); link.href = URL.createObjectURL(await response.blob()); link.download = "river-my-analytics.csv"; link.click(); URL.revokeObjectURL(link.href); }
+export const exportMyAnalytics = () => download("/api/analytics/me/export/", "river-my-analytics.csv");
 export type ManagerSummary = { total: number; untouched: number; contacted: number; open: number; qualified: number; walkin: number; booked: number; retailed: number; lost: number; flagged: number; lead_to_qualified_rate: number; lead_to_retail_rate: number; qualified_to_booked_rate: number; booked_to_retail_rate: number; followups_due: number; stale_untouched: number; delta: Record<string, number> };
 export type ManagerRoleRow = { id: number; name: string; email: string; location: string; total: number; untouched: number; qualified: number; booked: number; retailed: number; lost: number; calls: number; followups: number; last_activity: string | null; conversion_rate: number; qualification_rate: number };
 export type ManagerPerformanceRow = { total: number; qualified: number; booked: number; retailed: number; lost: number; conversion_rate: number };
@@ -121,7 +139,7 @@ export type ManagerAnalytics = { range: string; date_from: string | null; date_t
 const managerParams = (params: Record<string, string>) => ({ ...params, ...(params.date_from ? { date_from: toApiDate(params.date_from) || params.date_from } : {}), ...(params.date_to ? { date_to: toApiDate(params.date_to) || params.date_to } : {}) });
 export async function getSalesManagerAnalytics(params: Record<string, string>) { const query = new URLSearchParams(managerParams(params)).toString(); return api<ManagerAnalytics>(`/api/analytics/sales-manager/${query ? `?${query}` : ""}`); }
 export async function getSalesManagerPSFollowups(params: Record<string, string>) { const query = new URLSearchParams(managerParams(params)).toString(); return api<ManagerPSFollowups>(`/api/analytics/sales-manager/ps-followups/${query ? `?${query}` : ""}`); }
-export async function exportSalesManagerAnalytics(section: string, params: Record<string, string>) { const query = new URLSearchParams({ ...managerParams(params), section }).toString(); const response = await fetch(`${API_URL}/api/analytics/sales-manager/export/?${query}`, { credentials: "include" }); if (!response.ok) throw new Error("Analytics export could not be created."); const link = document.createElement("a"); link.href = URL.createObjectURL(await response.blob()); link.download = `river-sales-manager-${section}.csv`; link.click(); URL.revokeObjectURL(link.href); }
+export function exportSalesManagerAnalytics(section: string, params: Record<string, string>) { const query = new URLSearchParams({ ...managerParams(params), section }).toString(); return download(`/api/analytics/sales-manager/export/?${query}`, `river-sales-manager-${section}.csv`); }
 export async function getManagerLeads(query = "") { return getLeadsPage(`manager-leads/${query.startsWith("?") ? query : query ? `?${query}` : ""}`); }
 export const assignLead = (leadId: number, officerId: number) => api<Lead>(`/api/leads/${leadId}/assign/`, { method: "POST", body: JSON.stringify({ sales_officer_id: officerId }) });
 export const assignPsLead = (leadId: number, officerId: number) => api<Lead>(`/api/leads/${leadId}/assign-ps/`, { method: "POST", body: JSON.stringify({ sales_officer_id: officerId }) });
