@@ -1,5 +1,5 @@
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
-import { formatDate, toApiDate } from "@/lib/dates";
+import { formatDate, toApiDate, toDateInputValue } from "@/lib/dates";
 
 type Paginated<T> = { count?: number; next?: string | null; previous?: string | null; results: T[] };
 type ApiLead = {
@@ -127,7 +127,7 @@ export async function getCres() { const data = await api<Paginated<ApiOfficer>>(
 export async function getOfficers(location = "") { const query = location ? `?${new URLSearchParams({ location }).toString()}` : ""; const data = await api<Paginated<ApiOfficer>>(`/api/auth/sales-officers/${query}`); return data.results; }
 export const getAdminAnalytics = () => api<Analytics>("/api/analytics/admin/");
 export const getMyAnalytics = () => api<Metrics>("/api/analytics/me/");
-export async function getMyAnalyticsDashboard(range = "mtd", dateFrom = "", dateTo = "") { const query = new URLSearchParams({ range, ...(dateFrom ? { date_from: toApiDate(dateFrom) || dateFrom } : {}), ...(dateTo ? { date_to: toApiDate(dateTo) || dateTo } : {}) }).toString(); return api<PersonalAnalytics>(`/api/analytics/me/?${query}`); }
+export async function getMyAnalyticsDashboard(range = "mtd", dateFrom = "", dateTo = "") { const from = toDateInputValue(dateFrom); const to = toDateInputValue(dateTo); const query = new URLSearchParams({ range, ...(from ? { date_from: from } : {}), ...(to ? { date_to: to } : {}) }).toString(); return api<PersonalAnalytics>(`/api/analytics/me/?${query}`); }
 export const exportMyAnalytics = () => download("/api/analytics/me/export/", "river-my-analytics.csv");
 export type ManagerSummary = { total: number; untouched: number; contacted: number; open: number; qualified: number; walkin: number; booked: number; retailed: number; lost: number; flagged: number; lead_to_qualified_rate: number; lead_to_retail_rate: number; qualified_to_booked_rate: number; booked_to_retail_rate: number; followups_due: number; stale_untouched: number; delta: Record<string, number> };
 export type ManagerRoleRow = { id: number; name: string; email: string; location: string; total: number; untouched: number; qualified: number; booked: number; retailed: number; lost: number; calls: number; followups: number; last_activity: string | null; conversion_rate: number; qualification_rate: number };
@@ -136,14 +136,14 @@ export type ManagerPSFollowupRow = { id: number; name: string; email: string; to
 export type ManagerPSFollowupLead = { id: number; name: string; phone: string; source: string; created_at: string; model: string; test_drive: string; status: string };
 export type ManagerPSFollowups = { rows: ManagerPSFollowupRow[]; leads: ManagerPSFollowupLead[] };
 export type ManagerAnalytics = { range: string; date_from: string | null; date_to: string | null; branch: string; summary: ManagerSummary; funnel: { key: string; label: string; count: number; rate: number }[]; cre: ManagerRoleRow[]; ps: ManagerRoleRow[]; source: ({ source: string } & ManagerPerformanceRow)[]; models: ({ model: string } & ManagerPerformanceRow)[]; status: { status: string; count: number }[]; categories: { category: string; count: number }[]; monthly: { month: string | null; total: number; qualified: number; booked: number; retailed: number }[]; followups: { due: number; overdue: number; by_owner: { so__id: number; so__first_name: string; so__last_name: string; so__email: string; count: number }[] }; lost_reasons: { outcome: string; count: number }[]; stale_leads: { id: number; name: string; phone: string; source: string; model_interest: string; created_at: string }[]; generated_at: string };
-const managerParams = (params: Record<string, string>) => ({ ...params, ...(params.date_from ? { date_from: toApiDate(params.date_from) || params.date_from } : {}), ...(params.date_to ? { date_to: toApiDate(params.date_to) || params.date_to } : {}) });
+const managerParams = ({ date_from, date_to, ...params }: Record<string, string>) => ({ ...params, ...(toDateInputValue(date_from) ? { date_from: toDateInputValue(date_from) } : {}), ...(toDateInputValue(date_to) ? { date_to: toDateInputValue(date_to) } : {}) });
 export async function getSalesManagerAnalytics(params: Record<string, string>) { const query = new URLSearchParams(managerParams(params)).toString(); return api<ManagerAnalytics>(`/api/analytics/sales-manager/${query ? `?${query}` : ""}`); }
 export async function getSalesManagerPSFollowups(params: Record<string, string>) { const query = new URLSearchParams(managerParams(params)).toString(); return api<ManagerPSFollowups>(`/api/analytics/sales-manager/ps-followups/${query ? `?${query}` : ""}`); }
 export function exportSalesManagerAnalytics(section: string, params: Record<string, string>) { const query = new URLSearchParams({ ...managerParams(params), section }).toString(); return download(`/api/analytics/sales-manager/export/?${query}`, `river-sales-manager-${section}.csv`); }
 export async function getManagerLeads(query = "") { return getLeadsPage(`manager-leads/${query.startsWith("?") ? query : query ? `?${query}` : ""}`); }
 export const assignLead = (leadId: number, officerId: number) => api<Lead>(`/api/leads/${leadId}/assign/`, { method: "POST", body: JSON.stringify({ sales_officer_id: officerId }) });
 export const assignPsLead = (leadId: number, officerId: number) => api<Lead>(`/api/leads/${leadId}/assign-ps/`, { method: "POST", body: JSON.stringify({ sales_officer_id: officerId }) });
-const withApiDateFilters = (filters: LeadFilters): LeadFilters => ({ ...filters, date_from: filters.date_from ? toApiDate(filters.date_from) || filters.date_from : undefined, date_to: filters.date_to ? toApiDate(filters.date_to) || filters.date_to : undefined });
+const withApiDateFilters = (filters: LeadFilters): LeadFilters => ({ ...filters, date_from: toDateInputValue(filters.date_from) || undefined, date_to: toDateInputValue(filters.date_to) || undefined });
 export const assignFilteredLeads = (officerId: number, filters: LeadFilters) => api<{ assigned: number }>("/api/leads/bulk-assign/", { method: "POST", body: JSON.stringify({ sales_officer_id: officerId, filters: withApiDateFilters(filters) }) });
 export const assignFilteredPsLeads = (officerId: number, filters: LeadFilters) => api<{ assigned: number }>("/api/leads/bulk-assign-ps/", { method: "POST", body: JSON.stringify({ sales_officer_id: officerId, filters: withApiDateFilters(filters) }) });
 export const distributeFilteredLeads = (officerIds: number[], filters: LeadFilters) => api<{ assigned: number; distribution: { sales_officer_id: number; name: string; assigned: number }[] }>("/api/leads/bulk-distribute/", { method: "POST", body: JSON.stringify({ sales_officer_ids: officerIds, filters: withApiDateFilters(filters) }) });
@@ -215,6 +215,8 @@ export const updateComplaint = (id: number, payload: Partial<{ status: string; p
 export const addComplaintNote = (id: number, content: string) =>
   api<ComplaintNote>(`/api/complaints/${id}/add-note/`, { method: "POST", body: JSON.stringify({ content }) });
 export const getComplaintAnalytics = (range = "mtd", dateFrom = "", dateTo = "") => {
-  const params = new URLSearchParams({ range, ...(dateFrom ? { date_from: dateFrom } : {}), ...(dateTo ? { date_to: dateTo } : {}) });
+  const from = toDateInputValue(dateFrom);
+  const to = toDateInputValue(dateTo);
+  const params = new URLSearchParams({ range, ...(from ? { date_from: from } : {}), ...(to ? { date_to: to } : {}) });
   return api<ComplaintAnalytics>(`/api/complaints/analytics/?${params.toString()}`);
 };

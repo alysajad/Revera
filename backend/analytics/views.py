@@ -1,6 +1,6 @@
 import csv
 from calendar import monthrange
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 
 from django.db.models import Count, Exists, IntegerField, Max, OuterRef, Q, Subquery, Value
 from django.db.models.functions import Coalesce, TruncMonth
@@ -13,6 +13,15 @@ from rest_framework.views import APIView
 from accounts.models import User
 from accounts.permissions import IsAdmin, IsSalesManager
 from leads.models import CallLog, FollowUp, Lead, LeadAudit
+
+
+def csv_value(value):
+    if isinstance(value, datetime):
+        local_value = timezone.localtime(value) if timezone.is_aware(value) else value
+        return local_value.strftime("%d/%m/%Y %H:%M")
+    if isinstance(value, date):
+        return value.strftime("%d/%m/%Y")
+    return value
 
 
 def metrics(queryset):
@@ -360,7 +369,7 @@ class MyAnalyticsExportView(APIView):
         response["Content-Disposition"] = 'attachment; filename="river-my-analytics.csv"'
         writer = csv.writer(response)
         writer.writerow(["Lead", "Phone", "Source", "Model", "Status", "Sales outcome", "Enquiry date", "Branch"])
-        writer.writerows(queryset.values_list("name", "phone", "source", "model_interest", "status", "sales_outcome", "enquiry_date", "branch"))
+        writer.writerows([[csv_value(value) for value in row] for row in queryset.values_list("name", "phone", "source", "model_interest", "status", "sales_outcome", "enquiry_date", "branch")])
         return response
 
 
@@ -423,7 +432,7 @@ class SalesManagerAnalyticsExportView(APIView):
             if rows:
                 keys = list(rows[0].keys())
                 writer.writerow(keys)
-                writer.writerows([[row.get(key, "") for key in keys] for row in rows])
+                writer.writerows([[csv_value(row.get(key, "")) for key in keys] for row in rows])
             else:
                 writer.writerow(["No matching PS follow-up records"])
             return response
@@ -436,7 +445,7 @@ class SalesManagerAnalyticsExportView(APIView):
             keys = list(rows[0].keys())
             writer.writerow(keys)
             for row in rows:
-                writer.writerow([row.get(key, "") for key in keys])
+                writer.writerow([csv_value(row.get(key, "")) for key in keys])
         else:
             writer.writerow(["metric", "value"])
             for key, value in data["summary"].items():

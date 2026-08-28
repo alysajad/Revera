@@ -156,8 +156,10 @@ class SalesManagerAnalyticsTests(TestCase):
 
         exported = self.client.get(f"/api/analytics/sales-manager/export/?section=ps_followups&range=all&priority=HOT&ps={self.ps.id}&bucket=test_drive")
         self.assertEqual(exported.status_code, 200)
-        self.assertIn("First follow-up", exported.content.decode())
-        self.assertIn("Unattended", exported.content.decode())
+        exported_csv = exported.content.decode()
+        self.assertIn("First follow-up", exported_csv)
+        self.assertIn("Unattended", exported_csv)
+        self.assertIn(timezone.localtime(first.created_at).strftime("%d/%m/%Y %H:%M"), exported_csv)
 
     def test_non_manager_cannot_use_sales_manager_analytics(self):
         self.client.force_authenticate(self.admin)

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { cacheCurrentUser, clearCachedCurrentUser, getCachedCurrentUser, getCurrentUser, logout, type CurrentUser } from "@/lib/crm";
-import { formatDate } from "@/lib/dates";
+import { formatDate, formatWeekday } from "@/lib/dates";
 
 type AppShellProps = { children: ReactNode; role: "Admin" | "Sales officer" | "Sales manager" | "Receptionist" };
 
@@ -122,7 +122,7 @@ export function AppShell({ children, role }: AppShellProps) {
       </div>
     </aside>
     <main className="main-content">
-      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : role === "Sales manager" ? "Branch command" : role === "Receptionist" ? "Front Desk" : user?.role === "COMPLAINTS" ? "Complaint queue" : `${workspaceRole} pipeline`}</b><small>{new Intl.DateTimeFormat("en", { weekday: "long" }).format(new Date())}, {formatDate(new Date())}</small></div><div className="top-actions">{role === "Admin" && <button className="button primary" onClick={() => ["/leads", "/all-leads"].includes(pathname) ? window.dispatchEvent(new Event("river:add-lead")) : router.push("/leads?addLead=1")}>＋ Add lead</button>}{["Sales officer", "Sales manager"].includes(role) && <span className="sales-topbar-mark" aria-hidden="true">◌</span>}<button className="mobile-signout" onClick={() => void signOut()} aria-label="Sign out" title="Sign out">↪</button></div></header>
+      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : role === "Sales manager" ? "Branch command" : role === "Receptionist" ? "Front Desk" : user?.role === "COMPLAINTS" ? "Complaint queue" : `${workspaceRole} pipeline`}</b><small>{formatWeekday(new Date())}, {formatDate(new Date())}</small></div><div className="top-actions">{role === "Admin" && <button className="button primary" onClick={() => ["/leads", "/all-leads"].includes(pathname) ? window.dispatchEvent(new Event("river:add-lead")) : router.push("/leads?addLead=1")}>＋ Add lead</button>}{["Sales officer", "Sales manager"].includes(role) && <span className="sales-topbar-mark" aria-hidden="true">◌</span>}<button className="mobile-signout" onClick={() => void signOut()} aria-label="Sign out" title="Sign out">↪</button></div></header>
       {children}
     </main>
   </div>;

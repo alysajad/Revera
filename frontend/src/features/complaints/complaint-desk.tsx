@@ -6,6 +6,7 @@ import {
   getSystemConfig, updateComplaint,
   type Complaint, type ComplaintAnalytics, type ComplaintDetail, type ComplaintFilters, type ComplaintInput, type CurrentUser,
 } from "@/lib/crm";
+import { formatDate, formatDateTime } from "@/lib/dates";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -53,18 +54,7 @@ const emptyInput = (): ComplaintInput => ({
   model_interest: "", branch: "",
 });
 
-function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
-
-function formatNoteTime(dateStr: string) {
-  return new Intl.DateTimeFormat("en", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(dateStr));
-}
+const formatNoteTime = formatDateTime;
 
 // ── Complaint Desk ────────────────────────────────────────────────────────────
 
@@ -328,7 +318,7 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
                     <div className="complaint-trend-bar opened" style={{ height: `${Math.max(4, (item.opened / maxTrend) * 100)}px` }} />
                     <div className="complaint-trend-bar resolved" style={{ height: `${Math.max(0, (item.resolved / maxTrend) * 100)}px`, position: "absolute", bottom: 0 }} />
                   </div>
-                  <small>{new Date(item.date).toLocaleDateString("en", { day: "numeric", month: "short" })}</small>
+                  <small>{formatDate(item.date)}</small>
                 </div>
               )) : <p className="subtext" style={{ padding: "2rem 0", textAlign: "center" }}>No trend data yet.</p>}
             </div>
@@ -414,7 +404,7 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
               <span className={`complaint-priority priority-${c.priority.toLowerCase()}`}>{priorityLabel(c.priority)}</span>
               <span className={`complaint-status status-${c.status.toLowerCase().replace("_", "-")}`}>{statusLabel(c.status)}</span>
               <div className="complaint-row-meta">
-                <small className="complaint-age">{timeAgo(c.created_at)}</small>
+                <small className="complaint-age">{formatDateTime(c.created_at)}</small>
                 {c.note_count > 0 && <small className="complaint-notes-count">✎ {c.note_count}</small>}
               </div>
               <button className="row-action" id={`open-complaint-${c.id}`} onClick={() => void openComplaint(c)}>Open →</button>
