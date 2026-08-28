@@ -57,6 +57,12 @@ const psSections: { key: Section; label: string; count: keyof SalesDashboard["su
   { key: "won", label: "Retailed", count: "won", icon: "✓" },
   { key: "lost", label: "Lost", count: "lost", icon: "×" },
 ];
+const psFollowUpSections: { key: Section; label: string; count: keyof SalesDashboard["summary"]; icon: string }[] = [
+  { key: "followups", label: "Today's follow-ups", count: "followups", icon: "◷" },
+  { key: "walkin", label: "Booked", count: "walkin", icon: "◷" },
+  { key: "won", label: "Retailed", count: "won", icon: "✓" },
+  { key: "lost", label: "Lost", count: "lost", icon: "×" },
+];
 const statusLabels: Record<string, string> = { FRESH: "Fresh", RNR: "RNR", SWITCHED_OFF: "Switch off", CALLBACK: "Callback", PENDING: "Pending", QUALIFIED: "Qualified", UNQUALIFIED: "Unqualified", WALKIN: "Walk-in", WON: "Won", LOST: "Lost" };
 const outcomeLabels: Record<string, string> = { QUALIFIED: "Qualified", LOST: "Lost", PENDING: "Pending" };
 const psOutcomeLabels: Record<string, string> = { BOOKED: "Booked Follow-up", RETAILED: "Retailed", LOST: "Lost" };
@@ -374,6 +380,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   const chooseQualification = (field: keyof LeadQualification, value: string | boolean | null) => setDraft(current => current ? { ...current, qualification: { ...current.qualification, [field]: value } } : current);
   const submitLabel = draft?.call_outcome === "QUALIFIED" ? "Qualify Lead" : draft?.call_outcome === "LOST" ? "Mark as Lost" : draft?.call_outcome === "PENDING" ? "Mark as Pending" : draft?.call_outcome === "BOOKED" ? "Book Follow-up" : draft?.call_outcome === "RETAILED" ? "Mark Retailed" : "Save follow-up";
   const visibleSections = isPs ? sections.filter(item => !["all", "fresh", "pending"].includes(item.key)) : sections;
+  const psVisibleSections = followUpsOnly ? psFollowUpSections : psSections;
   const metrics = isPs
     ? [{label: followUpsOnly ? "TODAY'S FOLLOW-UPS" : "FRESH LEADS", value: followUpsOnly ? summary?.followups ?? 0 : summary?.fresh ?? 0, tone:"blue"}, {label:"BOOKED", value:summary?.walkin ?? 0, tone:"green"}, {label:"RETAILED", value:summary?.won ?? 0, tone:"green"}, {label:"LOST", value:summary?.lost ?? 0, tone:"red"}]
     : [{label:"Fresh leads", value:summary?.fresh ?? 0, tone:"blue"}, {label:"Today's follow-ups", value:summary?.followups ?? 0, tone:"yellow"}, {label:"Pending leads", value:summary?.pending ?? 0, tone:"orange"}, {label:"Qualified leads", value:summary?.qualified ?? 0, tone:"green"}, {label:"Won leads", value:summary?.won ?? 0, tone:"mint"}, {label:"Lost leads", value:summary?.lost ?? 0, tone:"red"}];
@@ -388,7 +395,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
     
     {isPs ? (
       <section className="panel sales-table-panel" style={{ background: "transparent", border: "none", boxShadow: "none", padding: 0 }}>
-        {!followUpsOnly && <nav className="sales-tabs" aria-label="Lead status views">{psSections.map(item => <button key={item.key} className={section === item.key ? "active" : ""} onClick={() => setSection(item.key)}><i>{item.icon}</i><span>{item.label}</span><b>{summary?.[item.count] ?? 0}</b></button>)}</nav>}
+        <nav className="sales-tabs" aria-label="Lead status views">{psVisibleSections.map(item => <button key={item.key} className={section === item.key ? "active" : ""} onClick={() => setSection(item.key)}><i>{item.icon}</i><span>{item.label}</span><b>{summary?.[item.count] ?? 0}</b></button>)}</nav>
         <div className="sales-filters" style={{ marginBottom: "1rem" }}>
           <label className="sales-search" style={{ width: "100%", background: "#fff" }}>⌕<input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search by name or mobile..." /></label>
         </div>
