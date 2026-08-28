@@ -616,6 +616,203 @@
   width: min(860px, 100%);
 }
 
+.manager-followups-card {
+  margin-top: 18px;
+  overflow: hidden;
+}
+
+.manager-followups-head,
+.manager-followup-modal-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.manager-followups-head h2,
+.manager-followup-modal-head h2 {
+  margin: 0;
+  color: #102c28;
+}
+
+.manager-followups-head p,
+.manager-followup-modal-head p {
+  margin: 6px 0 0;
+  color: #66736f;
+  font-size: 12px;
+}
+
+.manager-followups-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.manager-followups-actions label {
+  display: grid;
+  gap: 4px;
+}
+
+.manager-followups-actions label > span {
+  color: #687672;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.manager-followups-actions select {
+  min-width: 150px;
+  min-height: 38px;
+  border: 1px solid var(--sales-outline);
+  border-radius: 7px;
+  background: #fff;
+  color: #263733;
+  padding: 8px 10px;
+}
+
+.manager-followups-actions .filter {
+  align-self: end;
+  min-height: 38px;
+}
+
+.manager-followups-error {
+  margin: 0 0 14px;
+  border-left: 3px solid #a73f16;
+  background: #fff5ef;
+  color: #7f3214;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+.manager-followups-table {
+  min-width: 900px;
+}
+
+.manager-followups-table th:not(:first-child),
+.manager-followups-table td:not(:first-child) {
+  text-align: center;
+}
+
+.manager-followups-table td:first-child b,
+.manager-followups-table td:first-child small {
+  display: block;
+}
+
+.manager-followups-table td:first-child small {
+  margin-top: 3px;
+  color: #77847f;
+  font-size: 10px;
+}
+
+.manager-followup-count {
+  min-width: 30px;
+  min-height: 25px;
+  border: 0;
+  border-radius: 8px;
+  background: #dff5ec;
+  color: #0b745b;
+  padding: 4px 9px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.manager-followup-count.total {
+  border: 1px solid #d7e1df;
+  background: #f5f8f7;
+  color: #102c28;
+}
+
+.manager-followup-count.test_drive {
+  background: #ece8ff;
+  color: #5f3dc4;
+}
+
+.manager-followup-count.unattended {
+  background: #fff0e4;
+  color: #a3441d;
+}
+
+.manager-followup-count:hover:not(:disabled),
+.manager-followup-count:focus-visible {
+  outline: 2px solid #102c28;
+  outline-offset: 2px;
+}
+
+.manager-followup-count:disabled {
+  background: #f2f4f3;
+  color: #89938f;
+  cursor: default;
+}
+
+.manager-followup-modal {
+  width: min(1120px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 32px));
+  overflow: hidden;
+  padding: 26px;
+}
+
+.manager-followup-modal-head {
+  padding-right: 34px;
+}
+
+.manager-followup-modal-scroll {
+  max-height: min(580px, calc(100vh - 180px));
+  overflow: auto;
+}
+
+.manager-followup-customers {
+  min-width: 920px;
+}
+
+.manager-followup-customers tbody tr {
+  cursor: pointer !important;
+}
+
+.manager-followup-customers tbody tr:hover,
+.manager-followup-customers tbody tr:focus-visible {
+  background: #f4faf7;
+  outline: 0;
+}
+
+.manager-test-drive {
+  display: inline-block;
+  border-radius: 7px;
+  background: #f1eaff;
+  color: #6b25c7;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.manager-modal-back {
+  margin: 0 0 12px;
+  border: 0;
+  background: transparent;
+  color: #526b65;
+  padding: 0;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.manager-modal-back:hover,
+.manager-modal-back:focus-visible {
+  color: #102c28;
+  text-decoration: underline;
+}
+
+.manager-followup-modal .sales-detail-header {
+  padding: 0 36px 18px 0;
+}
+
+.manager-followup-modal .sales-detail-scroll {
+  max-height: min(610px, calc(100vh - 155px));
+}
+
 @media (max-width: 1250px) {
   .manager-metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -629,6 +826,14 @@
   .manager-overview-grid,
   .manager-two-col {
     grid-template-columns: 1fr;
+  }
+
+  .manager-followups-head {
+    display: grid;
+  }
+
+  .manager-followups-actions {
+    justify-content: flex-start;
   }
 }
 
@@ -646,5 +851,36 @@
   .manager-funnel-row div,
   .manager-funnel-row small {
     grid-column: 1 / -1;
+  }
+
+  .manager-followups-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .manager-followups-actions label:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .manager-followups-actions select,
+  .manager-followups-actions .filter {
+    width: 100%;
+  }
+
+  .manager-followup-layer {
+    align-items: end;
+    padding: 8px;
+  }
+
+  .manager-followup-modal {
+    width: 100%;
+    max-height: calc(100vh - 16px);
+    border-radius: 16px 16px 8px 8px;
+    padding: 20px 16px;
+  }
+
+  .manager-followup-modal-head {
+    display: grid;
+    padding-right: 32px;
   }
 }

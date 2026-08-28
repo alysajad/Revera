@@ -2,8 +2,8 @@ import csv
 from calendar import monthrange
 from datetime import timedelta
 
-from django.db.models import Count, Max, Q
-from django.db.models.functions import TruncMonth
+from django.db.models import Count, Exists, IntegerField, Max, OuterRef, Q, Subquery, Value
+from django.db.models.functions import Coalesce, TruncMonth
 from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -76,7 +76,7 @@ def with_period(queryset, start, end, field="enquiry_date"):
     return queryset
 
 
-def manager_base_queryset(request):
+def manager_base_queryset(request, include_ps=True):
     branch = request.user.location.strip()
     if not branch:
         return Lead.objects.none()
@@ -91,9 +91,90 @@ def manager_base_queryset(request):
         queryset = queryset.filter(status=value)
     if value := request.query_params.get("cre"):
         queryset = queryset.filter(assigned_so_id=value)
-    if value := request.query_params.get("ps"):
+    if include_ps and (value := request.query_params.get("ps")):
         queryset = queryset.filter(assigned_ps_id=value)
     return queryset
+
+
+def ps_followup_queryset(request):
+    _, start, end = period_bounds(request)
+    queryset = with_period(manager_base_queryset(request, include_ps=False), start, end).filter(assigned_ps__isnull=False)
+    if priority := request.query_params.get("priority", "").upper():
+        if priority in {choice for choice, _ in Lead.Category.choices}:
+            queryset = queryset.filter(category=priority)
+    followup_count = FollowUp.objects.filter(lead_id=OuterRef("pk"), so_id=OuterRef("assigned_ps_id")).values("lead_id").annotate(total=Count("id")).values("total")
+    test_drive_call = CallLog.objects.filter(lead_id=OuterRef("pk"), so_id=OuterRef("assigned_ps_id"), outcome__iexact="Need Test Drive")
+    return queryset.annotate(
+        ps_followup_count=Coalesce(Subquery(followup_count, output_field=IntegerField()), Value(0)),
+        has_test_drive_call=Exists(test_drive_call),
+    )
+
+
+def has_test_drive(qualification_value, call_value):
+    return bool(call_value or (qualification_value and qualification_value.strip().casefold() != "no"))
+
+
+def ps_followup_payload(request):
+    queryset = ps_followup_queryset(request)
+    primary = request.query_params.get("ps", "")
+    compare = request.query_params.get("compare_ps", "") if primary else ""
+    selected_ids = {int(value) for value in (primary, compare) if value.isdigit()}
+    if selected_ids:
+        queryset = queryset.filter(assigned_ps_id__in=selected_ids)
+
+    bucket = request.query_params.get("bucket", "")
+    allowed_buckets = {"total", "test_drive", "unattended", "f1", "f2", "f3", "f4", "f5"}
+    if bucket:
+        if bucket not in allowed_buckets or not primary.isdigit():
+            return {"rows": [], "leads": []}
+        queryset = queryset.filter(assigned_ps_id=int(primary))
+        if bucket == "test_drive":
+            queryset = queryset.filter(
+                Q(has_test_drive_call=True)
+                | (Q(qualification__test_drive__isnull=False) & ~Q(qualification__test_drive="") & ~Q(qualification__test_drive__iexact="No"))
+            )
+        elif bucket == "unattended":
+            queryset = queryset.filter(ps_followup_count=0)
+        elif bucket == "f5":
+            queryset = queryset.filter(ps_followup_count__gte=5)
+        elif bucket.startswith("f"):
+            queryset = queryset.filter(ps_followup_count=int(bucket[1:]))
+        leads = []
+        for lead in queryset.select_related("qualification").order_by("-created_at"):
+            qualification = getattr(lead, "qualification", None)
+            qualification_value = qualification.test_drive if qualification else ""
+            leads.append({
+                "id": lead.id,
+                "name": lead.name,
+                "phone": lead.phone,
+                "source": lead.source,
+                "created_at": lead.created_at,
+                "model": lead.model_interest,
+                "test_drive": qualification_value if qualification_value and qualification_value.casefold() != "no" else "Yes" if lead.has_test_drive_call else "No",
+                "status": lead.status,
+            })
+        return {"rows": [], "leads": leads}
+
+    grouped = {}
+    empty_counts = {"total_leads": 0, "test_drive": 0, "unattended": 0, "f1": 0, "f2": 0, "f3": 0, "f4": 0, "f5": 0}
+    for lead in queryset.values("assigned_ps_id", "ps_followup_count", "qualification__test_drive", "has_test_drive_call"):
+        row = grouped.setdefault(lead["assigned_ps_id"], empty_counts.copy())
+        row["total_leads"] += 1
+        count = lead["ps_followup_count"]
+        row["test_drive"] += int(has_test_drive(lead["qualification__test_drive"], lead["has_test_drive_call"]))
+        if count == 0:
+            row["unattended"] += 1
+        elif count >= 5:
+            row["f5"] += 1
+        else:
+            row[f"f{count}"] += 1
+
+    branch = request.user.location.strip()
+    users = User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True).filter(Q(location__iexact=branch) | Q(id__in=grouped))
+    if selected_ids:
+        users = users.filter(id__in=selected_ids)
+    rows = [{"id": user.id, "name": user.get_full_name() or user.email, "email": user.email, **grouped.get(user.id, empty_counts)} for user in users.order_by("first_name", "last_name", "email")]
+    return {"rows": rows, "leads": []}
 
 
 def summary_for(queryset):
@@ -321,11 +402,31 @@ class SalesManagerAnalyticsView(APIView):
         return Response(manager_payload(request))
 
 
+class SalesManagerPSFollowupsView(APIView):
+    permission_classes = [IsSalesManager]
+
+    def get(self, request):
+        return Response(ps_followup_payload(request))
+
+
 class SalesManagerAnalyticsExportView(APIView):
     permission_classes = [IsSalesManager]
 
     def get(self, request):
         section = request.query_params.get("section", "cre")
+        if section == "ps_followups":
+            data = ps_followup_payload(request)
+            rows = data["leads"] or data["rows"]
+            response = HttpResponse(content_type="text/csv")
+            response["Content-Disposition"] = 'attachment; filename="river-sales-manager-ps-followups.csv"'
+            writer = csv.writer(response)
+            if rows:
+                keys = list(rows[0].keys())
+                writer.writerow(keys)
+                writer.writerows([[row.get(key, "") for key in keys] for row in rows])
+            else:
+                writer.writerow(["No matching PS follow-up records"])
+            return response
         data = manager_payload(request)
         response = HttpResponse(content_type="text/csv")
         response["Content-Disposition"] = f'attachment; filename="river-sales-manager-{section}.csv"'

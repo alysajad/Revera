@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { exportSalesManagerAnalytics, getSalesManagerAnalytics, sourceName, type ManagerAnalytics, type ManagerPerformanceRow, type ManagerRoleRow } from "@/lib/crm";
+import { exportSalesManagerAnalytics, getLeadDetail, getSalesManagerAnalytics, getSalesManagerPSFollowups, sourceName, statusName, type LeadDetail, type ManagerAnalytics, type ManagerPerformanceRow, type ManagerPSFollowupRow, type ManagerRoleRow } from "@/lib/crm";
 import { formatDate, formatDateTime } from "@/lib/dates";
 
 const tabs = [
@@ -42,6 +42,53 @@ function PerformanceTable({ title, section, labelKey, rows, filters, onExport }:
   return <article className="panel manager-table-card"><header className="manager-card-head"><div><p className="eyebrow">CONVERSION MIX</p><h2>{title}</h2></div><button className="filter" onClick={() => onExport(section)}>Export CSV</button></header><div className="manager-table-scroll"><table className="sales-table manager-table"><thead><tr><th>{labelKey === "source" ? "Source" : "Model"}</th><th>Total</th><th>Qualified</th><th>Booked</th><th>Retailed</th><th>Lost</th><th>Conv.</th></tr></thead><tbody>{rows.length ? rows.map(row => { const name = String(row[labelKey] || "Unknown"); const filter: Record<string, string> = labelKey === "source" ? { source: name } : { model: name }; const clickable = labelKey === "source" || name !== "Model not set"; const href = leadHref(filters, filter); return <tr className={clickable ? "manager-clickable-row" : ""} key={name} role={clickable ? "link" : undefined} tabIndex={clickable ? 0 : undefined} onClick={clickable ? () => router.push(href) : undefined} onKeyDown={clickable ? event => { if (event.key === "Enter") router.push(href); } : undefined}><td><b>{labelKey === "source" ? sourceName(name) : name}</b></td><td>{row.total}</td><td>{row.qualified}</td><td>{row.booked}</td><td>{row.retailed}</td><td>{row.lost}</td><td><span className="manager-rate">{row.conversion_rate}%</span></td></tr>; }) : <tr><td colSpan={7} className="sales-empty">No rows for this period.</td></tr>}</tbody></table></div></article>;
 }
 
+const psFollowupColumns = [
+  ["total", "Total Leads", "total_leads"],
+  ["test_drive", "Test Drive", "test_drive"],
+  ["unattended", "Unattended", "unattended"],
+  ["f1", "F1", "f1"],
+  ["f2", "F2", "f2"],
+  ["f3", "F3", "f3"],
+  ["f4", "F4", "f4"],
+  ["f5", "F5", "f5"],
+] as const;
+
+function PSFollowupsSection({ filters, primaryPs, setPrimaryPs, officers }: { filters: Record<string, string>; primaryPs: string; setPrimaryPs: (value: string) => void; officers: ManagerRoleRow[] }) {
+  const [comparePs, setComparePs] = useState("");
+  const [priority, setPriority] = useState("");
+  const [rows, setRows] = useState<ManagerPSFollowupRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [bucket, setBucket] = useState<{ ps: ManagerPSFollowupRow; key: string; label: string } | null>(null);
+  const [customers, setCustomers] = useState<Awaited<ReturnType<typeof getSalesManagerPSFollowups>>["leads"]>([]);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [detail, setDetail] = useState<LeadDetail | null>(null);
+  const query = useMemo(() => ({ ...filters, ...(primaryPs ? { ps: primaryPs } : {}), ...(primaryPs && comparePs ? { compare_ps: comparePs } : {}), ...(priority ? { priority } : {}) }), [comparePs, filters, primaryPs, priority]);
+  const load = useCallback(async () => { setLoading(true); setError(""); try { setRows((await getSalesManagerPSFollowups(query)).rows); } catch (err) { setError(err instanceof Error ? err.message : "Unable to load PS follow-ups."); } finally { setLoading(false); } }, [query]);
+  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
+  const close = () => { setBucket(null); setCustomers([]); setDetail(null); };
+  const openBucket = async (psRow: ManagerPSFollowupRow, key: string, label: string) => {
+    setBucket({ ps: psRow, key, label }); setDetail(null); setCustomers([]); setModalLoading(true); setError("");
+    try { setCustomers((await getSalesManagerPSFollowups({ ...filters, ps: String(psRow.id), ...(priority ? { priority } : {}), bucket: key })).leads); }
+    catch (err) { setError(err instanceof Error ? err.message : "Unable to load customers."); close(); }
+    finally { setModalLoading(false); }
+  };
+  const openLead = async (id: number) => { setModalLoading(true); try { setDetail(await getLeadDetail(id)); } catch (err) { setError(err instanceof Error ? err.message : "Unable to load lead details."); } finally { setModalLoading(false); } };
+  const exportRows = (extra: Record<string, string> = {}) => void exportSalesManagerAnalytics("ps_followups", { ...query, ...extra }).catch(err => setError(err instanceof Error ? err.message : "Export failed."));
+
+  return <>
+    <article className="panel manager-table-card manager-followups-card">
+      <header className="manager-followups-head"><div><p className="eyebrow">FOLLOW-UP DISCIPLINE</p><h2>PS Followups</h2><p>Customers advance from F1 to F5 as scheduled follow-ups are recorded.</p></div><div className="manager-followups-actions"><label><span>Primary PS</span><select value={primaryPs} onChange={event => { setPrimaryPs(event.target.value); setComparePs(""); }}><option value="">All PS/SO</option>{officers.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label><span>Compare PS</span><select disabled={!primaryPs} value={comparePs} onChange={event => setComparePs(event.target.value)}><option value="">Compare PS...</option>{officers.filter(item => String(item.id) !== primaryPs).map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label><span>Priority</span><select value={priority} onChange={event => setPriority(event.target.value)}><option value="">All priorities</option><option value="HOT">Hot</option><option value="WARM">Warm</option><option value="COLD">Cold</option></select></label><button className="filter" onClick={() => exportRows()}>⇩ Export CSV</button><button className="filter" onClick={() => void load()}>↻ Refresh</button></div></header>
+      {error && <div className="manager-followups-error" role="alert">{error}</div>}
+      <div className="manager-table-scroll"><table className="sales-table manager-followups-table"><thead><tr><th>PS Name</th>{psFollowupColumns.map(([, label]) => <th key={label}>{label}</th>)}</tr></thead><tbody>{loading ? <tr><td colSpan={9} className="sales-empty">Loading PS follow-ups...</td></tr> : rows.length ? rows.map(row => <tr key={row.id}><td><b>{row.name}</b><small>{row.email}</small></td>{psFollowupColumns.map(([bucketKey, label, valueKey]) => { const value = row[valueKey]; return <td key={bucketKey}><button className={`manager-followup-count ${bucketKey}`} disabled={!value} onClick={() => void openBucket(row, bucketKey, label)} aria-label={`${row.name}, ${label}: ${value}`}>{value}</button></td>; })}</tr>) : <tr><td colSpan={9} className="sales-empty">No PS users match these filters.</td></tr>}</tbody></table></div>
+    </article>
+    {bucket && <div className="modal-layer manager-followup-layer" role="presentation"><section className="modal manager-followup-modal" role="dialog" aria-modal="true" aria-labelledby="ps-followup-modal-title">
+      <button className="modal-close" onClick={close} aria-label="Close">×</button>
+      {detail ? <><header className="sales-detail-header"><div><button className="manager-modal-back" onClick={() => setDetail(null)}>← Back to {bucket.label}</button><h2 id="ps-followup-modal-title">{detail.name}</h2><p className="subtext">{detail.phone} · {detail.model} · {detail.status}</p></div></header><div className="sales-detail-scroll"><section className="sales-info-card"><h3>Lead details</h3><div className="sales-info-grid"><span><small>Source</small><b>{detail.source}</b></span><span><small>PS/SO</small><b>{detail.assignedPsName || "-"}</b></span><span><small>Test drive</small><b>{detail.qualification?.test_drive || "No"}</b></span><span><small>Sales outcome</small><b>{detail.salesOutcome}</b></span></div></section><section className="sales-history"><h3>Call history and remarks</h3>{detail.callHistory.length ? detail.callHistory.map(call => <div className="sales-history-row" key={call.id}><span className="history-dot" /><div><b>{call.outcome || statusName(call.status)}</b><small>{call.remarks || "No remarks"}</small><small>By {call.so_name || "-"} · {formatDateTime(call.created_at)}</small></div></div>) : <p className="subtext">No calls recorded.</p>}</section><section className="sales-history"><h3>Scheduled follow-ups</h3>{detail.followUpHistory.length ? detail.followUpHistory.map(item => <div className="sales-history-row" key={item.id}><span className="history-dot follow" /><div><b>{formatDateTime(item.scheduled_for)}</b><small>{item.resolved_at ? `Resolved ${formatDateTime(item.resolved_at)}` : "Open"}</small></div></div>) : <p className="subtext">No scheduled follow-ups.</p>}</section></div></> : <><header className="manager-followup-modal-head"><div><h2 id="ps-followup-modal-title">{bucket.ps.name} – {bucket.label} ({customers.length})</h2><p>Open a customer to view detailed call history and remarks.</p></div><button className="filter" onClick={() => exportRows({ ps: String(bucket.ps.id), bucket: bucket.key })}>⇩ Export CSV</button></header><div className="manager-followup-modal-scroll"><table className="sales-table manager-followup-customers"><thead><tr><th>Customer Name</th><th>Mobile</th><th>Source</th><th>Created At</th><th>Model</th><th>Test Drive</th><th>Status</th></tr></thead><tbody>{modalLoading ? <tr><td colSpan={7} className="sales-empty">Loading customers...</td></tr> : customers.length ? customers.map(customer => <tr key={customer.id} role="button" tabIndex={0} onClick={() => void openLead(customer.id)} onKeyDown={event => { if (event.key === "Enter") void openLead(customer.id); }}><td><b>{customer.name}</b></td><td>{customer.phone}</td><td>{sourceName(customer.source)}</td><td>{formatDateTime(customer.created_at)}</td><td>{customer.model || "-"}</td><td><span className="manager-test-drive">{customer.test_drive}</span></td><td><span className={`sales-status ${customer.status.toLowerCase()}`}>{statusName(customer.status)}</span></td></tr>) : <tr><td colSpan={7} className="sales-empty">No customers in this category.</td></tr>}</tbody></table></div></>}
+    </section></div>}
+  </>;
+}
+
 export function SalesManagerAnalyticsPage() {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number][0]>("overview");
   const [range, setRange] = useState("mtd");
@@ -55,7 +102,8 @@ export function SalesManagerAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const params = useMemo(() => ({ range, ...(range === "custom" && dateFrom ? { date_from: dateFrom } : {}), ...(range === "custom" && dateTo ? { date_to: dateTo } : {}), ...(source ? { source } : {}), ...(model ? { model } : {}), ...(cre ? { cre } : {}), ...(ps ? { ps } : {}) }), [cre, dateFrom, dateTo, model, ps, range, source]);
-  const drilldownFilters = useMemo<Record<string, string>>(() => ({ range, ...(data?.date_from ? { date_from: String(data.date_from) } : {}), ...(data?.date_to ? { date_to: String(data.date_to) } : {}), ...(source ? { source } : {}), ...(model ? { model } : {}), ...(cre ? { cre } : {}), ...(ps ? { ps } : {}) }), [cre, data?.date_from, data?.date_to, model, ps, range, source]);
+  const followupFilters = useMemo<Record<string, string>>(() => ({ range, ...(range === "custom" && dateFrom ? { date_from: dateFrom } : {}), ...(range === "custom" && dateTo ? { date_to: dateTo } : {}), ...(source ? { source } : {}), ...(model ? { model } : {}), ...(cre ? { cre } : {}) }), [cre, dateFrom, dateTo, model, range, source]);
+  const drilldownFilters: Record<string, string> = { range, ...(data?.date_from ? { date_from: String(data.date_from) } : {}), ...(data?.date_to ? { date_to: String(data.date_to) } : {}), ...(source ? { source } : {}), ...(model ? { model } : {}), ...(cre ? { cre } : {}), ...(ps ? { ps } : {}) };
   const load = useCallback(async () => { setLoading(true); setError(""); try { setData(await getSalesManagerAnalytics(params)); } catch (err) { setError(err instanceof Error ? err.message : "Unable to load sales manager analytics."); } finally { setLoading(false); } }, [params]);
   useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
   const sources = data?.source.map(row => row.source) || [];
@@ -81,6 +129,7 @@ export function SalesManagerAnalyticsPage() {
       {activeTab === "ps" && <RoleTable title="PS/SO performance" section="ps" rows={data.ps} filters={drilldownFilters} onExport={exportSection} />}
       {activeTab === "source" && <section className="manager-two-col"><PerformanceTable title="Source conversion" section="source" labelKey="source" rows={data.source} filters={drilldownFilters} onExport={exportSection} /><PerformanceTable title="Model conversion" section="models" labelKey="model" rows={data.models} filters={drilldownFilters} onExport={exportSection} /></section>}
       {activeTab === "ops" && <section className="manager-two-col"><article className="panel manager-table-card"><header className="manager-card-head"><div><p className="eyebrow">CURRENT PIPELINE</p><h2>Current lead states</h2></div></header><div className="manager-list">{currentStateBuckets.map(row => <Link href={leadHref(drilldownFilters, row.filter)} key={row.label}><span>{row.label}</span><b>{row.count}</b></Link>)}</div></article><article className="panel manager-table-card"><header className="manager-card-head"><div><p className="eyebrow">STALE LEADS</p><h2>Oldest untouched</h2></div><button className="filter" onClick={() => exportSection("stale_leads")}>Export CSV</button></header><div className="manager-list">{data.stale_leads.length ? data.stale_leads.map(row => <Link href={leadHref(drilldownFilters, { status: "FRESH", risk: "stale", q: row.phone })} key={row.id}><span>{row.name}<small>{sourceName(row.source)} - {row.model_interest || "Model not set"} - {formatDate(row.created_at)}</small></span><b>#{String(row.id).padStart(6, "0")}</b></Link>) : <p className="subtext">No stale untouched leads.</p>}</div></article></section>}
+      <PSFollowupsSection filters={followupFilters} primaryPs={ps} setPrimaryPs={setPs} officers={data.ps} />
     </>}
   </section>;
 }

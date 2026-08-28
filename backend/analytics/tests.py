@@ -5,7 +5,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User
-from leads.models import CallLog, FollowUp, Lead
+from leads.models import CallLog, FollowUp, Lead, LeadQualification
 
 
 class SalesManagerAnalyticsTests(TestCase):
@@ -126,9 +126,44 @@ class SalesManagerAnalyticsTests(TestCase):
 
         self.assertEqual({lead["id"] for lead in response.data["results"]}, {lost.id, unqualified.id})
 
+    def test_ps_followup_analytics_use_scheduled_history_and_test_drive_signals(self):
+        today = timezone.localdate()
+        unattended = Lead.objects.create(name="Unattended", phone="9000000020", branch="Mount Road", enquiry_date=today, assigned_ps=self.ps, category=Lead.Category.HOT)
+        first = Lead.objects.create(name="First follow-up", phone="9000000021", branch="Mount Road", enquiry_date=today, assigned_ps=self.ps, category=Lead.Category.HOT)
+        fifth_plus = Lead.objects.create(name="Fifth plus", phone="9000000022", branch="Mount Road", enquiry_date=today, assigned_ps=self.ps, category=Lead.Category.HOT)
+        other_branch = Lead.objects.create(name="Hidden", phone="9000000023", branch="Other", enquiry_date=today, assigned_ps=self.ps, category=Lead.Category.HOT)
+        now = timezone.now()
+        FollowUp.objects.create(lead=first, so=self.ps, scheduled_for=now)
+        for index in range(6):
+            FollowUp.objects.create(lead=fifth_plus, so=self.ps, scheduled_for=now + timedelta(days=index))
+        FollowUp.objects.create(lead=other_branch, so=self.ps, scheduled_for=now)
+        LeadQualification.objects.create(lead=first, test_drive="Showroom visit")
+        CallLog.objects.create(lead=unattended, so=self.ps, status=Lead.Status.PENDING, outcome="Need Test Drive")
+        self.client.force_authenticate(self.manager)
+
+        response = self.client.get("/api/analytics/sales-manager/ps-followups/?range=all&priority=HOT")
+
+        self.assertEqual(response.status_code, 200)
+        row = response.data["rows"][0]
+        self.assertEqual(row["total_leads"], 3)
+        self.assertEqual(row["test_drive"], 2)
+        self.assertEqual(row["unattended"], 1)
+        self.assertEqual(row["f1"], 1)
+        self.assertEqual(row["f5"], 1)
+
+        drilldown = self.client.get(f"/api/analytics/sales-manager/ps-followups/?range=all&priority=HOT&ps={self.ps.id}&bucket=f5")
+        self.assertEqual([lead["id"] for lead in drilldown.data["leads"]], [fifth_plus.id])
+
+        exported = self.client.get(f"/api/analytics/sales-manager/export/?section=ps_followups&range=all&priority=HOT&ps={self.ps.id}&bucket=test_drive")
+        self.assertEqual(exported.status_code, 200)
+        self.assertIn("First follow-up", exported.content.decode())
+        self.assertIn("Unattended", exported.content.decode())
+
     def test_non_manager_cannot_use_sales_manager_analytics(self):
         self.client.force_authenticate(self.admin)
 
         response = self.client.get("/api/analytics/sales-manager/")
+        followups = self.client.get("/api/analytics/sales-manager/ps-followups/")
 
         self.assertEqual(response.status_code, 403)
+        self.assertEqual(followups.status_code, 403)
