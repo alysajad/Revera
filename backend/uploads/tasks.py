@@ -1,10 +1,11 @@
 import csv
 import io
 import re
-from datetime import date, datetime
+from datetime import datetime
 
 from celery import shared_task
 from django.db import transaction
+from django.utils import timezone
 
 from leads.models import Lead
 from leads.serializers import configured_values
@@ -45,7 +46,7 @@ def parse_date(raw):
             return datetime.strptime(raw, format_string).date()
         except ValueError:
             continue
-    return date.today()
+    return timezone.localdate()
 
 
 def invalid_model_error(model):
@@ -79,7 +80,7 @@ def parse_upload_batch(batch_id):
                 continue
             error = "" if name and phone else "Name and phone are required."
             enquiry_date = parse_date(value(row, "date", "enquiry date"))
-            if enquiry_date > date.today():
+            if enquiry_date > timezone.localdate():
                 error = "Enquiry date cannot be in the future."
             source, source_label = classify_source(value(row, "source"))
             model_interest = value(row, "model", "vehicle interest", "model / vehicle interest")

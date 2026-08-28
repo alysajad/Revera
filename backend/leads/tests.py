@@ -2,7 +2,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as datetime_timezone
 from unittest.mock import patch
 
 from accounts.models import User
@@ -116,6 +116,13 @@ class LeadAccessTests(TestCase):
         self.client.force_authenticate(self.admin)
         response = self.client.post("/api/leads/", {"name": "Future lead", "phone": "7006682393", "source": Lead.Source.WEBSITE, "enquiry_date": (timezone.localdate() + timedelta(days=1)).isoformat()}, format="json")
         self.assertEqual(response.status_code, 400)
+
+    def test_admin_can_add_a_lead_for_current_ist_date(self):
+        self.client.force_authenticate(self.admin)
+        fixed_now = datetime(2026, 8, 28, 4, 7, tzinfo=datetime_timezone.utc)
+        with patch("django.utils.timezone.now", return_value=fixed_now):
+            response = self.client.post("/api/leads/", {"name": "IST Today", "phone": "7006682396", "source": Lead.Source.WEBSITE, "enquiry_date": "2026-08-28"}, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
 
     def test_admin_cannot_assign_a_lead_twice(self):
         self.client.force_authenticate(self.admin)
@@ -292,7 +299,7 @@ class LeadAccessTests(TestCase):
         generic = Lead.objects.create(name="Generic Pending", phone="7305198426", assigned_so=self.first_so)
         tomorrow_callback = Lead.objects.create(name="Tomorrow Callback", phone="7305198428", assigned_so=self.first_so)
         overdue_callback = Lead.objects.create(name="Overdue Callback", phone="7305198429", assigned_so=self.first_so, status=Lead.Status.PENDING)
-        fixed_now = timezone.now().replace(hour=10, minute=0, second=0, microsecond=0)
+        fixed_now = timezone.localtime(timezone.now()).replace(hour=10, minute=0, second=0, microsecond=0)
         same_day_eod = fixed_now.replace(hour=23, minute=59)
         tomorrow = fixed_now + timedelta(days=1)
         yesterday = fixed_now - timedelta(days=1)
@@ -350,7 +357,7 @@ class LeadAccessTests(TestCase):
 
     def test_so_update_accepts_same_day_future_follow_up_and_rejects_past(self):
         past_lead = Lead.objects.create(name="Past Follow Up", phone="7305198427", assigned_so=self.first_so)
-        fixed_now = timezone.now().replace(hour=10, minute=0, second=0, microsecond=0)
+        fixed_now = timezone.localtime(timezone.now()).replace(hour=10, minute=0, second=0, microsecond=0)
         same_day_eod = fixed_now.replace(hour=23, minute=59)
         same_day_past = fixed_now.replace(hour=9, minute=0)
         self.client.force_authenticate(self.first_so)
@@ -606,7 +613,7 @@ class LeadAccessTests(TestCase):
 
     def test_follow_up_submission_moves_fresh_lead_to_follow_ups(self):
         self.client.force_authenticate(self.first_so)
-        fixed_now = timezone.now().replace(hour=10, minute=0, second=0, microsecond=0)
+        fixed_now = timezone.localtime(timezone.now()).replace(hour=10, minute=0, second=0, microsecond=0)
         same_day_eod = fixed_now.replace(hour=23, minute=59)
         with patch("django.utils.timezone.now", return_value=fixed_now):
             response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_outcome": "Call Me Back", "status": Lead.Status.PENDING, "follow_up_at": same_day_eod.isoformat()}, format="json")
