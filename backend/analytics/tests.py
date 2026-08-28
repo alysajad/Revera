@@ -1,9 +1,11 @@
+from datetime import timedelta
+
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User
-from leads.models import CallLog, Lead
+from leads.models import CallLog, FollowUp, Lead
 
 
 class SalesManagerAnalyticsTests(TestCase):
@@ -53,6 +55,60 @@ class SalesManagerAnalyticsTests(TestCase):
         self.assertEqual(edit.status_code, 403)
         self.branch_lead.refresh_from_db()
         self.assertEqual(self.branch_lead.name, "Branch lead")
+
+    def test_manager_lead_flagged_filter_keeps_branch_scope(self):
+        self.branch_lead.flagged_to_manager = True
+        self.branch_lead.save(update_fields=["flagged_to_manager"])
+        self.other_branch_lead.flagged_to_manager = True
+        self.other_branch_lead.save(update_fields=["flagged_to_manager"])
+        self.client.force_authenticate(self.manager)
+
+        response = self.client.get("/api/leads/manager-leads/?flagged=true")
+
+        self.assertEqual({lead["id"] for lead in response.data["results"]}, {self.branch_lead.id})
+
+    def test_manager_lead_overdue_filter_keeps_branch_scope(self):
+        now = timezone.now()
+        FollowUp.objects.create(lead=self.branch_lead, so=self.ps, scheduled_for=now - timedelta(hours=1))
+        FollowUp.objects.create(lead=self.retailed, so=self.ps, scheduled_for=now - timedelta(hours=2), resolved_at=now)
+        FollowUp.objects.create(lead=self.retailed, so=self.ps, scheduled_for=now + timedelta(hours=1))
+        FollowUp.objects.create(lead=self.other_branch_lead, so=self.ps, scheduled_for=now - timedelta(hours=1))
+        self.client.force_authenticate(self.manager)
+
+        response = self.client.get("/api/leads/manager-leads/?followup=overdue")
+
+        self.assertEqual({lead["id"] for lead in response.data["results"]}, {self.branch_lead.id})
+
+    def test_manager_lead_stale_filter_uses_current_fresh_status_and_branch(self):
+        stale_fresh = Lead.objects.create(name="Stale fresh", phone="9000000010", branch="Mount Road", status=Lead.Status.FRESH)
+        stale_qualified = Lead.objects.create(name="Stale qualified", phone="9000000011", branch="Mount Road", status=Lead.Status.QUALIFIED)
+        other_stale = Lead.objects.create(name="Other stale", phone="9000000012", branch="Other", status=Lead.Status.FRESH)
+        Lead.objects.filter(id__in=[stale_fresh.id, stale_qualified.id, other_stale.id]).update(created_at=timezone.now() - timedelta(days=4))
+        self.client.force_authenticate(self.manager)
+
+        response = self.client.get("/api/leads/manager-leads/?risk=stale")
+
+        self.assertEqual({lead["id"] for lead in response.data["results"]}, {stale_fresh.id})
+
+    def test_historical_callback_log_does_not_match_current_callback_status(self):
+        historical_callback = Lead.objects.create(name="Past callback", phone="9000000013", branch="Mount Road", status=Lead.Status.QUALIFIED)
+        current_callback = Lead.objects.create(name="Current callback", phone="9000000014", branch="Mount Road", status=Lead.Status.CALLBACK)
+        CallLog.objects.create(lead=historical_callback, so=self.ps, status=Lead.Status.CALLBACK, outcome="Call Me Back")
+        self.client.force_authenticate(self.manager)
+
+        response = self.client.get("/api/leads/manager-leads/?status=CALLBACK")
+
+        self.assertEqual({lead["id"] for lead in response.data["results"]}, {current_callback.id})
+
+    def test_manager_lead_lost_status_group_includes_lost_and_unqualified(self):
+        lost = Lead.objects.create(name="Lost", phone="9000000015", branch="Mount Road", status=Lead.Status.LOST)
+        unqualified = Lead.objects.create(name="Unqualified", phone="9000000016", branch="Mount Road", status=Lead.Status.UNQUALIFIED)
+        Lead.objects.create(name="Other lost", phone="9000000017", branch="Other", status=Lead.Status.LOST)
+        self.client.force_authenticate(self.manager)
+
+        response = self.client.get("/api/leads/manager-leads/?status_group=lost_or_unqualified")
+
+        self.assertEqual({lead["id"] for lead in response.data["results"]}, {lost.id, unqualified.id})
 
     def test_non_manager_cannot_use_sales_manager_analytics(self):
         self.client.force_authenticate(self.admin)

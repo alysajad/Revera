@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import timedelta
 
 from django.db import transaction
 from django.db.models import Count, Prefetch, Q
@@ -111,6 +112,14 @@ class LeadViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(assigned_so_id=value)
         if value := request.query_params.get("ps"):
             queryset = queryset.filter(assigned_ps_id=value)
+        if request.query_params.get("flagged") == "true":
+            queryset = queryset.filter(flagged_to_manager=True)
+        if request.query_params.get("followup") == "overdue":
+            queryset = queryset.filter(follow_ups__resolved_at__isnull=True, follow_ups__scheduled_for__lt=timezone.now()).distinct()
+        if request.query_params.get("risk") == "stale":
+            queryset = queryset.filter(status=Lead.Status.FRESH, created_at__date__lte=timezone.localdate() - timedelta(days=3))
+        if request.query_params.get("status_group") == "lost_or_unqualified":
+            queryset = queryset.filter(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED])
         page = self.paginate_queryset(queryset)
         serializer = self.get_serializer(page if page is not None else queryset, many=True)
         if page is not None:

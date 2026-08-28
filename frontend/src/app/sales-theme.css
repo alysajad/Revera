@@ -603,6 +603,10 @@
   cursor: default !important;
 }
 
+.manager-table tbody tr.manager-clickable-row {
+  cursor: pointer !important;
+}
+
 .manager-lead-filters {
   grid-template-columns: 1.4fr repeat(6, minmax(120px, .75fr)) auto;
   align-items: end;
