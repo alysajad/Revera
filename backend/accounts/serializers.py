@@ -34,6 +34,12 @@ class TeamMemberSerializer(serializers.ModelSerializer):
         role = validated_data.get("role") or self.context.get("role") or User.Role.CRE
         return User.objects.create_user(password=password, **validated_data)
 
+    def validate(self, attrs):
+        role = attrs.get("role") or self.context.get("role") or getattr(self.instance, "role", User.Role.CRE)
+        if role == User.Role.SALES_MANAGER and not (attrs.get("location") or getattr(self.instance, "location", "")).strip():
+            raise serializers.ValidationError({"location": "Choose the manager branch."})
+        return attrs
+
     def update(self, instance, validated_data):
         password = validated_data.pop("password", None)
         for field, value in validated_data.items():

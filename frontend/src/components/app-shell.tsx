@@ -6,10 +6,11 @@ import { useEffect, useState, type ReactNode } from "react";
 import { cacheCurrentUser, clearCachedCurrentUser, getCachedCurrentUser, getCurrentUser, logout, type CurrentUser } from "@/lib/crm";
 import { formatDate } from "@/lib/dates";
 
-type AppShellProps = { children: ReactNode; role: "Admin" | "Sales officer" | "Receptionist" };
+type AppShellProps = { children: ReactNode; role: "Admin" | "Sales officer" | "Sales manager" | "Receptionist" };
 
 function roleType(user: CurrentUser) {
   if (user.role === "ADMIN") return "Admin";
+  if (user.role === "SALES_MANAGER") return "Sales manager";
   if (user.role === "RECEPTIONIST") return "Receptionist";
   return "Sales officer";
 }
@@ -26,6 +27,10 @@ const officerLinks = [
   ["/my-leads", "My queue", "◫"],
   ["/follow-ups", "Follow-ups", "◷"],
   ["/my-analytics", "My results", "◔"],
+] as const;
+const managerLinks = [
+  ["/manager/analytics", "Analytics", "◱"],
+  ["/manager/leads", "Branch leads", "☷"],
 ] as const;
 const creLinks = [
   ["/my-leads", "My queue", "◫"],
@@ -70,9 +75,9 @@ export function AppShell({ children, role }: AppShellProps) {
   }, [pathname, role, router]);
   const displayName = user ? `${user.first_name} ${user.last_name}`.trim() || user.email : "Sign in";
   const initials = user ? `${user.first_name[0] || ""}${user.last_name[0] || ""}` || user.email.slice(0, 2).toUpperCase() : "?";
-  const workspaceRole = user?.role === "CRE" ? "CRE" : user?.role === "SO" ? "PS/SO" : user?.role === "RECEPTIONIST" ? "Receptionist" : user?.role === "COMPLAINTS" ? "Complaints department" : role;
-  const links = role === "Admin" ? adminLinks : role === "Sales officer" ? user?.role === "CRE" ? creLinks : user?.role === "COMPLAINTS" ? complaintLinks : officerLinks : receptionistLinks;
-  const shellRoleClass = role === "Sales officer" ? user?.role === "SO" ? "ps-shell" : user?.role === "COMPLAINTS" ? "complaints-shell" : "cre-shell" : role === "Receptionist" ? "receptionist-shell" : "";
+  const workspaceRole = user?.role === "CRE" ? "CRE" : user?.role === "SO" ? "PS/SO" : user?.role === "SALES_MANAGER" ? "Sales Manager" : user?.role === "RECEPTIONIST" ? "Receptionist" : user?.role === "COMPLAINTS" ? "Complaints department" : role;
+  const links = role === "Admin" ? adminLinks : role === "Sales manager" ? managerLinks : role === "Sales officer" ? user?.role === "CRE" ? creLinks : user?.role === "COMPLAINTS" ? complaintLinks : officerLinks : receptionistLinks;
+  const shellRoleClass = role === "Sales manager" ? "manager-shell" : role === "Sales officer" ? user?.role === "SO" ? "ps-shell" : user?.role === "COMPLAINTS" ? "complaints-shell" : "cre-shell" : role === "Receptionist" ? "receptionist-shell" : "";
   const signOut = async () => {
     try { await logout(); }
     finally { clearCachedCurrentUser(); router.replace("/"); }
@@ -81,8 +86,8 @@ export function AppShell({ children, role }: AppShellProps) {
   if (checkingAccess) return null;
 
   if (sessionConflict) {
-    const actualRole = sessionConflict.role === "ADMIN" ? "Admin" : sessionConflict.role === "RECEPTIONIST" ? "Receptionist" : sessionConflict.role === "CRE" ? "CRE" : sessionConflict.role === "COMPLAINTS" ? "Complaints department" : "PS/SO";
-    const actualHome = sessionConflict.role === "ADMIN" ? "/leads" : sessionConflict.role === "RECEPTIONIST" ? "/capture" : sessionConflict.role === "COMPLAINTS" ? "/complaints" : "/my-leads";
+    const actualRole = sessionConflict.role === "ADMIN" ? "Admin" : sessionConflict.role === "SALES_MANAGER" ? "Sales Manager" : sessionConflict.role === "RECEPTIONIST" ? "Receptionist" : sessionConflict.role === "CRE" ? "CRE" : sessionConflict.role === "COMPLAINTS" ? "Complaints department" : "PS/SO";
+    const actualHome = sessionConflict.role === "ADMIN" ? "/leads" : sessionConflict.role === "SALES_MANAGER" ? "/manager/analytics" : sessionConflict.role === "RECEPTIONIST" ? "/capture" : sessionConflict.role === "COMPLAINTS" ? "/complaints" : "/my-leads";
     const actualName = `${sessionConflict.first_name} ${sessionConflict.last_name}`.trim() || sessionConflict.email;
     return (
       <main className="page" style={{ maxWidth: "32rem", margin: "6rem auto", textAlign: "center" }}>
@@ -102,9 +107,9 @@ export function AppShell({ children, role }: AppShellProps) {
     );
   }
 
-  const homeHref = role === "Admin" ? "/leads" : role === "Receptionist" ? "/capture" : user?.role === "COMPLAINTS" ? "/complaints" : "/my-leads";
+  const homeHref = role === "Admin" ? "/leads" : role === "Sales manager" ? "/manager/analytics" : role === "Receptionist" ? "/capture" : user?.role === "COMPLAINTS" ? "/complaints" : "/my-leads";
 
-  return <div className={`app-shell ${role === "Sales officer" ? "sales-shell" : ""} ${shellRoleClass}`}>
+  return <div className={`app-shell ${["Sales officer", "Sales manager"].includes(role) ? "sales-shell" : ""} ${shellRoleClass}`}>
     <aside className="sidebar">
       <Link className="brand" href={homeHref}><span className="brand-mark">R</span><span className="brand-word">river<span>.</span></span></Link>
       <p className="workspace-label">{role === "Admin" ? "SALES CONTROL" : `${workspaceRole} WORKSPACE`}</p>
@@ -117,7 +122,7 @@ export function AppShell({ children, role }: AppShellProps) {
       </div>
     </aside>
     <main className="main-content">
-      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : role === "Receptionist" ? "Front Desk" : user?.role === "COMPLAINTS" ? "Complaint queue" : `${workspaceRole} pipeline`}</b><small>{new Intl.DateTimeFormat("en", { weekday: "long" }).format(new Date())}, {formatDate(new Date())}</small></div><div className="top-actions">{role === "Admin" && <button className="button primary" onClick={() => ["/leads", "/all-leads"].includes(pathname) ? window.dispatchEvent(new Event("river:add-lead")) : router.push("/leads?addLead=1")}>＋ Add lead</button>}{role === "Sales officer" && <span className="sales-topbar-mark" aria-hidden="true">◌</span>}<button className="mobile-signout" onClick={() => void signOut()} aria-label="Sign out" title="Sign out">↪</button></div></header>
+      <header className="topbar"><div><b>{role === "Admin" ? "Lead control" : role === "Sales manager" ? "Branch command" : role === "Receptionist" ? "Front Desk" : user?.role === "COMPLAINTS" ? "Complaint queue" : `${workspaceRole} pipeline`}</b><small>{new Intl.DateTimeFormat("en", { weekday: "long" }).format(new Date())}, {formatDate(new Date())}</small></div><div className="top-actions">{role === "Admin" && <button className="button primary" onClick={() => ["/leads", "/all-leads"].includes(pathname) ? window.dispatchEvent(new Event("river:add-lead")) : router.push("/leads?addLead=1")}>＋ Add lead</button>}{["Sales officer", "Sales manager"].includes(role) && <span className="sales-topbar-mark" aria-hidden="true">◌</span>}<button className="mobile-signout" onClick={() => void signOut()} aria-label="Sign out" title="Sign out">↪</button></div></header>
       {children}
     </main>
   </div>;

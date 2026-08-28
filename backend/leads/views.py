@@ -8,11 +8,12 @@ from django.utils.dateparse import parse_date
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import SAFE_METHODS
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import User
-from accounts.permissions import IsAdmin, IsAdminOrReceptionist, IsAdminReceptionistOrCRE
+from accounts.permissions import IsAdmin, IsAdminOrReceptionist, IsAdminReceptionistOrCRE, IsSalesManager
 from notifications.models import Notification
 from .models import CallLog, FollowUp, Lead, LeadAudit, LeadQualification, SystemConfig
 from .serializers import CALL_OUTCOME_STATUS_OPTIONS, PS_CALL_OUTCOME_STATUS_OPTIONS, AssignmentSerializer, BulkDistributeSerializer, FollowUpSerializer, LeadDetailSerializer, LeadSerializer, LeadUpdateSerializer, PSAssignmentSerializer, SOLeadListSerializer, SOLeadUpdateSerializer, SystemConfigSerializer
@@ -32,6 +33,8 @@ def apply_lead_filters(queryset, filters):
         queryset = queryset.filter(source=value)
     if value := filters.get("status"):
         queryset = queryset.filter(status=value)
+    if value := filters.get("sales_outcome"):
+        queryset = queryset.filter(sales_outcome=value)
     for key, field in (("model", "model_interest"), ("city", "city"), ("campaign", "campaign")):
         if value := filters.get(key):
             queryset = queryset.filter(**{f"{field}__icontains": value})
@@ -59,6 +62,8 @@ class LeadViewSet(viewsets.ModelViewSet):
         queryset = Lead.objects.filter(deleted_at__isnull=True).select_related("assigned_so", "assigned_ps").annotate(_call_count=Count("call_logs", distinct=True)).prefetch_related("qualification")
         if not self.request.user.is_admin and self.request.user.role == User.Role.CRE:
             queryset = queryset.filter(assigned_so=self.request.user)
+        elif not self.request.user.is_admin and self.request.user.role == User.Role.SALES_MANAGER:
+            queryset = queryset.filter(branch__iexact=self.request.user.location.strip()) if self.request.user.location.strip() else queryset.none()
         elif not self.request.user.is_admin:
             queryset = queryset.filter(assigned_ps=self.request.user)
         elif self.request.query_params.get("unassigned") == "true":
@@ -91,11 +96,26 @@ class LeadViewSet(viewsets.ModelViewSet):
         LeadAudit.objects.create(lead=lead, actor=self.request.user, event="created")
 
     def get_permissions(self):
+        if getattr(self.request.user, "role", None) == User.Role.SALES_MANAGER and self.request.method not in SAFE_METHODS:
+            return [IsAdmin()]
         if self.action in {"assign", "assign_ps", "bulk_assign", "bulk_assign_ps", "bulk_distribute", "auto_assign", "reopen", "destroy"}:
             return [IsAdmin()]
         if self.action == "create":
             return [IsAdminReceptionistOrCRE()]
         return super().get_permissions()
+
+    @action(detail=False, methods=["get"], url_path="manager-leads", permission_classes=[IsSalesManager])
+    def manager_leads(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+        if value := request.query_params.get("cre"):
+            queryset = queryset.filter(assigned_so_id=value)
+        if value := request.query_params.get("ps"):
+            queryset = queryset.filter(assigned_ps_id=value)
+        page = self.paginate_queryset(queryset)
+        serializer = self.get_serializer(page if page is not None else queryset, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
     @action(detail=False, methods=["get"], url_path="my-dashboard")
     def my_dashboard(self, request):

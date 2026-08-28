@@ -25,6 +25,7 @@ class User(AbstractUser):
         ADMIN = "ADMIN", "Admin"
         CRE = "CRE", "CRE"
         SALES_OFFICER = "SO", "PS/SO"
+        SALES_MANAGER = "SALES_MANAGER", "Sales Manager"
         RECEPTIONIST = "RECEPTIONIST", "Receptionist"
         COMPLAINTS = "COMPLAINTS", "Complaints department"
 
@@ -43,3 +44,7 @@ class User(AbstractUser):
     @property
     def is_admin(self):
         return self.role == self.Role.ADMIN
+
+    @property
+    def is_sales_manager(self):
+        return self.role == self.Role.SALES_MANAGER

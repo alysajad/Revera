@@ -1,15 +1,18 @@
 import csv
+from calendar import monthrange
+from datetime import timedelta
 
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Q
 from django.db.models.functions import TruncMonth
 from django.http import HttpResponse
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import User
-from accounts.permissions import IsAdmin
-from leads.models import Lead, LeadAudit
+from accounts.permissions import IsAdmin, IsSalesManager
+from leads.models import CallLog, FollowUp, Lead, LeadAudit
 
 
 def metrics(queryset):
@@ -33,6 +36,198 @@ def team_metrics(users, lead_relation):
     ):
         rows.append({"id": user.id, "name": user.get_full_name() or user.email, "total_assigned": user.total_assigned, "total_called": user.total_called, "calls_today": user.calls_today, "qualified": user.qualified, "walkins": user.walkins, "won": user.won, "lost": user.lost, "conversion_rate": round((user.won / user.total_assigned) * 100, 1) if user.total_assigned else 0})
     return rows
+
+
+def percent(part, whole):
+    return round((part / whole) * 100, 1) if whole else 0
+
+
+def period_bounds(request):
+    today = timezone.localdate()
+    date_range = request.query_params.get("range", "mtd")
+    if date_range == "today":
+        start = end = today
+    elif date_range == "all":
+        start = end = None
+    elif request.query_params.get("date_from") or request.query_params.get("date_to"):
+        date_range = "custom"
+        start = parse_date(request.query_params.get("date_from", "")) if request.query_params.get("date_from") else None
+        end = parse_date(request.query_params.get("date_to", "")) if request.query_params.get("date_to") else None
+    else:
+        start = today.replace(day=1)
+        end = today
+    return date_range, start, end
+
+
+def previous_mtd_bounds(start, end):
+    if not start or not end or start.day != 1:
+        return None, None
+    year = start.year if start.month > 1 else start.year - 1
+    month = start.month - 1 or 12
+    last_day = monthrange(year, month)[1]
+    return start.replace(year=year, month=month, day=1), end.replace(year=year, month=month, day=min(end.day, last_day))
+
+
+def with_period(queryset, start, end, field="enquiry_date"):
+    if start:
+        queryset = queryset.filter(**{f"{field}__gte": start})
+    if end:
+        queryset = queryset.filter(**{f"{field}__lte": end})
+    return queryset
+
+
+def manager_base_queryset(request):
+    branch = request.user.location.strip()
+    if not branch:
+        return Lead.objects.none()
+    queryset = Lead.objects.filter(deleted_at__isnull=True, branch__iexact=branch)
+    if value := request.query_params.get("source"):
+        queryset = queryset.filter(source=value)
+    if value := request.query_params.get("model"):
+        queryset = queryset.filter(model_interest__icontains=value)
+    if value := request.query_params.get("category"):
+        queryset = queryset.filter(category=value)
+    if value := request.query_params.get("status"):
+        queryset = queryset.filter(status=value)
+    if value := request.query_params.get("cre"):
+        queryset = queryset.filter(assigned_so_id=value)
+    if value := request.query_params.get("ps"):
+        queryset = queryset.filter(assigned_ps_id=value)
+    return queryset
+
+
+def summary_for(queryset):
+    data = queryset.aggregate(
+        total=Count("id"),
+        untouched=Count("id", filter=Q(status=Lead.Status.FRESH)),
+        contacted=Count("id", filter=~Q(status=Lead.Status.FRESH)),
+        open=Count("id", filter=~Q(status__in=[Lead.Status.WON, Lead.Status.LOST, Lead.Status.UNQUALIFIED])),
+        qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)),
+        walkin=Count("id", filter=Q(status=Lead.Status.WALKIN)),
+        booked=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.BOOKED)),
+        retailed=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.RETAILED)),
+        lost=Count("id", filter=Q(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED])),
+        flagged=Count("id", filter=Q(flagged_to_manager=True)),
+    )
+    data["lead_to_qualified_rate"] = percent(data["qualified"], data["total"])
+    data["lead_to_retail_rate"] = percent(data["retailed"], data["total"])
+    data["qualified_to_booked_rate"] = percent(data["booked"], data["qualified"])
+    data["booked_to_retail_rate"] = percent(data["retailed"], data["booked"])
+    return data
+
+
+def with_deltas(current, previous):
+    if not previous:
+        return {**current, "delta": {}}
+    return {**current, "delta": {key: round(current[key] - previous.get(key, 0), 1) for key in ("total", "untouched", "qualified", "booked", "retailed", "lost", "lead_to_retail_rate")}}
+
+
+def source_rows(queryset):
+    rows = list(queryset.values("source").annotate(total=Count("id"), qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)), booked=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.BOOKED)), retailed=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.RETAILED)), lost=Count("id", filter=Q(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED]))).order_by("-total", "source"))
+    for row in rows:
+        row["conversion_rate"] = percent(row["retailed"], row["total"])
+    return rows
+
+
+def model_rows(queryset):
+    rows = list(queryset.values("model_interest").annotate(total=Count("id"), qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)), booked=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.BOOKED)), retailed=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.RETAILED)), lost=Count("id", filter=Q(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED]))).order_by("-total", "model_interest"))
+    for row in rows:
+        row["model"] = row.pop("model_interest") or "Model not set"
+        row["conversion_rate"] = percent(row["retailed"], row["total"])
+    return rows
+
+
+def role_rows(users, lead_relation, branch, start, end):
+    lead_filter = Q(**{f"{lead_relation}__deleted_at__isnull": True, f"{lead_relation}__branch__iexact": branch})
+    if start:
+        lead_filter &= Q(**{f"{lead_relation}__enquiry_date__gte": start})
+    if end:
+        lead_filter &= Q(**{f"{lead_relation}__enquiry_date__lte": end})
+    call_filter = Q(call_logs__lead__deleted_at__isnull=True, call_logs__lead__branch__iexact=branch)
+    follow_filter = Q(follow_ups__lead__deleted_at__isnull=True, follow_ups__lead__branch__iexact=branch)
+    if start:
+        call_filter &= Q(call_logs__created_at__date__gte=start)
+        follow_filter &= Q(follow_ups__scheduled_for__date__gte=start)
+    if end:
+        call_filter &= Q(call_logs__created_at__date__lte=end)
+        follow_filter &= Q(follow_ups__scheduled_for__date__lte=end)
+    rows = []
+    for user in users.annotate(
+        total=Count(lead_relation, filter=lead_filter, distinct=True),
+        untouched=Count(lead_relation, filter=lead_filter & Q(**{f"{lead_relation}__status": Lead.Status.FRESH}), distinct=True),
+        qualified=Count(lead_relation, filter=lead_filter & Q(**{f"{lead_relation}__status": Lead.Status.QUALIFIED}), distinct=True),
+        booked=Count(lead_relation, filter=lead_filter & Q(**{f"{lead_relation}__sales_outcome": Lead.SalesOutcome.BOOKED}), distinct=True),
+        retailed=Count(lead_relation, filter=lead_filter & Q(**{f"{lead_relation}__sales_outcome": Lead.SalesOutcome.RETAILED}), distinct=True),
+        lost=Count(lead_relation, filter=lead_filter & Q(**{f"{lead_relation}__status__in": [Lead.Status.LOST, Lead.Status.UNQUALIFIED]}), distinct=True),
+        calls=Count("call_logs", filter=call_filter, distinct=True),
+        followups=Count("follow_ups", filter=follow_filter, distinct=True),
+        last_activity=Max("call_logs__created_at", filter=call_filter),
+    ):
+        if not (user.total or user.calls or user.followups or user.location.strip().casefold() == branch.casefold()):
+            continue
+        rows.append({
+            "id": user.id,
+            "name": user.get_full_name() or user.email,
+            "email": user.email,
+            "location": user.location,
+            "total": user.total,
+            "untouched": user.untouched,
+            "qualified": user.qualified,
+            "booked": user.booked,
+            "retailed": user.retailed,
+            "lost": user.lost,
+            "calls": user.calls,
+            "followups": user.followups,
+            "last_activity": user.last_activity,
+            "conversion_rate": percent(user.retailed, user.total),
+            "qualification_rate": percent(user.qualified, user.total),
+        })
+    return rows
+
+
+def manager_payload(request):
+    date_range, start, end = period_bounds(request)
+    branch = request.user.location.strip()
+    scoped = manager_base_queryset(request)
+    queryset = with_period(scoped, start, end)
+    prev_start, prev_end = previous_mtd_bounds(start, end) if date_range == "mtd" else (None, None)
+    previous = summary_for(with_period(manager_base_queryset(request), prev_start, prev_end)) if prev_start and prev_end else {}
+    summary = with_deltas(summary_for(queryset), previous)
+    today = timezone.localdate()
+    due_followups = FollowUp.objects.filter(resolved_at__isnull=True, lead__deleted_at__isnull=True, lead__branch__iexact=branch, scheduled_for__date__lte=today)
+    if start:
+        due_followups = due_followups.filter(scheduled_for__date__gte=start)
+    if end:
+        due_followups = due_followups.filter(scheduled_for__date__lte=end)
+    stale_since = today - timedelta(days=3)
+    stale = queryset.filter(status=Lead.Status.FRESH, created_at__date__lte=stale_since).count()
+    summary["followups_due"] = due_followups.count()
+    summary["stale_untouched"] = stale
+    funnel_counts = [("total", "Leads", summary["total"]), ("contacted", "Contacted", summary["contacted"]), ("qualified", "Qualified", summary["qualified"]), ("booked", "Booked", summary["booked"]), ("retailed", "Retailed", summary["retailed"])]
+    funnel = [{"key": key, "label": label, "count": count, "rate": percent(count, summary["total"])} for key, label, count in funnel_counts]
+    return {
+        "range": date_range,
+        "date_from": start,
+        "date_to": end,
+        "branch": branch,
+        "summary": summary,
+        "funnel": funnel,
+        "cre": role_rows(User.objects.filter(role=User.Role.CRE, is_active=True), "assigned_leads", branch, start, end),
+        "ps": role_rows(User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True), "ps_leads", branch, start, end),
+        "source": source_rows(queryset),
+        "models": model_rows(queryset),
+        "status": list(queryset.values("status").annotate(count=Count("id")).order_by("-count")),
+        "categories": list(queryset.values("category").annotate(count=Count("id")).order_by("category")),
+        "monthly": list(queryset.annotate(month=TruncMonth("enquiry_date")).values("month").annotate(total=Count("id"), qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)), booked=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.BOOKED)), retailed=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.RETAILED))).order_by("month")),
+        "followups": {
+            "due": due_followups.count(),
+            "overdue": due_followups.filter(scheduled_for__lt=timezone.now()).count(),
+            "by_owner": list(due_followups.values("so__id", "so__first_name", "so__last_name", "so__email").annotate(count=Count("id")).order_by("-count")),
+        },
+        "lost_reasons": list(CallLog.objects.filter(lead__in=queryset.filter(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED]), outcome__gt="").values("outcome").annotate(count=Count("id")).order_by("-count", "outcome")),
+        "stale_leads": list(queryset.filter(status=Lead.Status.FRESH, created_at__date__lte=stale_since).order_by("created_at").values("id", "name", "phone", "source", "model_interest", "created_at")[:20]),
+        "generated_at": timezone.now(),
+    }
 
 
 class AdminAnalyticsView(APIView):
@@ -117,3 +312,33 @@ class ReceptionistAnalyticsView(APIView):
             "so_breakdown": formatted_so_breakdown,
             "generated_at": timezone.now()
         })
+
+
+class SalesManagerAnalyticsView(APIView):
+    permission_classes = [IsSalesManager]
+
+    def get(self, request):
+        return Response(manager_payload(request))
+
+
+class SalesManagerAnalyticsExportView(APIView):
+    permission_classes = [IsSalesManager]
+
+    def get(self, request):
+        section = request.query_params.get("section", "cre")
+        data = manager_payload(request)
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = f'attachment; filename="river-sales-manager-{section}.csv"'
+        writer = csv.writer(response)
+        rows = data.get(section, [])
+        if section in {"cre", "ps", "source", "models", "lost_reasons", "stale_leads"} and isinstance(rows, list) and rows:
+            keys = list(rows[0].keys())
+            writer.writerow(keys)
+            for row in rows:
+                writer.writerow([row.get(key, "") for key in keys])
+        else:
+            writer.writerow(["metric", "value"])
+            for key, value in data["summary"].items():
+                if key != "delta":
+                    writer.writerow([key, value])
+        return response

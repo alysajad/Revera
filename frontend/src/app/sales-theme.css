@@ -416,3 +416,231 @@
 .sales-shell.complaints-shell .sales-metric small {
   color: #ffffff !important;
 }
+
+.sales-shell.manager-shell {
+  --sales-background: #f7faf9;
+  --sales-surface: #ffffff;
+  --sales-surface-low: #eef3f1;
+  --sales-primary: #102c28;
+  --sales-primary-container: #dce9e5;
+  --sales-primary-soft: #e9f7f2;
+  --sales-outline: #c9d4d0;
+  --sales-muted: #33413e;
+  --sales-secondary: #a73f16;
+}
+
+.sales-shell.manager-shell .nav-link.active {
+  background: #102c28;
+  color: #ffffff;
+}
+
+.manager-page {
+  max-width: 1680px !important;
+}
+
+.manager-hero {
+  align-items: flex-start;
+}
+
+.manager-hero h1 span {
+  display: block;
+  color: #a73f16;
+}
+
+.manager-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+  border-radius: 8px;
+}
+
+.manager-filter-bar label {
+  display: grid;
+  gap: 7px;
+  color: #33413e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.manager-filter-bar select,
+.manager-filter-bar input {
+  min-height: 40px;
+  border: 1px solid var(--sales-outline);
+  border-radius: 6px;
+  background: #fff;
+  padding: 9px 11px;
+  font-size: 13px;
+}
+
+.manager-metrics {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.manager-metric {
+  min-height: 150px !important;
+  color: inherit;
+  text-decoration: none;
+}
+
+.manager-tabs {
+  margin-top: 4px;
+}
+
+.manager-tabs button {
+  min-height: 42px;
+}
+
+.manager-overview-grid,
+.manager-two-col {
+  display: grid;
+  grid-template-columns: 1.25fr .75fr;
+  gap: 18px;
+}
+
+.manager-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.manager-card-head .eyebrow {
+  margin: 0 0 7px;
+}
+
+.manager-card-head h2 {
+  margin: 0;
+}
+
+.manager-funnel-row {
+  display: grid;
+  grid-template-columns: 120px minmax(120px, 1fr) 58px 48px;
+  gap: 12px;
+  align-items: center;
+  padding: 13px 0;
+  border-top: 1px solid #e7ece9;
+}
+
+.manager-funnel-row span,
+.manager-funnel-row small {
+  color: #52615e;
+  font-size: 12px;
+}
+
+.manager-funnel-row div {
+  height: 13px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #e6edeb;
+}
+
+.manager-funnel-row i {
+  display: block;
+  height: 100%;
+  background: #102c28;
+}
+
+.manager-funnel-row b,
+.manager-rate {
+  color: #102c28;
+  font-weight: 700;
+}
+
+.manager-risk-list,
+.manager-list {
+  display: grid;
+  gap: 10px;
+}
+
+.manager-risk-list a,
+.manager-list a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 56px;
+  padding: 12px 14px;
+  border: 1px solid #dce5e1;
+  border-radius: 8px;
+  color: #102c28;
+  text-decoration: none;
+  background: #fbfdfc;
+}
+
+.manager-risk-list b {
+  display: block;
+  color: #a73f16;
+  font-size: 24px;
+}
+
+.manager-risk-list span,
+.manager-list small {
+  display: block;
+  color: #52615e;
+  font-size: 12px;
+}
+
+.manager-table-card {
+  border-radius: 8px !important;
+}
+
+.manager-table-scroll {
+  overflow: auto;
+}
+
+.manager-table {
+  min-width: 980px !important;
+}
+
+.manager-table a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.manager-table tbody tr {
+  cursor: default !important;
+}
+
+.manager-lead-filters {
+  grid-template-columns: 1.4fr repeat(6, minmax(120px, .75fr)) auto;
+  align-items: end;
+}
+
+.manager-detail-modal {
+  width: min(860px, 100%);
+}
+
+@media (max-width: 1250px) {
+  .manager-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .manager-filter-bar,
+  .manager-lead-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .manager-overview-grid,
+  .manager-two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .manager-metrics,
+  .manager-filter-bar,
+  .manager-lead-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-funnel-row {
+    grid-template-columns: 1fr 56px;
+  }
+
+  .manager-funnel-row div,
+  .manager-funnel-row small {
+    grid-column: 1 / -1;
+  }
+}

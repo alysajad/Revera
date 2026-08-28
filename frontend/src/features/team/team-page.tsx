@@ -6,7 +6,8 @@ import { getUsers, createUser, disableUser, getSystemConfig, type CurrentUser } 
 const roleOptions = [
   { value: "ADMIN", label: "Administrator" },
   { value: "CRE", label: "Marketing" },
-  { value: "SO", label: "Sales Manager" },
+  { value: "SO", label: "PS/SO" },
+  { value: "SALES_MANAGER", label: "Sales Manager" },
   { value: "COMPLAINTS", label: "Complaints department" },
   { value: "RECEPTIONIST", label: "Receptionist" },
 ];
@@ -47,7 +48,8 @@ export function TeamPage() {
     const uiRole = formData.get("role") as string;
     let backendRole = "ADMIN";
     if (uiRole === "Marketing") backendRole = "CRE";
-    if (uiRole === "Sales Manager") backendRole = "SO";
+    if (uiRole === "PS/SO") backendRole = "SO";
+    if (uiRole === "Sales Manager") backendRole = "SALES_MANAGER";
     if (uiRole === "Complaints department") backendRole = "COMPLAINTS";
     if (uiRole === "Receptionist") backendRole = "RECEPTIONIST";
 
@@ -60,7 +62,7 @@ export function TeamPage() {
       is_active: true
     };
     
-    if (backendRole === "SO") {
+    if (["SO", "SALES_MANAGER"].includes(backendRole)) {
       payload.location = formData.get("branch") as string;
     }
 
@@ -88,7 +90,8 @@ export function TeamPage() {
 
   const displayRole = (role: string) => {
     if (role === "CRE") return "Marketing";
-    if (role === "SO") return "Sales Manager";
+    if (role === "SO") return "PS/SO";
+    if (role === "SALES_MANAGER") return "Sales Manager";
     if (role === "COMPLAINTS") return "Complaints department";
     if (role === "RECEPTIONIST") return "Receptionist";
     return "Administrator";
@@ -146,13 +149,14 @@ export function TeamPage() {
                   <option value="">Select...</option>
                   <option value="Admin">Admin</option>
                   <option value="Marketing">Marketing (CRE)</option>
-                  <option value="Sales Manager">Sales Manager (SO)</option>
+                  <option value="PS/SO">PS/SO</option>
+                  <option value="Sales Manager">Sales Manager</option>
                   <option value="Complaints department">Complaints department</option>
                   <option value="Receptionist">Receptionist</option>
                 </select>
               </label>
             </div>
-            {selectedRole === "Sales Manager" && (
+            {["PS/SO", "Sales Manager"].includes(selectedRole) && (
               <label>Branch *
                 <select name="branch" required>
                   <option value="">Select branch...</option>
