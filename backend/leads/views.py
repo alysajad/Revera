@@ -26,8 +26,6 @@ FORWARD_TRANSITIONS = {
     Lead.Status.QUALIFIED: {Lead.Status.WALKIN, Lead.Status.WON, Lead.Status.LOST},
     Lead.Status.WALKIN: {Lead.Status.WON, Lead.Status.LOST},
 }
-PS_RETRY_OUTCOMES = {"RNR", "Switch Off", "Call Forwarding", "Line Busy", "Invalid Number"}
-
 
 def apply_lead_filters(queryset, filters):
     if value := filters.get("source"):
@@ -196,16 +194,6 @@ class LeadViewSet(viewsets.ModelViewSet):
             next_status = call_status.get(call_outcome) if call_outcome else data.get("status") or sales_status.get(data.get("sales_outcome"), lead.status)
         if request.user.role == User.Role.SALES_OFFICER and data.get("call_status") == "Not Connected" and call_outcome == "Call Me Back":
             return Response({"detail": "Call Me Back requires a connected call."}, status=status.HTTP_400_BAD_REQUEST)
-        if (
-            request.user.role == User.Role.SALES_OFFICER
-            and data.get("call_status") == "Not Connected"
-            and call_outcome in PS_RETRY_OUTCOMES
-            and lead.call_logs.filter(so=request.user, call_status="Not Connected").count() >= 4
-        ):
-            call_outcome = data["call_outcome"] = "No Response"
-            next_status = data["status"] = Lead.Status.LOST
-            data["sales_outcome"] = Lead.SalesOutcome.LOST
-            data.pop("follow_up_at", None)
         if call_outcome == "PENDING" and not data.get("follow_up_at"):
             return Response({"detail": "Pending calls require a follow-up time."}, status=status.HTTP_400_BAD_REQUEST)
         follow_up_statuses = {Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.CALLBACK, Lead.Status.PENDING, Lead.Status.WALKIN}

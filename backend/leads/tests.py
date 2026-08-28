@@ -576,15 +576,13 @@ class LeadAccessTests(TestCase):
         self.first_lead.refresh_from_db()
         self.assertEqual(self.first_lead.status, Lead.Status.LOST)
 
-    def test_ps_can_mark_repeated_not_connected_as_no_response_lost(self):
+    def test_ps_can_manually_mark_not_connected_as_no_response_lost(self):
         self.first_lead.status = Lead.Status.QUALIFIED
         self.first_lead.assigned_ps = self.ps_so
         self.first_lead.save(update_fields=["status", "assigned_ps"])
-        for index in range(4):
-            CallLog.objects.create(lead=self.first_lead, so=self.ps_so, status=Lead.Status.PENDING, call_status="Not Connected", outcome="Switch Off", remarks=f"Attempt {index + 1}")
         self.client.force_authenticate(self.ps_so)
 
-        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_status": "Not Connected", "call_outcome": "Switch Off", "status": Lead.Status.SWITCHED_OFF, "sales_outcome": Lead.SalesOutcome.PENDING, "remarks": "No response after repeated calls.", "follow_up_at": (timezone.now() + timedelta(days=1)).isoformat()}, format="json")
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_status": "Not Connected", "call_outcome": "No Response", "status": Lead.Status.LOST, "sales_outcome": Lead.SalesOutcome.LOST, "remarks": "No response, marking lost."}, format="json")
 
         self.assertEqual(response.status_code, 200, response.data)
         self.first_lead.refresh_from_db()

@@ -6,7 +6,7 @@ import { formatDate, formatDateTime, parseDate, toApiDate } from "@/lib/dates";
 
 type Section = "all" | "fresh" | "followups" | "pending" | "qualified" | "walkin" | "won" | "lost" | "won_lost" | "active";
 type WonLostFilter = "all" | "won" | "lost";
-type PsOutcome = { label: string; tone: "qualified" | "lost"; status: string; minCalls?: number };
+type PsOutcome = { label: string; tone: "qualified" | "lost"; status: string };
 type Draft = {
   status: string; category: string; sales_outcome: string; call_outcome: string; call_status: string; remarks: string; follow_up_at: string;
   model_interest: string; city: string; profession: string; custom_location: string; ps_officer_id: string; lost_reason: string; pending_reason: string; trade_in_note: string;
@@ -38,7 +38,7 @@ const soNotConnectedOutcomes: PsOutcome[] = [
   { label: "Call Forwarding", tone: "qualified", status: "PENDING" },
   { label: "Line Busy", tone: "qualified", status: "PENDING" },
   { label: "Invalid Number", tone: "qualified", status: "PENDING" },
-  { label: "No Response", tone: "lost", status: "LOST", minCalls: 4 }
+  { label: "No Response", tone: "lost", status: "LOST" }
 ];
 const soOutcomes = [...soConnectedOutcomes, ...soNotConnectedOutcomes];
 
@@ -379,8 +379,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
     : [{label:"Fresh leads", value:summary?.fresh ?? 0, tone:"blue"}, {label:"Today's follow-ups", value:summary?.followups ?? 0, tone:"yellow"}, {label:"Pending leads", value:summary?.pending ?? 0, tone:"orange"}, {label:"Qualified leads", value:summary?.qualified ?? 0, tone:"green"}, {label:"Won leads", value:summary?.won ?? 0, tone:"mint"}, {label:"Lost leads", value:summary?.lost ?? 0, tone:"red"}];
   const displayStatus = (lead: SalesLead) => !isPs && ["RNR", "SWITCHED_OFF", "CALLBACK"].includes(lead.statusCode) ? "Pending" : lead.status;
   const displayStatusClass = (lead: SalesLead) => !isPs && ["RNR", "SWITCHED_OFF", "CALLBACK"].includes(lead.statusCode) ? "pending" : lead.statusCode.toLowerCase();
-  const finalNoResponseAttempt = isPs && detail && detail.callCount >= 4;
-  const psVisibleOutcomes = draft ? (draft.call_status === "Connected" ? soConnectedOutcomes : finalNoResponseAttempt ? soNotConnectedOutcomes.filter(outcome => outcome.status === "LOST") : soNotConnectedOutcomes.filter(outcome => !outcome.minCalls)) : [];
+  const psVisibleOutcomes = draft ? (draft.call_status === "Connected" ? soConnectedOutcomes : soNotConnectedOutcomes) : [];
   const saveTone = draft?.call_outcome && lostPsOutcomes.has(draft.call_outcome) ? "lost" : draft?.call_outcome ? "qualified" : "";
 
   return <section className="page sales-workspace">
@@ -431,7 +430,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
                <h4 style={{ fontSize: "0.85rem", color: "var(--text-light)", marginBottom: "0.5rem" }}>Call status *</h4>
                <div className="sales-choice-row sales-status-update">
                  <button type="button" className={draft.call_status === "Connected" ? "chosen qualified" : ""} onClick={() => { choose("call_status", "Connected"); choose("call_outcome", ""); }}>Connected</button>
-                 <button type="button" className={draft.call_status === "Not Connected" ? "chosen lost" : ""} onClick={() => { choose("call_status", "Not Connected"); choose("call_outcome", finalNoResponseAttempt ? "No Response" : ""); }}>Not Connected</button>
+                 <button type="button" className={draft.call_status === "Not Connected" ? "chosen pending" : ""} onClick={() => { choose("call_status", "Not Connected"); choose("call_outcome", ""); }}>Not Connected</button>
                </div>
                
                {draft.call_status && (
