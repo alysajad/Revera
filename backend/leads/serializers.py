@@ -34,6 +34,7 @@ PS_CALL_OUTCOME_STATUS_OPTIONS = {
     "Finance Rejected": {Lead.Status.LOST},
     "Dropped": {Lead.Status.LOST},
     "Lost to co-dealer": {Lead.Status.LOST},
+    "No Response": {Lead.Status.LOST},
     "RNR": {Lead.Status.RNR, Lead.Status.PENDING},
     "Switch Off": {Lead.Status.SWITCHED_OFF, Lead.Status.PENDING},
     "Call Me Back": {Lead.Status.CALLBACK, Lead.Status.PENDING},

@@ -356,14 +356,16 @@ class LeadAccessTests(TestCase):
         self.assertEqual({lead["id"] for lead in response.data["results"]}, {yesterday.id, today.id})
 
     def test_ps_dashboard_filters_all_fresh_booked_retailed_and_lost(self):
-        fresh = Lead.objects.create(name="Fresh PS", phone="7305198434", assigned_ps=self.ps_so, status=Lead.Status.FRESH)
+        fresh = Lead.objects.create(name="Fresh PS", phone="7305198434", assigned_ps=self.ps_so, status=Lead.Status.QUALIFIED)
+        called = Lead.objects.create(name="Called PS", phone="7305198438", assigned_ps=self.ps_so, status=Lead.Status.QUALIFIED)
         booked = Lead.objects.create(name="Booked PS", phone="7305198435", assigned_ps=self.ps_so, status=Lead.Status.WALKIN)
         retailed = Lead.objects.create(name="Retailed PS", phone="7305198436", assigned_ps=self.ps_so, status=Lead.Status.WON)
         lost = Lead.objects.create(name="Lost PS", phone="7305198437", assigned_ps=self.ps_so, status=Lead.Status.LOST)
+        CallLog.objects.create(lead=called, so=self.ps_so, status=Lead.Status.QUALIFIED)
         self.client.force_authenticate(self.ps_so)
 
         sections = {
-            "all": {fresh.id, booked.id, retailed.id, lost.id},
+            "all": {fresh.id, called.id, booked.id, retailed.id, lost.id},
             "fresh": {fresh.id},
             "walkin": {booked.id},
             "won": {retailed.id},
@@ -573,6 +575,19 @@ class LeadAccessTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.first_lead.refresh_from_db()
         self.assertEqual(self.first_lead.status, Lead.Status.LOST)
+
+    def test_ps_can_mark_repeated_not_connected_as_no_response_lost(self):
+        self.first_lead.status = Lead.Status.QUALIFIED
+        self.first_lead.assigned_ps = self.ps_so
+        self.first_lead.save(update_fields=["status", "assigned_ps"])
+        self.client.force_authenticate(self.ps_so)
+
+        response = self.client.patch(f"/api/leads/{self.first_lead.id}/so-update/", {"call_status": "Not Connected", "call_outcome": "No Response", "status": Lead.Status.LOST, "sales_outcome": Lead.SalesOutcome.LOST, "remarks": "No response after repeated calls."}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.first_lead.refresh_from_db()
+        self.assertEqual(self.first_lead.status, Lead.Status.LOST)
+        self.assertEqual(self.first_lead.sales_outcome, Lead.SalesOutcome.LOST)
 
     def test_call_outcome_rejects_incompatible_follow_up(self):
         self.client.force_authenticate(self.first_so)

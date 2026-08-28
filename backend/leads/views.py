@@ -101,12 +101,13 @@ class LeadViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="my-dashboard")
     def my_dashboard(self, request):
         today = timezone.localdate()
-        owner_filter = {"assigned_so": request.user} if request.user.role == User.Role.CRE else {"assigned_ps": request.user}
+        is_cre = request.user.role == User.Role.CRE
+        owner_filter = {"assigned_so": request.user} if is_cre else {"assigned_ps": request.user}
         queryset = Lead.objects.filter(deleted_at__isnull=True, **owner_filter)
         open_followup = Q(follow_ups__id__isnull=False, follow_ups__resolved_at__isnull=True)
         due_followup = open_followup & Q(follow_ups__scheduled_for__date__lte=today)
         followup_filter = due_followup
-        if request.user.role == User.Role.CRE:
+        if is_cre:
             followup_filter = due_followup & Q(status=Lead.Status.PENDING, call_logs__outcome="Call Me Back")
         pending_status = Q(status__in=[Lead.Status.RNR, Lead.Status.SWITCHED_OFF, Lead.Status.PENDING])
         called_status = Q(status__in=[Lead.Status.RNR, Lead.Status.SWITCHED_OFF])
@@ -122,12 +123,13 @@ class LeadViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(enquiry_date__lte=parse_date(request.query_params["date_to"]))
 
         pending_queryset = queryset.filter(pending_status)
-        if request.user.role == User.Role.CRE:
+        if is_cre:
             pending_queryset = pending_queryset.exclude(followup_filter)
+        fresh_queryset = queryset.filter(status=Lead.Status.FRESH) if is_cre else queryset.filter(status=Lead.Status.QUALIFIED).exclude(call_logs__so=request.user)
 
         summary = {
             "total": queryset.count(),
-            "fresh": queryset.filter(status=Lead.Status.FRESH).count(),
+            "fresh": fresh_queryset.distinct().count(),
             "followups": queryset.filter(followup_filter).distinct().count(),
             "pending": pending_queryset.distinct().count(),
             "qualified": queryset.filter(status=Lead.Status.QUALIFIED).count(),
@@ -158,9 +160,9 @@ class LeadViewSet(viewsets.ModelViewSet):
             "won_lost": Q(status__in=[Lead.Status.WON, Lead.Status.LOST, Lead.Status.UNQUALIFIED]),
             "active": ~Q(status__in=[Lead.Status.WON, Lead.Status.LOST, Lead.Status.UNQUALIFIED]),
         }
-        if section == "fresh" and fresh_subfilter in fresh_filters:
-            queryset = queryset.filter(fresh_filters[fresh_subfilter])
-        elif section == "pending" and request.user.role == User.Role.CRE:
+        if section == "fresh":
+            queryset = queryset.filter(fresh_filters[fresh_subfilter]) if is_cre and fresh_subfilter in fresh_filters else fresh_queryset
+        elif section == "pending" and is_cre:
             queryset = pending_queryset
         elif section in section_filters:
             queryset = queryset.filter(section_filters[section])
