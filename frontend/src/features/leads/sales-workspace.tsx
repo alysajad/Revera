@@ -379,7 +379,8 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
     : [{label:"Fresh leads", value:summary?.fresh ?? 0, tone:"blue"}, {label:"Today's follow-ups", value:summary?.followups ?? 0, tone:"yellow"}, {label:"Pending leads", value:summary?.pending ?? 0, tone:"orange"}, {label:"Qualified leads", value:summary?.qualified ?? 0, tone:"green"}, {label:"Won leads", value:summary?.won ?? 0, tone:"mint"}, {label:"Lost leads", value:summary?.lost ?? 0, tone:"red"}];
   const displayStatus = (lead: SalesLead) => !isPs && ["RNR", "SWITCHED_OFF", "CALLBACK"].includes(lead.statusCode) ? "Pending" : lead.status;
   const displayStatusClass = (lead: SalesLead) => !isPs && ["RNR", "SWITCHED_OFF", "CALLBACK"].includes(lead.statusCode) ? "pending" : lead.statusCode.toLowerCase();
-  const psVisibleOutcomes = draft ? (draft.call_status === "Connected" ? soConnectedOutcomes : soNotConnectedOutcomes).filter(outcome => !outcome.minCalls || detail && detail.callCount >= outcome.minCalls) : [];
+  const finalNoResponseAttempt = isPs && detail && detail.callCount >= 4;
+  const psVisibleOutcomes = draft ? (draft.call_status === "Connected" ? soConnectedOutcomes : finalNoResponseAttempt ? soNotConnectedOutcomes.filter(outcome => outcome.status === "LOST") : soNotConnectedOutcomes.filter(outcome => !outcome.minCalls)) : [];
   const saveTone = draft?.call_outcome && lostPsOutcomes.has(draft.call_outcome) ? "lost" : draft?.call_outcome ? "qualified" : "";
 
   return <section className="page sales-workspace">
@@ -430,7 +431,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
                <h4 style={{ fontSize: "0.85rem", color: "var(--text-light)", marginBottom: "0.5rem" }}>Call status *</h4>
                <div className="sales-choice-row sales-status-update">
                  <button type="button" className={draft.call_status === "Connected" ? "chosen qualified" : ""} onClick={() => { choose("call_status", "Connected"); choose("call_outcome", ""); }}>Connected</button>
-                 <button type="button" className={draft.call_status === "Not Connected" ? "chosen lost" : ""} onClick={() => { choose("call_status", "Not Connected"); choose("call_outcome", ""); }}>Not Connected</button>
+                 <button type="button" className={draft.call_status === "Not Connected" ? "chosen lost" : ""} onClick={() => { choose("call_status", "Not Connected"); choose("call_outcome", finalNoResponseAttempt ? "No Response" : ""); }}>Not Connected</button>
                </div>
                
                {draft.call_status && (
