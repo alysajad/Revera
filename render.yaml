@@ -13,7 +13,7 @@ services:
       - key: CACHE_URL
         sync: false
       - key: CACHE_TTL_SECONDS
-        value: "10"
+        value: "50"
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: DJANGO_DEBUG
