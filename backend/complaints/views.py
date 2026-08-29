@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 
 from accounts.models import User
+from analytics.cache import cache_analytics
 from .models import Complaint, ComplaintNote
 from .permissions import ComplaintAnalyticsPermission, ComplaintPermission
 from .serializers import (
@@ -139,6 +140,7 @@ class ComplaintViewSet(ModelViewSet):
 class ComplaintAnalyticsView(APIView):
     permission_classes = [ComplaintAnalyticsPermission]
 
+    @cache_analytics("complaints")
     def get(self, request):
         queryset = Complaint.objects.all()
 

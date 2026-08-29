@@ -1,12 +1,15 @@
 from datetime import timedelta
 
-from django.test import TestCase
+from django.core.cache import caches
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User
 from leads.models import SystemConfig
 from .models import Complaint
+
+cache = caches["analytics"]
 
 
 class ComplaintAccessTests(TestCase):
@@ -40,6 +43,21 @@ class ComplaintAccessTests(TestCase):
             response = self.client.get("/api/complaints/analytics/?range=all")
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["X-Cache"], "BYPASS")
+
+    @override_settings(CACHE_TTL_SECONDS=10)
+    def test_complaint_analytics_are_cached(self):
+        cache.clear()
+        self.complaint()
+        self.client.force_authenticate(self.resolver)
+
+        first = self.client.get("/api/complaints/analytics/?range=all")
+        with self.assertNumQueries(0):
+            second = self.client.get("/api/complaints/analytics/?range=all")
+
+        self.assertEqual(first["X-Cache"], "MISS")
+        self.assertEqual(second["X-Cache"], "HIT")
+        self.assertEqual(first.data, second.data)
 
     def complaint(self, logged_by=None, assigned_to=None, **overrides):
         data = {**self.payload(overrides.pop("phone", "9876543210")), **overrides}

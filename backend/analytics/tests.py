@@ -1,11 +1,16 @@
+import time
 from datetime import timedelta
+from unittest.mock import patch
 
-from django.test import TestCase
+from django.core.cache import caches
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User
 from leads.models import CallLog, FollowUp, Lead, LeadQualification
+
+cache = caches["analytics"]
 
 
 class SalesManagerAnalyticsTests(TestCase):
@@ -70,6 +75,96 @@ class SalesManagerAnalyticsTests(TestCase):
         self.assertEqual(admin.status_code, 200)
         self.assertEqual(personal.status_code, 200)
         self.assertEqual(reception.status_code, 200)
+        self.assertEqual(admin["X-Cache"], "BYPASS")
+        self.assertEqual(personal["X-Cache"], "BYPASS")
+        self.assertEqual(reception["X-Cache"], "BYPASS")
+
+    @override_settings(CACHE_TTL_SECONDS=10)
+    def test_analytics_cache_hit_is_identical_and_runs_no_queries(self):
+        cache.clear()
+        self.client.force_authenticate(self.manager)
+
+        first = self.client.get("/api/analytics/sales-manager/?range=all&include=overview")
+        with self.assertNumQueries(0):
+            second = self.client.get("/api/analytics/sales-manager/?include=overview&range=all")
+
+        self.assertEqual(first["X-Cache"], "MISS")
+        self.assertEqual(second["X-Cache"], "HIT")
+        self.assertEqual(first.data, second.data)
+        self.assertIn('desc="0 queries"', second["Server-Timing"])
+
+        lead_queue = self.client.get("/api/leads/manager-leads/")
+        lead_detail = self.client.get(f"/api/leads/{self.branch_lead.id}/")
+        self.assertNotIn("X-Cache", lead_queue)
+        self.assertNotIn("X-Cache", lead_detail)
+
+    @override_settings(CACHE_TTL_SECONDS=10)
+    def test_cache_isolated_by_user_and_filters(self):
+        cache.clear()
+        url = "/api/analytics/sales-manager/?range=all&include=source"
+        self.client.force_authenticate(self.manager)
+        self.assertEqual(self.client.get(url)["X-Cache"], "MISS")
+        self.assertEqual(self.client.get(url)["X-Cache"], "HIT")
+        self.assertEqual(
+            self.client.get("/api/analytics/sales-manager/?range=today&include=source")["X-Cache"],
+            "MISS",
+        )
+        self.assertEqual(
+            self.client.get("/api/analytics/sales-manager/?range=all&include=cre")["X-Cache"],
+            "MISS",
+        )
+
+        self.client.force_authenticate(self.other_manager)
+        self.assertEqual(self.client.get(url)["X-Cache"], "MISS")
+
+    @override_settings(CACHE_TTL_SECONDS=10)
+    def test_cache_entry_expires_after_ten_seconds(self):
+        cache.clear()
+        self.client.force_authenticate(self.manager)
+        url = "/api/analytics/sales-manager/?range=all&include=source"
+        first = self.client.get(url)
+        Lead.objects.create(name="New lead", phone="9000000099", branch="Mount Road")
+        future = time.time() + 11
+
+        with patch("django.core.cache.backends.locmem.time.time", return_value=future):
+            expired = self.client.get(url)
+
+        self.assertEqual(first["X-Cache"], "MISS")
+        self.assertEqual(expired["X-Cache"], "MISS")
+        self.assertEqual(expired.data["summary"]["total"], first.data["summary"]["total"] + 1)
+
+    @override_settings(CACHE_TTL_SECONDS=10)
+    def test_cache_failure_fails_open(self):
+        cache.clear()
+        self.client.force_authenticate(self.manager)
+
+        with patch("analytics.cache.cache.get", side_effect=ConnectionError):
+            response = self.client.get("/api/analytics/sales-manager/?range=all")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["X-Cache"], "ERROR")
+        self.assertEqual(response.data["summary"]["total"], 2)
+
+    @override_settings(CACHE_TTL_SECONDS=10)
+    def test_all_analytics_endpoints_are_cached(self):
+        cache.clear()
+        users_and_urls = [
+            (self.admin, "/api/analytics/admin/"),
+            (self.cre, "/api/analytics/me/?range=all"),
+            (
+                User.objects.create_user(
+                    email="reception-cache@example.com",
+                    password="password-12345",
+                    role=User.Role.RECEPTIONIST,
+                ),
+                "/api/analytics/receptionist/",
+            ),
+            (self.manager, "/api/analytics/sales-manager/ps-followups/?range=all"),
+        ]
+        for user, url in users_and_urls:
+            self.client.force_authenticate(user)
+            self.assertEqual(self.client.get(url)["X-Cache"], "MISS")
+            self.assertEqual(self.client.get(url)["X-Cache"], "HIT")
 
     def test_sales_manager_leads_are_scoped_and_read_only(self):
         self.client.force_authenticate(self.manager)

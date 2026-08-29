@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 
 from accounts.models import User
 from accounts.permissions import IsAdmin, IsSalesManager
+from analytics.cache import cache_analytics
 from leads.models import CallLog, FollowUp, Lead, LeadAudit
 
 
@@ -357,6 +358,7 @@ def manager_payload(request):
 class AdminAnalyticsView(APIView):
     permission_classes = [IsAdmin]
 
+    @cache_analytics("admin")
     def get(self, request):
         queryset = Lead.objects.filter(deleted_at__isnull=True)
         source = list(queryset.values("source").annotate(total=Count("id"), qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)), won=Count("id", filter=Q(status=Lead.Status.WON))).order_by("source"))
@@ -366,6 +368,7 @@ class AdminAnalyticsView(APIView):
 
 
 class MyAnalyticsView(APIView):
+    @cache_analytics("personal")
     def get(self, request):
         owner_filter = {"assigned_so": request.user} if request.user.role == User.Role.CRE else {"assigned_ps": request.user}
         queryset = Lead.objects.filter(deleted_at__isnull=True, **owner_filter)
@@ -410,6 +413,7 @@ class MyAnalyticsExportView(APIView):
 
 
 class ReceptionistAnalyticsView(APIView):
+    @cache_analytics("receptionist")
     def get(self, request):
         if getattr(request.user, "role", None) != "RECEPTIONIST":
             return Response(status=403)
@@ -444,6 +448,7 @@ class ReceptionistAnalyticsView(APIView):
 class SalesManagerAnalyticsView(APIView):
     permission_classes = [IsSalesManager]
 
+    @cache_analytics("sales-manager")
     def get(self, request):
         return Response(manager_payload(request))
 
@@ -451,6 +456,7 @@ class SalesManagerAnalyticsView(APIView):
 class SalesManagerPSFollowupsView(APIView):
     permission_classes = [IsSalesManager]
 
+    @cache_analytics("sales-manager-ps-followups")
     def get(self, request):
         return Response(ps_followup_payload(request))
 

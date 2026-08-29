@@ -61,6 +61,24 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+CACHE_URL = os.environ.get("CACHE_URL", "")
+CACHE_TTL_SECONDS = int(os.environ.get("CACHE_TTL_SECONDS", "0"))
+CACHES = {
+    # DRF throttling stays local so an analytics Redis outage can fail open in the view.
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "default-cache",
+    },
+    "analytics": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": CACHE_URL,
+        "OPTIONS": {"socket_connect_timeout": 1, "socket_timeout": 1},
+    } if CACHE_URL else {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "analytics-cache",
+    }
+}
+
 CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
 CELERY_TASK_ALWAYS_EAGER = os.environ.get("CELERY_TASK_ALWAYS_EAGER", str(DEBUG)).lower() == "true"
