@@ -38,6 +38,39 @@ class SalesManagerAnalyticsTests(TestCase):
         today = self.client.get("/api/analytics/sales-manager/?range=today")
         self.assertEqual(today.data["summary"]["delta"], {})
 
+    def test_manager_overview_query_budget_and_partial_sections(self):
+        self.client.force_authenticate(self.manager)
+
+        with self.assertNumQueries(6):
+            response = self.client.get("/api/analytics/sales-manager/?include=overview,filters")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["cre"], [])
+        self.assertEqual(response.data["source"], [])
+        self.assertEqual(response.data["filters"]["ps"][0]["id"], self.ps.id)
+
+        cre = self.client.get("/api/analytics/sales-manager/?include=cre")
+        self.assertEqual(cre.data["cre"][0]["id"], self.cre.id)
+        self.assertEqual(cre.data["ps"], [])
+
+    def test_other_analytics_query_budgets(self):
+        self.client.force_authenticate(self.admin)
+        with self.assertNumQueries(4):
+            admin = self.client.get("/api/analytics/admin/")
+
+        self.client.force_authenticate(self.cre)
+        with self.assertNumQueries(4):
+            personal = self.client.get("/api/analytics/me/?range=mtd")
+
+        receptionist = User.objects.create_user(email="reception@example.com", password="password-12345", role=User.Role.RECEPTIONIST)
+        self.client.force_authenticate(receptionist)
+        with self.assertNumQueries(2):
+            reception = self.client.get("/api/analytics/receptionist/")
+
+        self.assertEqual(admin.status_code, 200)
+        self.assertEqual(personal.status_code, 200)
+        self.assertEqual(reception.status_code, 200)
+
     def test_sales_manager_leads_are_scoped_and_read_only(self):
         self.client.force_authenticate(self.manager)
 

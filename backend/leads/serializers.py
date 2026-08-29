@@ -73,6 +73,8 @@ class LeadSerializer(serializers.ModelSerializer):
     qualification_input = QualificationSerializer(required=False, write_only=True)
 
     def get_next_follow_up(self, obj):
+        if hasattr(obj, "_next_follow_up"):
+            return obj._next_follow_up
         follow_ups = getattr(obj, "_open_followups", None)
         if follow_ups is None:
             follow_ups = obj.follow_ups.filter(resolved_at__isnull=True).order_by("scheduled_for")[:1]

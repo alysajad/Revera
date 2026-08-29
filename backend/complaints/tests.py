@@ -32,6 +32,15 @@ class ComplaintAccessTests(TestCase):
             "branch": "Kochi",
         }
 
+    def test_resolver_analytics_query_budget(self):
+        self.complaint()
+        self.client.force_authenticate(self.resolver)
+
+        with self.assertNumQueries(5):
+            response = self.client.get("/api/complaints/analytics/?range=all")
+
+        self.assertEqual(response.status_code, 200)
+
     def complaint(self, logged_by=None, assigned_to=None, **overrides):
         data = {**self.payload(overrides.pop("phone", "9876543210")), **overrides}
         return Complaint.objects.create(logged_by=logged_by or self.cre, assigned_to=assigned_to, **data)

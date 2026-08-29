@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createLead, getCurrentUser, getLeadDetail, getMyDashboard, getOfficers, toOfficer, updateMyLead, type CurrentUser, type LeadDetail, type LeadInput, type LeadQualification, type Officer, type SalesDashboard, type SalesLead, getSystemConfig } from "@/lib/crm";
 import { DateInput } from "@/components/date-input";
 import { addDays, formatDate, formatDateTime, parseDate, todayInIST, toApiDate } from "@/lib/dates";
@@ -174,6 +174,7 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
   const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [colorVariantOptions, setColorVariantOptions] = useState<string[]>([]);
   const [addLeadPsOptions, setAddLeadPsOptions] = useState<Officer[]>([]);
+  const dashboardRequest = useRef(0);
   const isPs = user?.role === "SO";
   const activeOutcomeLabels = isPs ? psOutcomeLabels : outcomeLabels;
   const branchOptions = branches;
@@ -213,10 +214,11 @@ export function SalesWorkspace({ followUpsOnly = false }: { followUpsOnly?: bool
 
   const loadDashboard = useCallback(async () => {
     if (!user) return;
+    const request = ++dashboardRequest.current;
     setLoading(true); setError("");
-    try { setDashboard(await getMyDashboard({ section, range, ...(category ? { category } : {}), ...(source ? { source } : {}), ...(query ? { q: query } : {}) })); }
-    catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to load your leads."); }
-    finally { setLoading(false); }
+    try { const result = await getMyDashboard({ section, range, ...(category ? { category } : {}), ...(source ? { source } : {}), ...(query ? { q: query } : {}) }); if (request === dashboardRequest.current) setDashboard(result); }
+    catch (requestError) { if (request === dashboardRequest.current) setError(requestError instanceof Error ? requestError.message : "Unable to load your leads."); }
+    finally { if (request === dashboardRequest.current) setLoading(false); }
   }, [category, query, range, section, source, user]);
 
   useEffect(() => { if (!authChecked || !user) return; const timer = window.setTimeout(() => void loadDashboard(), query ? 250 : 0); return () => window.clearTimeout(timer); }, [authChecked, loadDashboard, query, user]);

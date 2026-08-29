@@ -94,7 +94,7 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
   // Analytics state
   const [analytics, setAnalytics] = useState<ComplaintAnalytics | null>(null);
   const [analyticsRange, setAnalyticsRange] = useState("mtd");
-  const analyticsLoaded = useRef(false);
+  const listRequest = useRef(0);
 
   // Add complaint form
   const [addingComplaint, setAddingComplaint] = useState(false);
@@ -126,21 +126,19 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
     return `?${params.toString()}`;
   }, [page, query, activeFilters]);
 
-  // Load list + analytics on first load
+  // Load the list independently; analytics has its own range-aware effect.
   const refresh = useCallback(async () => {
+    const request = ++listRequest.current;
     setLoading(true); setError("");
     try {
-      const [data, analyticsData] = await Promise.all([
-        getComplaints(buildQuery()),
-        canUseAnalytics && !analyticsLoaded.current ? getComplaintAnalytics(analyticsRange) : Promise.resolve(null),
-      ]);
+      const data = await getComplaints(buildQuery());
+      if (request !== listRequest.current) return;
       setComplaints(data.results);
       setTotalCount(data.count);
-      if (analyticsData) { setAnalytics(analyticsData); analyticsLoaded.current = true; }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Unable to load complaints.");
-    } finally { setLoading(false); }
-  }, [buildQuery, analyticsRange, canUseAnalytics]);
+      if (request === listRequest.current) setError(e instanceof Error ? e.message : "Unable to load complaints.");
+    } finally { if (request === listRequest.current) setLoading(false); }
+  }, [buildQuery]);
 
   useEffect(() => {
     const t = setTimeout(() => void refresh(), 0);
@@ -150,8 +148,7 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
   // Reload analytics when range changes
   useEffect(() => {
     if (!canUseAnalytics) return;
-    analyticsLoaded.current = false;
-    void getComplaintAnalytics(analyticsRange).then(data => { setAnalytics(data); analyticsLoaded.current = true; }).catch(() => null);
+    void getComplaintAnalytics(analyticsRange).then(setAnalytics).catch(() => null);
   }, [analyticsRange, canUseAnalytics]);
 
   useEffect(() => {
@@ -189,7 +186,6 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
       setAddingComplaint(false);
       setNewComplaint(emptyInput());
       setSubmittedTicket(created.ticket_number);
-      analyticsLoaded.current = false;
       if (canUseAnalytics) void getComplaintAnalytics(analyticsRange).then(setAnalytics).catch(() => null);
     } catch (e) { setFormError(e instanceof Error ? e.message : "Could not register complaint."); }
     finally { setSubmitting(false); }
@@ -226,7 +222,6 @@ export function ComplaintDesk({ adminView = false, currentUser }: { adminView?: 
       setActiveComplaint({ ...activeComplaint, status: updated.status, priority: updated.priority, resolution_notes: updated.resolution_notes });
       if (detail) setDetail({ ...detail, ...updated });
       setNotice(`${activeComplaint.ticket_number} updated.`);
-      analyticsLoaded.current = false;
       if (canUseAnalytics) void getComplaintAnalytics(analyticsRange).then(setAnalytics).catch(() => null);
     } catch (e) { setDetailError(e instanceof Error ? e.message : "Update failed."); }
     finally { setUpdatingStatus(false); }

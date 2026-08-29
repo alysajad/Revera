@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, Min, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -60,7 +60,10 @@ class LeadViewSet(viewsets.ModelViewSet):
     serializer_class = LeadSerializer
 
     def get_queryset(self):
-        queryset = Lead.objects.filter(deleted_at__isnull=True).select_related("assigned_so", "assigned_ps").annotate(_call_count=Count("call_logs", distinct=True)).prefetch_related("qualification")
+        queryset = Lead.objects.filter(deleted_at__isnull=True).select_related("assigned_so", "assigned_ps", "qualification").annotate(
+            _call_count=Count("call_logs", distinct=True),
+            _next_follow_up=Min("follow_ups__scheduled_for", filter=Q(follow_ups__resolved_at__isnull=True)),
+        )
         if not self.request.user.is_admin and self.request.user.role == User.Role.CRE:
             queryset = queryset.filter(assigned_so=self.request.user)
         elif not self.request.user.is_admin and self.request.user.role == User.Role.SALES_MANAGER:
@@ -77,7 +80,7 @@ class LeadViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(assigned_ps=value)
         queryset = apply_lead_filters(queryset, self.request.query_params)
         ordering = self.request.query_params.get("ordering", "-created_at")
-        return queryset.prefetch_related(Prefetch("follow_ups", queryset=FollowUp.objects.filter(resolved_at__isnull=True).order_by("scheduled_for"), to_attr="_open_followups")).order_by(ordering if ordering.lstrip("-") in {"created_at", "enquiry_date", "status"} else "-created_at")
+        return queryset.order_by(ordering if ordering.lstrip("-") in {"created_at", "enquiry_date", "status"} else "-created_at")
 
     def retrieve(self, request, *args, **kwargs):
         return Response(LeadDetailSerializer(self.get_object()).data)
@@ -155,20 +158,22 @@ class LeadViewSet(viewsets.ModelViewSet):
             pending_queryset = pending_queryset.exclude(followup_filter)
         fresh_queryset = queryset.filter(status=Lead.Status.FRESH) if is_cre else queryset.filter(status=Lead.Status.QUALIFIED).exclude(call_logs__so=request.user)
 
-        summary = {
-            "total": queryset.count(),
-            "fresh": fresh_queryset.distinct().count(),
-            "followups": queryset.filter(followup_filter).distinct().count(),
-            "pending": pending_queryset.distinct().count(),
-            "qualified": queryset.filter(status=Lead.Status.QUALIFIED).count(),
-            "walkin": queryset.filter(status=Lead.Status.WALKIN).count(),
-            "won": queryset.filter(status=Lead.Status.WON).count(),
-            "lost": queryset.filter(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED]).count(),
-            "won_lost": queryset.filter(status__in=[Lead.Status.WON, Lead.Status.LOST, Lead.Status.UNQUALIFIED]).count(),
-            "untouched": queryset.filter(status=Lead.Status.FRESH).count(),
-            "called": queryset.filter(called_status).count(),
-            "scheduled": queryset.filter(open_followup).distinct().count(),
-        }
+        pending_filter = pending_status & (~followup_filter if is_cre else Q())
+        fresh_filter = Q(status=Lead.Status.FRESH) if is_cre else Q(status=Lead.Status.QUALIFIED) & ~Q(call_logs__so=request.user)
+        summary = queryset.aggregate(
+            total=Count("id", distinct=True),
+            fresh=Count("id", filter=fresh_filter, distinct=True),
+            followups=Count("id", filter=followup_filter, distinct=True),
+            pending=Count("id", filter=pending_filter, distinct=True),
+            qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED), distinct=True),
+            walkin=Count("id", filter=Q(status=Lead.Status.WALKIN), distinct=True),
+            won=Count("id", filter=Q(status=Lead.Status.WON), distinct=True),
+            lost=Count("id", filter=Q(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED]), distinct=True),
+            won_lost=Count("id", filter=Q(status__in=[Lead.Status.WON, Lead.Status.LOST, Lead.Status.UNQUALIFIED]), distinct=True),
+            untouched=Count("id", filter=Q(status=Lead.Status.FRESH), distinct=True),
+            called=Count("id", filter=called_status, distinct=True),
+            scheduled=Count("id", filter=open_followup, distinct=True),
+        )
         section = request.query_params.get("section", "fresh")
         fresh_subfilter = request.query_params.get("subfilter", "untouched")
         fresh_filters = {

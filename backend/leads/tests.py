@@ -29,6 +29,18 @@ class LeadAccessTests(TestCase):
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["id"], self.first_lead.id)
 
+    def test_lead_list_and_dashboard_query_budgets(self):
+        self.client.force_authenticate(self.first_so)
+
+        with self.assertNumQueries(2):
+            leads = self.client.get("/api/leads/")
+        with self.assertNumQueries(2):
+            dashboard = self.client.get("/api/leads/my-dashboard/?section=fresh")
+
+        self.assertEqual(leads.status_code, 200)
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertIn("Server-Timing", dashboard)
+
     def test_admin_auto_assigns_unowned_leads(self):
         unowned = Lead.objects.create(name="Danish", phone="7006682391")
         self.client.force_authenticate(self.admin)

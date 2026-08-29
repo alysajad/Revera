@@ -165,9 +165,13 @@ class ComplaintAnalyticsView(APIView):
             escalated=Count("id", filter=Q(status=Complaint.Status.ESCALATED)),
             resolved=Count("id", filter=Q(status=Complaint.Status.RESOLVED)),
             closed=Count("id", filter=Q(status=Complaint.Status.CLOSED)),
+            average_resolution=Avg(
+                ExpressionWrapper(F("resolved_at") - F("created_at"), output_field=DurationField()),
+                filter=Q(resolved_at__isnull=False),
+            ),
         )
-
-        summary["avg_resolution_hours"] = _average_resolution_hours(queryset)
+        average = summary.pop("average_resolution")
+        summary["avg_resolution_hours"] = round(average.total_seconds() / 3600, 1) if average else 0
 
         # Breakdown by category
         by_category = list(
@@ -212,15 +216,6 @@ class ComplaintAnalyticsView(APIView):
         if request.user.is_admin:
             response["by_resolution_team"] = _resolution_team_performance(queryset)
         return Response(response)
-
-
-def _average_resolution_hours(queryset):
-    average = queryset.filter(resolved_at__isnull=False).annotate(
-        resolution_duration=ExpressionWrapper(
-            F("resolved_at") - F("created_at"), output_field=DurationField()
-        )
-    ).aggregate(value=Avg("resolution_duration"))["value"]
-    return round(average.total_seconds() / 3600, 1) if average else 0
 
 
 def _resolution_team_performance(queryset):

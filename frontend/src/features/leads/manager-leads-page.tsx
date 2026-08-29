@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getLeadDetail, getManagerLeads, getSystemConfig, sourceName, statusName, type Lead, type LeadDetail } from "@/lib/crm";
 import { DateInput } from "@/components/date-input";
 import { formatDate, formatDateTime, toDateInputValue } from "@/lib/dates";
@@ -35,6 +35,7 @@ export function ManagerLeadsPage({ initialQuery = "" }: { initialQuery?: string 
   const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const requestId = useRef(0);
   const query = useMemo(() => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
@@ -45,7 +46,7 @@ export function ManagerLeadsPage({ initialQuery = "" }: { initialQuery?: string 
     return params.toString();
   }, [filters]);
   const setFilter = (key: keyof typeof filters, value: string) => setFilters(current => ({ ...current, [key]: value }));
-  const load = useCallback(async () => { setLoading(true); setError(""); try { setPage(await getManagerLeads(query)); } catch (err) { setError(err instanceof Error ? err.message : "Unable to load branch leads."); } finally { setLoading(false); } }, [query]);
+  const load = useCallback(async () => { const request = ++requestId.current; setLoading(true); setError(""); try { const result = await getManagerLeads(query); if (request === requestId.current) setPage(result); } catch (err) { if (request === requestId.current) setError(err instanceof Error ? err.message : "Unable to load branch leads."); } finally { if (request === requestId.current) setLoading(false); } }, [query]);
   useEffect(() => { void getSystemConfig().then(config => setModelOptions(config.lists.models || [])).catch(() => setModelOptions([])); }, []);
   useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
   useEffect(() => { const suffix = query ? `?${query}` : ""; window.history.replaceState(null, "", `/manager/leads${suffix}`); }, [query]);

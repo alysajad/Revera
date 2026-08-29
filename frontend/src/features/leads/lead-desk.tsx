@@ -130,6 +130,7 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
   const [searchFilter, setSearchFilter] = useState("");
   const [totalLeads, setTotalLeads] = useState(0);
   const supportLoaded = useRef(false);
+  const listRequest = useRef(0);
   const isAdminAllLeads = !officerMode && adminMode === "all";
   const isAssignmentDesk = !officerMode && adminMode === "assignment";
   const leadView = isAdminAllLeads ? "all" : "fresh";
@@ -141,24 +142,27 @@ export function LeadDesk({ officerMode = false, followUpsOnly = false, adminMode
   const assignmentFilters = useMemo<LeadFilters>(() => ({ ...activeFilters, ...(searchFilter ? { q: searchFilter } : {}) }), [activeFilters, searchFilter]);
 
   const refresh = useCallback(async () => {
+    const request = ++listRequest.current;
     setLoading(true); setError("");
     try {
       const queryString = leadQuery(officerMode, followUpsOnly, effectiveActiveFilters, page, searchFilter, leadView);
-      if (officerMode) { const result = await getLeadsPage(queryString); setLeads(result.results); setTotalLeads(result.count); }
+      if (officerMode) { const result = await getLeadsPage(queryString); if (request !== listRequest.current) return; setLeads(result.results); setTotalLeads(result.count); }
       else {
         if (!supportLoaded.current) {
           const [pool, creRecords, analyticsResult] = await Promise.all([getLeadsPage(queryString), getCres(), getAdminAnalytics()]);
+          if (request !== listRequest.current) return;
           setLeads(pool.results); setTotalLeads(pool.count);
           setCreUsers(creRecords.map(officer => toOfficer(officer, analyticsResult.cre.find(item => item.id === officer.id))));
           setAnalytics(analyticsResult);
           supportLoaded.current = true;
         } else {
           const pool = await getLeadsPage(queryString);
+          if (request !== listRequest.current) return;
           setLeads(pool.results); setTotalLeads(pool.count);
         }
       }
-    } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to load CRM data."); }
-    finally { setLoading(false); }
+    } catch (requestError) { if (request === listRequest.current) setError(requestError instanceof Error ? requestError.message : "Unable to load CRM data."); }
+    finally { if (request === listRequest.current) setLoading(false); }
   }, [effectiveActiveFilters, followUpsOnly, leadView, officerMode, page, searchFilter]);
 
   useEffect(() => { const timer = window.setTimeout(() => void refresh(), 0); return () => window.clearTimeout(timer); }, [refresh]);

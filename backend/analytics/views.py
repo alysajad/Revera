@@ -25,9 +25,16 @@ def csv_value(value):
 
 
 def metrics(queryset):
-    total = queryset.count()
-    counts = queryset.aggregate(qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)), walkins=Count("id", filter=Q(status=Lead.Status.WALKIN)), won=Count("id", filter=Q(status=Lead.Status.WON)), lost=Count("id", filter=Q(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED])))
-    return {"total_assigned": total, "total_called": queryset.exclude(status=Lead.Status.FRESH).count(), **counts, "conversion_rate": round((counts["won"] / total) * 100, 1) if total else 0}
+    counts = queryset.aggregate(
+        total_assigned=Count("id"),
+        total_called=Count("id", filter=~Q(status=Lead.Status.FRESH)),
+        qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)),
+        walkins=Count("id", filter=Q(status=Lead.Status.WALKIN)),
+        won=Count("id", filter=Q(status=Lead.Status.WON)),
+        lost=Count("id", filter=Q(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED])),
+    )
+    counts["conversion_rate"] = percent(counts["won"], counts["total_assigned"])
+    return counts
 
 
 def team_metrics(users, lead_relation):
@@ -35,13 +42,13 @@ def team_metrics(users, lead_relation):
     active_leads = Q(**{f"{lead_relation}__deleted_at__isnull": True})
     rows = []
     for user in users.annotate(
-        total_assigned=Count(lead_relation, filter=active_leads),
-        total_called=Count(lead_relation, filter=active_leads & ~Q(**{f"{lead_relation}__status": Lead.Status.FRESH})),
-        calls_today=Count("call_logs", filter=Q(call_logs__created_at__date=today, call_logs__lead__deleted_at__isnull=True)),
-        qualified=Count(lead_relation, filter=active_leads & Q(**{f"{lead_relation}__status": Lead.Status.QUALIFIED})),
-        walkins=Count(lead_relation, filter=active_leads & Q(**{f"{lead_relation}__status": Lead.Status.WALKIN})),
-        won=Count(lead_relation, filter=active_leads & Q(**{f"{lead_relation}__status": Lead.Status.WON})),
-        lost=Count(lead_relation, filter=active_leads & Q(**{f"{lead_relation}__status__in": [Lead.Status.LOST, Lead.Status.UNQUALIFIED]})),
+        total_assigned=Count(lead_relation, filter=active_leads, distinct=True),
+        total_called=Count(lead_relation, filter=active_leads & ~Q(**{f"{lead_relation}__status": Lead.Status.FRESH}), distinct=True),
+        calls_today=Count("call_logs", filter=Q(call_logs__created_at__date=today, call_logs__lead__deleted_at__isnull=True), distinct=True),
+        qualified=Count(lead_relation, filter=active_leads & Q(**{f"{lead_relation}__status": Lead.Status.QUALIFIED}), distinct=True),
+        walkins=Count(lead_relation, filter=active_leads & Q(**{f"{lead_relation}__status": Lead.Status.WALKIN}), distinct=True),
+        won=Count(lead_relation, filter=active_leads & Q(**{f"{lead_relation}__status": Lead.Status.WON}), distinct=True),
+        lost=Count(lead_relation, filter=active_leads & Q(**{f"{lead_relation}__status__in": [Lead.Status.LOST, Lead.Status.UNQUALIFIED]}), distinct=True),
     ):
         rows.append({"id": user.id, "name": user.get_full_name() or user.email, "total_assigned": user.total_assigned, "total_called": user.total_called, "calls_today": user.calls_today, "qualified": user.qualified, "walkins": user.walkins, "won": user.won, "lost": user.lost, "conversion_rate": round((user.won / user.total_assigned) * 100, 1) if user.total_assigned else 0})
     return rows
@@ -186,8 +193,8 @@ def ps_followup_payload(request):
     return {"rows": rows, "leads": []}
 
 
-def summary_for(queryset):
-    data = queryset.aggregate(
+def summary_for(queryset, stale_since=None):
+    aggregates = dict(
         total=Count("id"),
         untouched=Count("id", filter=Q(status=Lead.Status.FRESH)),
         contacted=Count("id", filter=~Q(status=Lead.Status.FRESH)),
@@ -199,6 +206,9 @@ def summary_for(queryset):
         lost=Count("id", filter=Q(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED])),
         flagged=Count("id", filter=Q(flagged_to_manager=True)),
     )
+    if stale_since:
+        aggregates["stale_untouched"] = Count("id", filter=Q(status=Lead.Status.FRESH, created_at__date__lte=stale_since))
+    data = queryset.aggregate(**aggregates)
     data["lead_to_qualified_rate"] = percent(data["qualified"], data["total"])
     data["lead_to_retail_rate"] = percent(data["retailed"], data["total"])
     data["qualified_to_booked_rate"] = percent(data["booked"], data["qualified"])
@@ -280,44 +290,68 @@ def manager_payload(request):
     branch = request.user.location.strip()
     scoped = manager_base_queryset(request)
     queryset = with_period(scoped, start, end)
+    requested = {value for value in request.query_params.get("include", "").split(",") if value}
+    includes = requested or {"overview", "cre", "ps", "source", "ops"}
     prev_start, prev_end = previous_mtd_bounds(start, end) if date_range == "mtd" else (None, None)
     previous = summary_for(with_period(manager_base_queryset(request), prev_start, prev_end)) if prev_start and prev_end else {}
-    summary = with_deltas(summary_for(queryset), previous)
     today = timezone.localdate()
-    due_followups = FollowUp.objects.filter(resolved_at__isnull=True, lead__deleted_at__isnull=True, lead__branch__iexact=branch, scheduled_for__date__lte=today)
-    if start:
-        due_followups = due_followups.filter(scheduled_for__date__gte=start)
-    if end:
-        due_followups = due_followups.filter(scheduled_for__date__lte=end)
     stale_since = today - timedelta(days=3)
-    stale = queryset.filter(status=Lead.Status.FRESH, created_at__date__lte=stale_since).count()
-    summary["followups_due"] = due_followups.count()
-    summary["stale_untouched"] = stale
+    summary = with_deltas(summary_for(queryset, stale_since), previous)
+    followups = {"due": 0, "overdue": 0, "by_owner": []}
+    if "overview" in includes:
+        due_followups = FollowUp.objects.filter(resolved_at__isnull=True, lead__deleted_at__isnull=True, lead__branch__iexact=branch, scheduled_for__date__lte=today)
+        if start:
+            due_followups = due_followups.filter(scheduled_for__date__gte=start)
+        if end:
+            due_followups = due_followups.filter(scheduled_for__date__lte=end)
+        owner_rows = list(due_followups.values("so__id", "so__first_name", "so__last_name", "so__email").annotate(
+            count=Count("id"),
+            overdue=Count("id", filter=Q(scheduled_for__lt=timezone.now())),
+        ).order_by("-count"))
+        followups = {
+            "due": sum(row["count"] for row in owner_rows),
+            "overdue": sum(row.pop("overdue") for row in owner_rows),
+            "by_owner": owner_rows,
+        }
+    summary["followups_due"] = followups["due"]
     funnel_counts = [("total", "Leads", summary["total"]), ("contacted", "Contacted", summary["contacted"]), ("qualified", "Qualified", summary["qualified"]), ("booked", "Booked", summary["booked"]), ("retailed", "Retailed", summary["retailed"])]
     funnel = [{"key": key, "label": label, "count": count, "rate": percent(count, summary["total"])} for key, label, count in funnel_counts]
-    return {
+    payload = {
         "range": date_range,
         "date_from": start,
         "date_to": end,
         "branch": branch,
         "summary": summary,
         "funnel": funnel,
-        "cre": role_rows(User.objects.filter(role=User.Role.CRE, is_active=True), "assigned_leads", branch, start, end),
-        "ps": role_rows(User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True), "ps_leads", branch, start, end),
-        "source": source_rows(queryset),
-        "models": model_rows(queryset),
-        "status": list(queryset.values("status").annotate(count=Count("id")).order_by("-count")),
-        "categories": list(queryset.values("category").annotate(count=Count("id")).order_by("category")),
-        "monthly": list(queryset.annotate(month=TruncMonth("enquiry_date")).values("month").annotate(total=Count("id"), qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)), booked=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.BOOKED)), retailed=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.RETAILED))).order_by("month")),
-        "followups": {
-            "due": due_followups.count(),
-            "overdue": due_followups.filter(scheduled_for__lt=timezone.now()).count(),
-            "by_owner": list(due_followups.values("so__id", "so__first_name", "so__last_name", "so__email").annotate(count=Count("id")).order_by("-count")),
-        },
-        "lost_reasons": list(CallLog.objects.filter(lead__in=queryset.filter(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED]), outcome__gt="").values("outcome").annotate(count=Count("id")).order_by("-count", "outcome")),
-        "stale_leads": list(queryset.filter(status=Lead.Status.FRESH, created_at__date__lte=stale_since).order_by("created_at").values("id", "name", "phone", "source", "model_interest", "created_at")[:20]),
+        "cre": [], "ps": [], "source": [], "models": [], "status": [], "categories": [], "monthly": [],
+        "followups": followups, "lost_reasons": [], "stale_leads": [],
         "generated_at": timezone.now(),
     }
+    if "overview" in includes:
+        payload["monthly"] = list(queryset.annotate(month=TruncMonth("enquiry_date")).values("month").annotate(total=Count("id"), qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)), booked=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.BOOKED)), retailed=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.RETAILED))).order_by("month"))
+    if "cre" in includes:
+        payload["cre"] = role_rows(User.objects.filter(role=User.Role.CRE, is_active=True), "assigned_leads", branch, start, end)
+    if "ps" in includes:
+        payload["ps"] = role_rows(User.objects.filter(role=User.Role.SALES_OFFICER, is_active=True), "ps_leads", branch, start, end)
+    if "source" in includes:
+        payload["source"] = source_rows(queryset)
+        payload["models"] = model_rows(queryset)
+    if "ops" in includes:
+        payload["status"] = list(queryset.values("status").annotate(count=Count("id")).order_by("-count"))
+        payload["categories"] = list(queryset.values("category").annotate(count=Count("id")).order_by("category"))
+        payload["lost_reasons"] = list(CallLog.objects.filter(lead__in=queryset.filter(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED]), outcome__gt="").values("outcome").annotate(count=Count("id")).order_by("-count", "outcome"))
+        payload["stale_leads"] = list(queryset.filter(status=Lead.Status.FRESH, created_at__date__lte=stale_since).order_by("created_at").values("id", "name", "phone", "source", "model_interest", "created_at")[:20])
+    if "filters" in includes:
+        pairs = list(queryset.values("source", "model_interest", "assigned_so_id", "assigned_ps_id").distinct())
+        owner_ids = {row[key] for row in pairs for key in ("assigned_so_id", "assigned_ps_id") if row[key]}
+        users = User.objects.filter(is_active=True, role__in=[User.Role.CRE, User.Role.SALES_OFFICER]).filter(Q(location__iexact=branch) | Q(id__in=owner_ids)).order_by("first_name", "last_name", "email")
+        payload["filters"] = {
+            "source": sorted({row["source"] for row in pairs if row["source"]}),
+            "models": sorted({row["model_interest"] for row in pairs if row["model_interest"]}),
+            "cre": [{"id": user.id, "name": user.get_full_name() or user.email} for user in users if user.role == User.Role.CRE],
+            "ps": [{"id": user.id, "name": user.get_full_name() or user.email} for user in users if user.role == User.Role.SALES_OFFICER],
+        }
+    return payload
 
 
 class AdminAnalyticsView(APIView):
@@ -345,16 +379,18 @@ class MyAnalyticsView(APIView):
             queryset = queryset.filter(enquiry_date__gte=request.query_params["date_from"])
             if request.query_params.get("date_to"):
                 queryset = queryset.filter(enquiry_date__lte=request.query_params["date_to"])
+        status_aggregates = {f"status_{value.lower()}": Count("id", filter=Q(status=value)) for value, _ in Lead.Status.choices}
         summary = queryset.aggregate(
             total=Count("id"),
             qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)),
             booked=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.BOOKED)),
             lost=Count("id", filter=Q(status__in=[Lead.Status.LOST, Lead.Status.UNQUALIFIED])),
             retailed=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.RETAILED)),
+            **status_aggregates,
         )
+        status_counts = [{"status": value, "count": summary.pop(f"status_{value.lower()}")} for value, _ in Lead.Status.choices if summary[f"status_{value.lower()}"]]
         summary["assigned"] = summary["total"]
         summary["conversion_rate"] = round((summary["retailed"] / summary["total"]) * 100, 1) if summary["total"] else 0
-        status_counts = list(queryset.values("status").annotate(count=Count("id")).order_by("status"))
         source = list(queryset.values("source").annotate(total=Count("id"), qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)), booked=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.BOOKED)), retailed=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.RETAILED))).order_by("-total"))
         models = list(queryset.values("model_interest").annotate(total=Count("id"), qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)), booked=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.BOOKED))).order_by("-total"))
         monthly = list(queryset.annotate(month=TruncMonth("enquiry_date")).values("month").annotate(total=Count("id"), qualified=Count("id", filter=Q(status=Lead.Status.QUALIFIED)), booked=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.BOOKED)), retailed=Count("id", filter=Q(sales_outcome=Lead.SalesOutcome.RETAILED))).order_by("month"))
@@ -381,8 +417,9 @@ class ReceptionistAnalyticsView(APIView):
         # Find leads created by this receptionist today
         created_lead_ids = LeadAudit.objects.filter(actor=request.user, event="created", created_at__date=today).values_list("lead_id", flat=True)
         queryset = Lead.objects.filter(id__in=created_lead_ids, deleted_at__isnull=True)
-        total = queryset.count()
-        walkins = queryset.filter(source=Lead.Source.WALKIN).count()
+        summary = queryset.aggregate(total=Count("id"), walkin=Count("id", filter=Q(source=Lead.Source.WALKIN)))
+        total = summary["total"]
+        walkins = summary["walkin"]
         digital = total - walkins
         # Breakdown by SO assignment
         so_breakdown = list(queryset.values("assigned_ps__first_name", "assigned_ps__last_name", "assigned_ps__email").annotate(count=Count("id")).order_by("-count"))
